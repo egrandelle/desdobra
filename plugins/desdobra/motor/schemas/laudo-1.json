@@ -1,0 +1,895 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:laudo:1",
+  "title": "Laudo do PSD (laudo/1)",
+  "description": "Diz camada por camada o que foi lido e com que perda (arquitetura-v1.md, 5.2). Funcao pura da estrutura/1. Versao inicial; o dono e o agente leitor-laudo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "origem",
+    "documento",
+    "camadas",
+    "fontes_usadas",
+    "prova_pixel",
+    "regras",
+    "recusas",
+    "recursos",
+    "resumo"
+  ],
+  "properties": {
+    "esquema": {
+      "const": "laudo/1"
+    },
+    "origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arquivo",
+        "sha256",
+        "bytes",
+        "gravado_por",
+        "psd_tools",
+        "motor"
+      ],
+      "properties": {
+        "arquivo": {
+          "type": "string",
+          "description": "Nome do arquivo (dado de cliente)"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gravado_por": {
+          "type": "object",
+          "properties": {
+            "programa": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "versao": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "psd_tools": {
+          "type": "string"
+        },
+        "motor": {
+          "type": "string"
+        }
+      }
+    },
+    "documento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "largura",
+        "altura",
+        "modo",
+        "bits",
+        "icc",
+        "pranchetas",
+        "layer_comps",
+        "tem_previa",
+        "quadros",
+        "variantes_ocultas"
+      ],
+      "properties": {
+        "largura": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "altura": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "formato": {
+          "enum": [
+            "PSD",
+            "PSB"
+          ]
+        },
+        "modo": {
+          "type": "string"
+        },
+        "bits": {
+          "type": "integer"
+        },
+        "icc": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "nome",
+                "sha256"
+              ],
+              "properties": {
+                "nome": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256"
+                }
+              }
+            }
+          ]
+        },
+        "pranchetas": {
+          "type": "array"
+        },
+        "layer_comps": {
+          "type": "array"
+        },
+        "tem_previa": {
+          "type": "boolean"
+        },
+        "quadros": {
+          "description": "Quadros como entidades (pesquisa/corpus-testes.md, 4, item 1). Com mais de um, a peca sai do que o DA escolher (decisoes-v1.md, 29/10, 1)",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "regra",
+              "layer_id",
+              "caixa",
+              "visivel_ao_salvar"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^q[0-9]+$"
+              },
+              "regra": {
+                "enum": [
+                  "pranchetas",
+                  "grupos_de_topo"
+                ]
+              },
+              "layer_id": {
+                "type": "integer"
+              },
+              "nome": {
+                "type": "string"
+              },
+              "caixa": {
+                "$ref": "#/$defs/caixa"
+              },
+              "visivel_ao_salvar": {
+                "type": "boolean"
+              },
+              "limite": {
+                "$ref": "#/$defs/citacao_limite"
+              }
+            }
+          }
+        },
+        "variantes_ocultas": {
+          "description": "Camadas ou grupos ocultos que podem ser variante em uso (pesquisa/corpus-testes.md, 4, item 2)",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "layer_id",
+              "motivo"
+            ],
+            "properties": {
+              "layer_id": {
+                "type": "integer"
+              },
+              "motivo": {
+                "type": "string"
+              },
+              "quadro": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "camadas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/camada"
+      }
+    },
+    "fontes_usadas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fonte_ps",
+          "camadas",
+          "situacao"
+        ],
+        "properties": {
+          "fonte_ps": {
+            "type": "string"
+          },
+          "camadas": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "situacao": {
+            "enum": [
+              "presente",
+              "ausente",
+              "nao_conferida"
+            ],
+            "description": "nao_conferida enquanto a conferencia de faces instaladas (M2) nao existir"
+          },
+          "so_em_espaco": {
+            "type": "boolean",
+            "description": "Usada so em caracteres sem tinta: nao degrada"
+          }
+        }
+      }
+    },
+    "prova_pixel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feita",
+        "motivo",
+        "limiar"
+      ],
+      "properties": {
+        "feita": {
+          "type": "boolean"
+        },
+        "motivo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limiar": {
+          "$ref": "#/$defs/citacao_limite"
+        },
+        "pct_px_acima_qualquer_canal": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "por_canal": {
+          "type": "object"
+        },
+        "regioes": {
+          "type": "array"
+        },
+        "por_camada": {
+          "type": "array"
+        },
+        "px_acima_qualquer_canal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Contagem inteira de pixels acima do limiar em algum canal; a regressao compara por ela quando os dois lados a tem"
+        },
+        "px_total": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Pixels comparados (largura x altura do canvas)"
+        }
+      }
+    },
+    "regras": {
+      "description": "As regras aplicadas neste laudo, com descricao e fonte. D9 foi aposentada no psd-tools 1.26.0 (pesquisa/render-local-pesquisa.md, 9) e nao aparece",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^(B[0-9]+|D[0-8])$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "descricao",
+          "situacao",
+          "fonte"
+        ],
+        "properties": {
+          "descricao": {
+            "type": "string"
+          },
+          "situacao": {
+            "enum": [
+              "degradada",
+              "bloqueante"
+            ]
+          },
+          "fonte": {
+            "$ref": "#/$defs/fonte"
+          }
+        }
+      }
+    },
+    "recusas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "tipo",
+          "etapa",
+          "motivo"
+        ],
+        "properties": {
+          "tipo": {
+            "type": "string"
+          },
+          "etapa": {
+            "type": "string"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "layer_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "medidas": {
+            "type": "object"
+          },
+          "limites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/citacao_limite"
+            },
+            "description": "Limites que decidiram a recusa por orcamento ou tempo"
+          },
+          "decisao": {
+            "enum": [
+              "pede_confirmacao_do_da",
+              "teto_confirmado_pelo_da",
+              "reprova"
+            ],
+            "description": "pede_confirmacao_do_da: algum limite do calculo esta a calibrar e a parada nao reprova o arquivo; o DA pode confirmar um teto maior"
+          }
+        }
+      }
+    },
+    "recursos": {
+      "type": "object",
+      "required": [
+        "tempo_s",
+        "orcamento_bytes"
+      ],
+      "properties": {
+        "tempo_s": {
+          "type": "number"
+        },
+        "pico_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "orcamento_bytes": {
+          "type": "integer"
+        },
+        "filhos": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "efeitos_suportados": {
+      "description": "Lista conferida no M1 de efeitos e ajustes que o psd-tools 1.26.0 desenha no composto",
+      "type": "object",
+      "properties": {
+        "efeitos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ajustes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fonte": {
+          "type": "string"
+        }
+      }
+    },
+    "resumo": {
+      "type": "object",
+      "required": [
+        "n_camadas",
+        "por_situacao",
+        "por_situacao_visiveis",
+        "por_regra",
+        "n_quadros"
+      ],
+      "properties": {
+        "n_camadas": {
+          "type": "integer"
+        },
+        "por_situacao": {
+          "$ref": "#/$defs/contagem_situacao"
+        },
+        "por_situacao_visiveis": {
+          "$ref": "#/$defs/contagem_situacao"
+        },
+        "por_regra": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "n_quadros": {
+          "type": "integer"
+        },
+        "n_cobertas_no_kv": {
+          "type": "integer"
+        },
+        "bloqueios_documento": {
+          "type": "integer",
+          "description": "Recusas sem layer_id: arquivo recusado inteiro ou composicao do documento acima do orcamento. Diferente de zero pede decisao do DA"
+        },
+        "n_fonte_nao_conferida": {
+          "type": "integer",
+          "description": "Camadas com alerta fonte_nao_conferida"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "caixa": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "fonte": {
+      "type": "object",
+      "required": [
+        "arquivo"
+      ],
+      "properties": {
+        "arquivo": {
+          "type": "string"
+        },
+        "secao": {
+          "type": "string"
+        }
+      }
+    },
+    "citacao_limite": {
+      "description": "Limite.citacao() de desdobra.limites: id, valor, unidade, fonte, situacao e efeito",
+      "type": "object",
+      "required": [
+        "limite_id",
+        "valor",
+        "situacao",
+        "efeito"
+      ],
+      "properties": {
+        "limite_id": {
+          "type": "string"
+        },
+        "valor": {},
+        "unidade": {
+          "type": "string"
+        },
+        "fonte": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/fonte"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "situacao": {
+          "enum": [
+            "medido",
+            "decidido",
+            "folha",
+            "a_calibrar"
+          ]
+        },
+        "efeito": {
+          "enum": [
+            "reprova",
+            "avisa",
+            "registra"
+          ]
+        }
+      }
+    },
+    "contagem_situacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lida",
+        "degradada",
+        "bloqueante"
+      ],
+      "properties": {
+        "lida": {
+          "type": "integer"
+        },
+        "degradada": {
+          "type": "integer"
+        },
+        "bloqueante": {
+          "type": "integer"
+        }
+      }
+    },
+    "motivo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regra",
+        "descricao",
+        "fonte"
+      ],
+      "properties": {
+        "regra": {
+          "type": "string",
+          "pattern": "^(B[0-9]+|D[0-8])$"
+        },
+        "descricao": {
+          "type": "string"
+        },
+        "medida": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "O valor medido que disparou a regra"
+        },
+        "limite": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/citacao_limite"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fonte": {
+          "$ref": "#/$defs/fonte"
+        }
+      }
+    },
+    "camada": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identidade",
+        "nome",
+        "tipo",
+        "pai_id",
+        "caminho_ids",
+        "aparencia",
+        "geometria",
+        "texto",
+        "smart_object",
+        "situacao",
+        "motivos"
+      ],
+      "properties": {
+        "identidade": {
+          "description": "Chave da camada: o par (sha256 do arquivo, layer_id). O layer_id sozinho colide entre arquivos",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "arquivo_sha256",
+            "layer_id"
+          ],
+          "properties": {
+            "arquivo_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "layer_id": {
+              "type": "integer"
+            }
+          }
+        },
+        "nome": {
+          "type": "string"
+        },
+        "tipo": {
+          "enum": [
+            "texto",
+            "forma",
+            "pixel",
+            "cor_solida",
+            "preenchimento",
+            "ajuste",
+            "grupo",
+            "prancheta",
+            "smart_embutido",
+            "smart_linkado",
+            "outro"
+          ]
+        },
+        "pai_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "caminho_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "quadro": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "id do quadro a que a camada pertence"
+        },
+        "aparencia": {
+          "type": "object",
+          "required": [
+            "visivel_efetiva",
+            "visivel_propria",
+            "opacidade",
+            "preenchimento",
+            "blend",
+            "clipping",
+            "efeitos"
+          ],
+          "properties": {
+            "visivel_efetiva": {
+              "type": "boolean"
+            },
+            "visivel_propria": {
+              "type": "boolean"
+            },
+            "opacidade": {
+              "type": "integer"
+            },
+            "preenchimento": {
+              "type": "integer"
+            },
+            "blend": {
+              "type": "string"
+            },
+            "clipping": {
+              "type": "boolean"
+            },
+            "mascara": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "efeitos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "tipo",
+                  "ativo",
+                  "suportado_pelo_render"
+                ],
+                "properties": {
+                  "tipo": {
+                    "type": "string"
+                  },
+                  "ativo": {
+                    "type": "boolean"
+                  },
+                  "suportado_pelo_render": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "ajuste": {
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          }
+        },
+        "geometria": {
+          "type": "object",
+          "required": [
+            "caixa",
+            "caixa_tinta",
+            "coberta_no_kv"
+          ],
+          "properties": {
+            "caixa": {
+              "$ref": "#/$defs/caixa"
+            },
+            "caixa_tinta": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/caixa"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "coberta_no_kv": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/coberta"
+                }
+              ]
+            }
+          }
+        },
+        "texto": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Texto por trecho de estilo (run), como na estrutura/1"
+        },
+        "smart_object": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Tipo, sha256, dimensoes, folga, abertura no filho; linkado so com registro (nome, tamanho, data)"
+        },
+        "situacao": {
+          "enum": [
+            "lida",
+            "degradada",
+            "bloqueante"
+          ]
+        },
+        "motivos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/motivo"
+          }
+        },
+        "alertas": {
+          "description": "Avisos que nao mudam a situacao: casos de smart object da pesquisa (pesquisa/corpus-testes.md, 4, item 4), efeito desenhado por aproximacao, opcoes de mesclagem que o psd-tools ignora",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "codigo",
+              "descricao"
+            ],
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "descricao": {
+                "type": "string"
+              },
+              "medida": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "fonte": {
+                "$ref": "#/$defs/fonte"
+              }
+            }
+          }
+        }
+      }
+    },
+    "coberta": {
+      "description": "Camada visivel coberta no KV (decisoes-v1.md, 29/10, 10). A funcao vem como sugestao citada da regra, nunca como valor: o campo de funcao do briefing so fica preenchido quando o DA confirma ou inverte",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coberta",
+        "fracao_coberta",
+        "ocupa_canvas",
+        "fracao_canvas",
+        "sugestao_da_regra",
+        "limites"
+      ],
+      "properties": {
+        "coberta": {
+          "type": "boolean"
+        },
+        "fracao_coberta": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Fracao arredondada, so para leitura. A decisao usa as contagens inteiras de pixels da estrutura/1 (px_cobertos e px_visiveis), sem arredondamento"
+        },
+        "ocupa_canvas": {
+          "type": "boolean"
+        },
+        "fracao_canvas": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sugestao_da_regra": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "funcao",
+                "regra",
+                "fonte"
+              ],
+              "properties": {
+                "funcao": {
+                  "enum": [
+                    "estrutura",
+                    "fora_da_peca"
+                  ]
+                },
+                "regra": {
+                  "const": "decisao-10"
+                },
+                "fonte": {
+                  "$ref": "#/$defs/fonte"
+                }
+              }
+            }
+          ]
+        },
+        "limites": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/citacao_limite"
+          }
+        }
+      }
+    }
+  }
+}

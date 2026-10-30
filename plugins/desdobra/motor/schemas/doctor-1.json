@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:doctor:1",
+  "title": "Diagnostico do ambiente (doctor/1)",
+  "description": "O que \"desdobra doctor\" conferiu no ambiente: Python, versoes do lock, psd-tools com o extra composite, isolador e teto do modo de dados. So fatos do ambiente: nenhum conteudo de job entra aqui (arquitetura-v1.md, 4.15).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "motor_versao", "gerado_em", "plataforma", "pasta_dados", "teto_modo_dados", "verificacoes",
+               "resumo", "codigo"],
+  "properties": {
+    "esquema": {"const": "doctor/1"},
+    "motor_versao": {"type": "string"},
+    "gerado_em": {"type": "string"},
+    "plataforma": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sistema", "isolador", "python_versao", "python_executavel", "em_venv"],
+      "properties": {
+        "sistema": {"type": "string"},
+        "isolador": {"type": "string", "description": "Nome da implementacao de plataforma (windows, mac, sem-suporte)"},
+        "python_versao": {"type": "string"},
+        "python_executavel": {"type": "string"},
+        "em_venv": {"type": "boolean"}
+      }
+    },
+    "pasta_dados": {
+      "type": ["string", "null"],
+      "description": "Pasta de dados do plugin (CLAUDE_PLUGIN_DATA), quando o motor roda no ambiente criado pelo gancho"
+    },
+    "teto_modo_dados": {"enum": ["a", "b", "c", null]},
+    "verificacoes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "titulo", "situacao", "detalhe", "o_que_fazer", "numeros"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "titulo": {"type": "string"},
+          "situacao": {"enum": ["ok", "falha", "aviso", "pulado"]},
+          "detalhe": {"type": "string"},
+          "o_que_fazer": {"type": ["string", "null"]},
+          "numeros": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+            "additionalProperties": {"type": ["number", "null"]}
+          },
+          "limite": {
+            "description": "Citacao do limite usado (desdobra.limites.Limite.citacao), quando houver",
+            "type": "object"
+          }
+        }
+      }
+    },
+    "resumo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verificacoes", "ok", "falhas", "avisos", "pulados"],
+      "properties": {
+        "verificacoes": {"type": "integer", "minimum": 0},
+        "ok": {"type": "integer", "minimum": 0},
+        "falhas": {"type": "integer", "minimum": 0},
+        "avisos": {"type": "integer", "minimum": 0},
+        "pulados": {"type": "integer", "minimum": 0}
+      }
+    },
+    "codigo": {"type": "integer"}
+  }
+}

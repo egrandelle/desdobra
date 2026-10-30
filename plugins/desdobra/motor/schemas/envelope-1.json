@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:envelope:1",
+  "title": "Envelope de saida para o Claude (envelope/1)",
+  "description": "A unica coisa que o motor imprime quando chamado com --envelope. Filtrado pelo modo de dados e pelo detector de segredos (arquitetura-v1.md, 5.10 e 7.4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "modo_dados", "comando", "fase", "situacao", "codigo", "o_que_fazer", "contagens", "ids",
+               "numeros", "segredos_bloqueados"],
+  "properties": {
+    "esquema": {"const": "envelope/1"},
+    "modo_dados": {"enum": ["a", "b", "c"]},
+    "comando": {"type": "string", "pattern": "^[a-z][a-z -]*$"},
+    "fase": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]*$"},
+    "situacao": {"enum": ["ok", "ok_com_bloqueio", "portao", "concluido", "erro", "recusado", "bloqueado", "nao_disponivel"],
+                 "description": "ok_com_bloqueio: o comando terminou com codigo 0, mas o resultado tem bloqueio ou recusa que pede decisao do DA (por exemplo a composicao do documento acima do orcamento); bloqueado: parou e espera decisao do DA"},
+    "codigo": {"type": "integer"},
+    "o_que_fazer": {"type": ["string", "null"], "description": "Texto fixo do motor, nunca conteudo do job"},
+    "contagens": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": "integer"}
+    },
+    "ids": {
+      "description": "Ids do motor: job_id, sha256 de arquivo, layer_id. Nunca nome de arquivo nem caminho",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "integer"},
+          {"type": "string", "pattern": "^[0-9a-f]{8,64}$"},
+          {"type": "array", "items": {"type": "integer"}}
+        ]
+      }
+    },
+    "numeros": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": ["number", "null"]}
+    },
+    "segredos_bloqueados": {"type": "integer", "minimum": 0},
+    "conteudo": {
+      "description": "So nos modos a e b, depois do detector de segredos. No modo c este campo nao existe",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "camadas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["layer_id"],
+            "properties": {
+              "layer_id": {"type": "integer"},
+              "nome": {"type": "string"},
+              "tipo": {"type": "string"},
+              "situacao": {"enum": ["lida", "degradada", "bloqueante"]},
+              "textos": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "miniaturas": {
+          "description": "So no modo a: caminhos relativos a pasta do job, em sugestoes/miniaturas/, so de camadas sem texto",
+          "type": "array",
+          "items": {"type": "string", "pattern": "^sugestoes/miniaturas/[^/\\\\]+\\.png$"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"modo_dados": {"const": "c"}}},
+      "then": {"not": {"required": ["conteudo"]}}
+    },
+    {
+      "if": {"properties": {"modo_dados": {"const": "b"}}},
+      "then": {"properties": {"conteudo": {"not": {"required": ["miniaturas"]}}}}
+    }
+  ]
+}

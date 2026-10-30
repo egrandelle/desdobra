@@ -218,3 +218,66 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# desdobra: material que nunca entra no repositorio
+*.psd
+*.psb
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.ttc
+*.otc
+*.dfont
+*.pfa
+*.pfb
+*.pfm
+*.afm
+*.eot
+*.fon
+*.fnt
+*.bdf
+*.pcf
+*.t42
+# imagens e documentos de cliente (exports, miniaturas, assets, previas)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.webp
+*.pdf
+*.indd
+*.idml
+*.ai
+*.eps
+# saidas do leitor e da regressao gravadas fora de uma pasta de job
+laudo.json
+estrutura.json
+recusa.json
+saida-padrao.txt
+segredos-bloqueados.json
+pacote-modelo.json
+# relatorio da regressao (leva os slugs do corpus) e as pastas de saida dela; o contrato regressao-1.json fica
+regressao-*.json
+regressao-*.md
+!/plugins/desdobra/motor/schemas/regressao-1.json
+regressao-*/
+saida-regressao*/
+bruto/
+miniaturas/
+assets/
+.trabalho/
+.tmp-*
+.desdobra.trava
+.venv/
+# pastas de job e saidas de teste
+jobs/
+job-*/
+*.job/
+pytest-tmp/
+# PDF intermediario do texto (nunca guardado)
+*.intermediario.pdf
+intermediarios/

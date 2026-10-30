@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:estrutura:1",
+  "title": "Estrutura bruta lida pelo processo filho (estrutura/1)",
+  "description": "O que o filho do leitor grava em <pasta_saida>/estrutura.json: so fatos lidos e medidos, sem julgamento. O laudo (laudo/1) e uma funcao pura desta estrutura. Versao inicial; o dono e o agente leitor-laudo. Campos novos entram como opcionais; mudanca incompativel cria estrutura/2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "leitor", "origem", "documento", "indice_smart", "camadas", "prova_pixel", "recursos", "erros",
+               "arquivos"],
+  "properties": {
+    "esquema": {"const": "estrutura/1"},
+    "leitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motor", "psd_tools", "python", "pacotes"],
+      "properties": {
+        "motor": {"type": "string"},
+        "psd_tools": {"type": "string"},
+        "python": {"type": "string"},
+        "pacotes": {
+          "type": "object",
+          "description": "Pacotes opcionais do composto presentes no filho, por exemplo aggdraw e scipy",
+          "additionalProperties": {"type": "boolean"}
+        },
+        "adaptador": {"type": "string", "description": "Versao do modulo que isola as partes internas do psd-tools"}
+      }
+    },
+    "origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nome", "sha256", "bytes", "profundidade", "recorte"],
+      "properties": {
+        "nome": {"type": "string", "description": "Nome do arquivo (dado de cliente: so vai ao Claude nos modos a e b)"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "profundidade": {"type": "integer", "minimum": 0, "description": "0 = documento; 1 = smart object dentro dele; e assim por diante"},
+        "recorte": {
+          "description": "Trecho do arquivo lido como documento (smart object embutido indexado). null = arquivo inteiro",
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/recorte"}]
+        },
+        "pai": {
+          "description": "Para smart object aninhado: sha256 do arquivo de origem e layer_id da camada que o contem",
+          "oneOf": [{"type": "null"}, {"type": "object", "required": ["sha256", "layer_id"],
+                    "properties": {"sha256": {"$ref": "#/$defs/sha256"}, "layer_id": {"type": "integer"}}}]
+        }
+      }
+    },
+    "documento": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["largura", "altura", "formato", "versao", "modo", "bits", "canais", "icc", "gravado_por", "tem_previa",
+                   "pranchetas", "layer_comps", "n_camadas"],
+      "properties": {
+        "largura": {"type": "integer", "minimum": 1},
+        "altura": {"type": "integer", "minimum": 1},
+        "formato": {"enum": ["PSD", "PSB"]},
+        "versao": {"enum": [1, 2]},
+        "modo": {"type": "string"},
+        "bits": {"enum": [1, 8, 16, 32]},
+        "canais": {"type": "integer", "minimum": 1},
+        "icc": {
+          "type": "object",
+          "required": ["presente"],
+          "properties": {
+            "presente": {"type": "boolean"},
+            "descricao": {"type": ["string", "null"]},
+            "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+            "bytes": {"type": ["integer", "null"]}
+          }
+        },
+        "gravado_por": {
+          "type": "object",
+          "description": "Quem gravou o arquivo (version info do PSD); has_preview sozinho nao basta",
+          "properties": {
+            "writer": {"type": ["string", "null"]},
+            "reader": {"type": ["string", "null"]},
+            "file_version": {"type": ["integer", "null"]},
+            "has_composite": {"type": ["boolean", "null"]}
+          }
+        },
+        "tem_previa": {"type": "boolean"},
+        "dpi": {"type": ["object", "null"]},
+        "pranchetas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["layer_id", "caixa", "visivel_propria"],
+            "properties": {
+              "layer_id": {"type": "integer"},
+              "nome": {"type": "string"},
+              "caixa": {"$ref": "#/$defs/caixa"},
+              "visivel_propria": {"type": "boolean"}
+            }
+          }
+        },
+        "layer_comps": {"type": "array"},
+        "n_camadas": {"type": "integer", "minimum": 0}
+      }
+    },
+    "indice_smart": {
+      "description": "Indice proprio dos registros de smart object (lnk2, lnk3, lnkD), lido por deslocamento, sem carregar os dados",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["unique_id", "bloco", "tipo_registro", "embutido", "deslocamento_dados", "tamanho_dados"],
+        "properties": {
+          "unique_id": {"type": "string"},
+          "bloco": {"enum": ["lnk2", "lnk3", "lnkD", "lnkE"]},
+          "tipo_registro": {"type": "string", "description": "liFD (dados no PSD), liFE (arquivo externo), liFA (alias)"},
+          "embutido": {"type": "boolean"},
+          "filetype": {"type": ["string", "null"]},
+          "nome": {"type": ["string", "null"]},
+          "deslocamento_dados": {"type": ["integer", "null"], "minimum": 0},
+          "tamanho_dados": {"type": ["integer", "null"], "minimum": 0},
+          "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}],
+                     "description": "Do embutido, calculado sobre o trecho; null para linkado"},
+          "assinatura_hex": {"type": ["string", "null"]},
+          "linkado": {
+            "description": "So registro do linkado: nome, tamanho e data. O caminho gravado nunca e seguido",
+            "oneOf": [{"type": "null"}, {"type": "object", "properties": {
+              "nome": {"type": ["string", "null"]}, "tamanho": {"type": ["integer", "null"]},
+              "data": {"type": ["string", "null"]}}}]
+          }
+        }
+      }
+    },
+    "camadas": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/camada"}
+    },
+    "prova_pixel": {
+      "description": "Recomposicao sem a previa gravada comparada com o merged",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["feita", "motivo"],
+      "properties": {
+        "feita": {"type": "boolean"},
+        "motivo": {"type": ["string", "null"], "description": "Por que nao foi feita: sem_merged, orcamento, erro"},
+        "limiar": {"type": "number"},
+        "pct_px_acima_qualquer_canal": {"type": ["number", "null"]},
+        "px_acima_qualquer_canal": {"type": ["integer", "null"], "minimum": 0,
+                                    "description": "Contagem inteira de pixels acima do limiar em algum canal"},
+        "px_total": {"type": ["integer", "null"], "minimum": 0, "description": "Pixels comparados"},
+        "por_canal": {"type": "object"},
+        "regioes": {"type": "array"},
+        "por_camada": {
+          "type": "array",
+          "items": {"type": "object", "required": ["layer_id"], "properties": {
+            "layer_id": {"type": "integer"}, "px_acima": {"type": "integer"}, "pct_da_camada": {"type": ["number", "null"]}}}
+        }
+      }
+    },
+    "recursos": {
+      "type": "object",
+      "required": ["tempo_s", "orcamento_bytes"],
+      "properties": {
+        "tempo_s": {"type": "number"},
+        "pico_bytes": {"type": ["integer", "null"]},
+        "orcamento_bytes": {"type": "integer"},
+        "etapas_s": {"type": "object", "additionalProperties": {"type": "number"}}
+      }
+    },
+    "erros": {
+      "description": "Erros por etapa ou camada que nao derrubaram a leitura",
+      "type": "array",
+      "items": {"type": "object", "required": ["etapa", "tipo"], "properties": {
+        "etapa": {"type": "string"}, "tipo": {"type": "string"}, "layer_id": {"type": ["integer", "null"]},
+        "mensagem": {"type": "string"}}}
+    },
+    "avisos_psd_tools": {
+      "description": "Mensagens do log do psd-tools (nivel WARNING ou acima, e DEBUG de recurso pulado): so o modelo da mensagem, a contagem e os layer_id citados, nunca a mensagem formatada",
+      "type": "array"
+    },
+    "efeitos_pulados": {
+      "description": "Mensagens DEBUG do psd-tools que dizem que algo foi pulado ou nao foi desenhado (efeito, ajuste, mesclagem), com os layer_id",
+      "type": "array",
+      "items": {"type": "object", "required": ["modelo", "ocorrencias"], "properties": {
+        "nivel": {"type": "string"}, "logger": {"type": "string"}, "modelo": {"type": "string"},
+        "ocorrencias": {"type": "integer"}, "layer_ids": {"type": "array", "items": {"type": "integer"}}}}
+    },
+    "auditoria": {
+      "description": "Gancho de auditoria do filho: se foi instalado e os eventos barrados (sem caminho)",
+      "type": "object",
+      "required": ["instalado", "bloqueios"],
+      "properties": {"instalado": {"type": "boolean"}, "bloqueios": {"type": "array"}}
+    },
+    "arquivos": {
+      "description": "Arquivos gravados pelo filho, relativos a pasta de saida",
+      "type": "object",
+      "properties": {
+        "previa": {"type": ["string", "null"]},
+        "recomposicao": {"type": ["string", "null"]},
+        "diferenca": {"type": ["string", "null"]},
+        "miniaturas": {"type": ["string", "null"], "description": "Pasta com <layer_id>.png"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "caixa": {
+      "description": "[x0, y0, x1, y1] em pixels do documento, x1 e y1 exclusivos",
+      "type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4
+    },
+    "recorte": {
+      "type": "object",
+      "required": ["inicio", "tamanho"],
+      "properties": {"inicio": {"type": "integer", "minimum": 0}, "tamanho": {"type": "integer", "minimum": 1}}
+    },
+    "efeito": {
+      "type": "object",
+      "required": ["tipo", "ativo", "desenhado_pelo_render"],
+      "properties": {
+        "tipo": {"type": "string"},
+        "ativo": {"type": "boolean"},
+        "desenhado_pelo_render": {"type": "boolean", "description": "Se o compositor do psd-tools 1.26.0 desenha este efeito, conferido no M1"},
+        "requer_pacote_ausente": {"type": ["string", "null"]},
+        "medidas": {"type": "object", "description": "Medidas que decidem falso positivo, por exemplo largura do traco"}
+      }
+    },
+    "texto": {
+      "type": "object",
+      "required": ["conteudo", "runs"],
+      "properties": {
+        "conteudo": {"type": "string"},
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["inicio", "fim", "texto", "fonte_ps"],
+            "properties": {
+              "inicio": {"type": "integer"}, "fim": {"type": "integer"}, "texto": {"type": "string"},
+              "tem_caractere_visivel": {"type": "boolean"},
+              "fonte_ps": {"type": ["string", "null"]},
+              "corpo_espaco_texto": {"type": ["number", "null"]},
+              "corpo_efetivo": {"type": ["number", "null"]},
+              "escala_h": {"type": ["number", "null"]}, "escala_v": {"type": ["number", "null"]},
+              "tracking": {"type": ["number", "null"]}, "entrelinha": {"type": ["number", "null"]},
+              "autoleading": {"type": ["boolean", "null"]},
+              "cor_valores": {"type": ["array", "null"]}, "cor_hex": {"type": ["string", "null"]},
+              "font_caps": {"type": ["string", "null"]}, "autokerning": {"type": ["boolean", "null"]},
+              "faux_bold": {"type": ["boolean", "null"]}, "faux_italic": {"type": ["boolean", "null"]},
+              "baseline_shift": {"type": ["number", "null"]}, "antialiasing": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "paragrafos": {"type": "array"},
+        "matriz": {"type": ["array", "null"]},
+        "justificacao": {"type": ["string", "null"]},
+        "caixa_tysh": {"type": ["object", "null"]},
+        "tipo_caixa": {"type": ["string", "null"]},
+        "warp": {"type": ["object", "null"]}
+      }
+    },
+    "camada": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["layer_id", "indice", "nome", "kind", "pai_id", "caminho_ids", "visivel_propria", "visivel_efetiva",
+                   "opacidade", "preenchimento", "blend", "clipping", "caixa"],
+      "properties": {
+        "layer_id": {"type": "integer"},
+        "indice": {"type": "integer", "minimum": 0, "description": "Ordem de psd.descendants(): de baixo para cima"},
+        "nome": {"type": "string"},
+        "kind": {"type": "string", "description": "kind do psd-tools: type, shape, pixel, solidcolorfill, adjustment, group, smartobject, artboard..."},
+        "classe": {"type": "string"},
+        "pai_id": {"type": ["integer", "null"]},
+        "caminho_ids": {"type": "array", "items": {"type": "integer"}},
+        "visivel_propria": {"type": "boolean"},
+        "visivel_efetiva": {"type": "boolean"},
+        "opacidade": {"type": "integer", "minimum": 0, "maximum": 255},
+        "preenchimento": {"type": "integer", "minimum": 0, "maximum": 255},
+        "blend": {"type": "string"},
+        "clipping": {"type": "boolean"},
+        "base_do_clip": {"type": ["integer", "null"]},
+        "caixa": {"$ref": "#/$defs/caixa"},
+        "caixa_tinta": {"oneOf": [{"$ref": "#/$defs/caixa"}, {"type": "null"}], "description": "Pixels proprios com alfa > 0"},
+        "prancheta_id": {"type": ["integer", "null"]},
+        "mascara": {"type": ["object", "null"]},
+        "efeitos": {"type": "array", "items": {"$ref": "#/$defs/efeito"}},
+        "ajuste": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["tipo", "entra_no_composto"],
+                   "properties": {"tipo": {"type": "string"}, "entra_no_composto": {"type": "boolean"}}}]},
+        "preenchimento_tipo": {"type": ["string", "null"]},
+        "smart_object": {
+          "oneOf": [{"type": "null"}, {"type": "object", "required": ["unique_id", "embutido"], "properties": {
+            "unique_id": {"type": "string"}, "embutido": {"type": "boolean"}, "filetype": {"type": ["string", "null"]},
+            "sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+            "dims": {"type": ["object", "null"]}, "transformacao": {"type": ["array", "null"]},
+            "warp_ou_nao_afim": {"type": ["boolean", "null"]},
+            "abertura": {"type": ["object", "null"], "description": "Resultado da abertura no filho aninhado: situacao, recusa, sha256 da estrutura"}}}]
+        },
+        "texto": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/texto"}]},
+        "pixels": {
+          "type": ["object", "null"],
+          "description": "Medidas de pixel da camada",
+          "properties": {
+            "erro": {"type": ["string", "null"]},
+            "miniatura": {"type": ["string", "null"]},
+            "fracao_coberta": {"type": ["number", "null"], "minimum": 0, "maximum": 1,
+                               "description": "Fracao dos pixels visiveis da camada cobertos por pixels opacos de camadas acima"},
+            "fracao_canvas": {"type": ["number", "null"], "minimum": 0, "maximum": 1,
+                              "description": "Fracao da area do canvas (ou da prancheta) ocupada pela tinta da camada"},
+            "pulado": {"type": ["string", "null"],
+                       "description": "Por que a passada de pixels da camada foi pulada (orcamento); null quando rodou"},
+            "px_visiveis": {"type": ["integer", "null"], "minimum": 0,
+                            "description": "Contagem inteira dos pixels da camada com alfa > 0 dentro da area de referencia"},
+            "px_cobertos": {"type": ["integer", "null"], "minimum": 0,
+                            "description": "Contagem inteira dos pixels visiveis cobertos por pixels opacos de camadas acima"},
+            "px_area_ref": {"type": ["integer", "null"], "minimum": 0,
+                            "description": "Contagem inteira dos pixels da area de referencia (canvas ou prancheta)"}
+          }
+        },
+        "medidas_regras": {
+          "type": "object",
+          "description": "Medidas que as regras do laudo usam para nao gerar falso positivo (largura de traco, malha identidade, espaco so)",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

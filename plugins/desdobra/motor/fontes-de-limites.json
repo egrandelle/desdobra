@@ -1,0 +1,382 @@
+{
+ "esquema": "fontes-de-limites/1",
+ "nota": "Todo numero que o motor usa como regra. A fonte e relativa a pasta do projeto de pesquisa (pesquisa/, decisoes-v1.md, arquitetura-v1.md). Sem fonte, a situacao e a_calibrar, e a_calibrar nunca reprova. Mudancas neste arquivo passam pelo integrador.",
+ "limites": [
+  {
+   "id": "prova_pixel.limiar_diferenca",
+   "valor": 24,
+   "unidade": "nivel de 0 a 255, por canal",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "2"
+   },
+   "situacao": "medido",
+   "efeito": "registra",
+   "nota": "Limiar de medicao da pesquisa: um pixel conta como diferente do merged quando algum canal difere mais que isto. Serve para comparar com a linha de base."
+  },
+  {
+   "id": "prova_pixel.fracao_reprova",
+   "valor": null,
+   "unidade": "fracao de 0 a 1 dos pixels do canvas",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.4"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Como regra que reprova, a prova de pixel fica a calibrar. No M1 so registra e compara com a linha de base."
+  },
+  {
+   "id": "prova_pixel.regiao_min_px",
+   "valor": 20,
+   "unidade": "pixels acima do limiar num componente conexo",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Regioes menores que isto nao sao listadas uma a uma, so somadas. Valor herdado da sonda da pesquisa."
+  },
+  {
+   "id": "prova_pixel.max_regioes",
+   "valor": 40,
+   "unidade": "regioes listadas por arquivo",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto de regioes suspeitas listadas no laudo. Valor herdado da sonda da pesquisa."
+  },
+  {
+   "id": "coberta_no_kv.fracao_coberta_min",
+   "valor": 1.0,
+   "unidade": "fracao de 0 a 1 dos pixels visiveis da camada cobertos por camadas acima",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas ao teste do corpus, 10"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A decisao fala de camada visivel totalmente coberta. A tolerancia de borda (antialiasing) ainda nao foi medida."
+  },
+  {
+   "id": "coberta_no_kv.ocupa_canvas_fracao",
+   "valor": 1.0,
+   "unidade": "fracao de 0 a 1 da area do canvas ocupada pela camada",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas ao teste do corpus, 10"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A decisao fala de o canvas inteiro. Um caso do gabarito tem camadas cobertas que ocupam 73% da prancheta (pesquisa/gabarito-resultado.md, 2, item 4), e o limiar precisa decidir esse caso (arquitetura-v1.md, 4.4)."
+  },
+  {
+   "id": "quadros.fracao_canvas_grupo_topo",
+   "valor": 0.9,
+   "unidade": "fracao de 0 a 1 da area do canvas coberta pela caixa de uma camada do grupo de topo",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, item 1"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Regra generica de quadros: grupo de topo com alguma camada que cobre ao menos esta fracao do canvas e candidato a quadro. A regra vem de pesquisa/corpus-testes.md, 4, item 1, que nao traz o numero: o 0,9 e o valor do instrumento usado na pesquisa (a sonda do corpus), por isso fica a calibrar."
+  },
+  {
+   "id": "quadros.min_candidatos",
+   "valor": 2,
+   "unidade": "pranchetas ou grupos candidatos",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas ao teste do corpus, 1"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "Com mais de um quadro, a peca sai do quadro que o DA escolher."
+  },
+  {
+   "id": "isolador.base_python_bytes",
+   "valor": 102760448,
+   "unidade": "bytes",
+   "fonte": {
+    "arquivo": "pesquisa/wf_ec5e3b89-c45-resultado.json",
+    "secao": "psd, recomendacao revista do psd-tools, item b"
+   },
+   "situacao": "medido",
+   "efeito": "avisa",
+   "nota": "Cerca de 98 MiB ao importar numpy e psd-tools com BLAS em 1 fio, no Windows. Parcela fixa do orcamento do filho. Decide o codigo de saida da leitura (recusa antes de alocar, codigo 3, ou parada do filho, codigo 4). Como o calculo tem parcela a calibrar, a parada nao reprova: a recusa sai com a decisao pede_confirmacao_do_da, e o DA pode confirmar um teto maior com --teto-memoria-bytes (desdobra.leitor, LIMITES_QUE_DECIDEM_CODIGO)."
+  },
+  {
+   "id": "isolador.fator_abertura_max",
+   "valor": 2.64,
+   "unidade": "vezes o tamanho em bytes do que o filho abre",
+   "fonte": {
+    "arquivo": "pesquisa/wf_ec5e3b89-c45-resultado.json",
+    "secao": "psd, recomendacao revista do psd-tools, item b"
+   },
+   "situacao": "medido",
+   "efeito": "avisa",
+   "nota": "Abrir com o psd-tools custou de 2,10 a 2,64 vezes o tamanho do arquivo (pesquisa/render-local-pesquisa.md, 2). O orcamento usa o maior valor medido. Decide o codigo de saida da leitura (recusa antes de alocar, codigo 3, ou parada do filho, codigo 4). Como o calculo tem parcela a calibrar, a parada nao reprova: a recusa sai com a decisao pede_confirmacao_do_da, e o DA pode confirmar um teto maior com --teto-memoria-bytes (desdobra.leitor, LIMITES_QUE_DECIDEM_CODIGO)."
+  },
+  {
+   "id": "isolador.margem_orcamento",
+   "valor": 1.25,
+   "unidade": "fator sobre a soma da base com o custo de abertura",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Folga para composicao e miniaturas. Sem medicao. Decide o codigo de saida da leitura (recusa antes de alocar, codigo 3, ou parada do filho, codigo 4). Como o calculo tem parcela a calibrar, a parada nao reprova: a recusa sai com a decisao pede_confirmacao_do_da, e o DA pode confirmar um teto maior com --teto-memoria-bytes (desdobra.leitor, LIMITES_QUE_DECIDEM_CODIGO)."
+  },
+  {
+   "id": "isolador.tempo_max_s",
+   "valor": 600,
+   "unidade": "segundos de relogio por processo filho",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Timeout de relogio no pai, por processo filho. Sem medicao que de o numero: a sonda levou 183 s para o corpus inteiro, sem timeout (pesquisa/corpus-testes.md, 1). Decide o codigo de saida (parada por tempo, codigo 4), mas a parada nao reprova: a recusa sai com a decisao pede_confirmacao_do_da, e o DA pode confirmar um tempo maior com --tempo-max-s (desdobra.leitor, LIMITES_QUE_DECIDEM_CODIGO)."
+  },
+  {
+   "id": "isolador.fracao_pico_memoria",
+   "valor": 0.95,
+   "unidade": "fracao de 0 a 1 do teto de memoria",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "So rotula a falha de um filho que ja terminou com erro: com pico de memoria acima desta fracao do teto, a falha conta como memoria (codigo 4), e nao como queda (codigo 3). Nao faz o filho parar nem reprova o arquivo."
+  },
+  {
+   "id": "isolador.stdout_max_bytes",
+   "valor": 1048576,
+   "unidade": "bytes",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto do que o pai guarda da saida padrao do filho. O filho grava tudo em disco e imprime no maximo uma linha."
+  },
+  {
+   "id": "leitor.max_alloc_bytes",
+   "valor": 4294967296,
+   "unidade": "bytes",
+   "fonte": {
+    "arquivo": "pesquisa/render-local-pesquisa.md",
+    "secao": "9"
+   },
+   "situacao": "medido",
+   "efeito": "avisa",
+   "nota": "Limite padrao de alocacao do psd-tools 1.26.0. Com ele, a composicao do arquivo maior do corpus foi recusada antes de alocar 5,5 GB. Quando a composicao do documento passa deste teto, a leitura vale e o laudo registra um bloqueio do documento (recusas, etapa composicao), que pede decisao do DA (situacao ok_com_bloqueio)."
+  },
+  {
+   "id": "leitor.profundidade_max_smart",
+   "valor": 2,
+   "unidade": "niveis de smart object aninhado abaixo do documento",
+   "fonte": {
+    "arquivo": "pesquisa/render-local-pesquisa.md",
+    "secao": "2"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "A pesquisa pede profundidade maxima sem dar o numero. Objeto mais fundo fica registrado e nao e aberto. A camada do objeto nao aberto recebe o alerta smart_object_nao_aberto."
+  },
+  {
+   "id": "laudo.miniatura_lado_px",
+   "valor": 384,
+   "unidade": "pixels no lado maior",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Tamanho das miniaturas por camada. Valor herdado da sonda da pesquisa."
+  },
+  {
+   "id": "laudo.previa_lado_px",
+   "valor": 1600,
+   "unidade": "pixels no lado maior",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Tamanho da previa, da recomposicao e do mapa de diferencas. Valor herdado da sonda da pesquisa."
+  },
+  {
+   "id": "laudo.tolerancia_escala_texto",
+   "valor": 1e-06,
+   "unidade": "diferenca absoluta da escala horizontal ou vertical para 1",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Abaixo disto a escala do texto conta como 100% (regra D7). Valor herdado da sonda da pesquisa."
+  },
+  {
+   "id": "regressao.arquivo_grande_bytes",
+   "valor": 524288000,
+   "unidade": "bytes",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Arquivos acima disto rodam um de cada vez na regressao, porque um PSB grande pede ate cerca de 6,4 GB ao abrir (pesquisa/wf_ec5e3b89-c45-resultado.json, psd)."
+  },
+  {
+   "id": "segredos.padroes",
+   "valor": [
+    {
+     "nome": "chave de API do Google",
+     "regex": "AIza[0-9A-Za-z_\\-]{35}"
+    },
+    {
+     "nome": "chave de acesso da AWS",
+     "regex": "(?:AKIA|ASIA)[0-9A-Z]{16}"
+    },
+    {
+     "nome": "token do GitHub",
+     "regex": "(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"
+    },
+    {
+     "nome": "chave da Anthropic",
+     "regex": "sk-ant-[A-Za-z0-9_\\-]{20,}"
+    },
+    {
+     "nome": "chave da OpenAI",
+     "regex": "sk-(?:proj-)?[A-Za-z0-9_\\-]{20,}"
+    },
+    {
+     "nome": "token do Slack",
+     "regex": "xox[abposr]-[A-Za-z0-9\\-]{10,}"
+    },
+    {
+     "nome": "chave do Stripe",
+     "regex": "(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}"
+    },
+    {
+     "nome": "chave privada",
+     "regex": "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    },
+    {
+     "nome": "token JWT",
+     "regex": "eyJ[A-Za-z0-9_\\-]{8,}\\.eyJ[A-Za-z0-9_\\-]{8,}\\.[A-Za-z0-9_\\-]{8,}"
+    },
+    {
+     "nome": "valor rotulado como segredo",
+     "regex": "(?i)(?:api[_ -]?key|apikey|secret|segredo|token|senha|password|passwd|pwd|chave(?:[_ -]?(?:de[_ -]?)?api)?|access[_ -]?key|client[_ -]?secret|auth)[\"']?\\s*[:=]\\s*[\"']?(?P<valor>(?=[A-Za-z0-9_\\-+/=.]*[0-9])(?=[A-Za-z0-9_\\-+/=.]*[A-Za-z])[A-Za-z0-9_\\-+/=.]{16,})"
+    }
+   ],
+   "unidade": "lista de padroes (expressao regular do Python)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas as perguntas da arquitetura, 2 (filtro de segredos)"
+   },
+   "situacao": "decidido",
+   "efeito": "reprova",
+   "nota": "Achado vira bloqueio, mostrado so ao DA. Motivacao: chave de API em texto puro achada num script do corpus (pesquisa/corpus-testes.md, 7). O padrao rotulado pega valor de 16 caracteres ou mais, com letras e numeros, depois de um rotulo de segredo."
+  },
+  {
+   "id": "isolador.bytes_por_px_canvas",
+   "valor": 128,
+   "unidade": "bytes por pixel do canvas",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Parcela do orcamento do filho que cresce com o canvas (composicao, previa, comparacao e cobertura). Valor tirado do pico da sonda 1.26.0 na linha de base: no maximo cerca de 107 bytes por pixel acima da base e do custo de abertura, nos canvas acima de 1 Mpx. Decide o codigo de saida da leitura (recusa antes de alocar, codigo 3, ou parada do filho, codigo 4). Como o calculo tem parcela a calibrar, a parada nao reprova: a recusa sai com a decisao pede_confirmacao_do_da, e o DA pode confirmar um teto maior com --teto-memoria-bytes (desdobra.leitor, LIMITES_QUE_DECIDEM_CODIGO)."
+  },
+  {
+   "id": "laudo.tolerancia_malha_px",
+   "valor": 0.01,
+   "unidade": "pixels do objeto de origem",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, item 6"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Malha de deformacao (customEnvelopeWarp) com desvio maximo ate isto em relacao a grade identidade nao deforma e nao degrada (regra D6). A malha identidade medida na pesquisa desvia cerca de 1e-12 px."
+  },
+  {
+   "id": "laudo.tolerancia_nao_afim_px",
+   "valor": 0.01,
+   "unidade": "pixels do documento",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "nonAffineTransform diferente de Trnf acima disto degrada (regra D6). Valor herdado da sonda da pesquisa."
+  },
+  {
+   "id": "laudo.tolerancia_paralelogramo_px",
+   "valor": 0.02,
+   "unidade": "pixels do documento",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Quadrilatero colocado de smart object cujas diagonais nao se cruzam no meio por mais que isto nao e paralelogramo e degrada (regra D6). Valor herdado da sonda da pesquisa."
+  },
+  {
+   "id": "ambiente.python_versoes_aceitas",
+   "valor": [
+    "3.14"
+   ],
+   "unidade": "versao maior.menor do CPython",
+   "fonte": {
+    "arquivo": "pesquisa/wf_ec5e3b89-c45-resultado.json",
+    "secao": "A24, dependencias do extra composite; ambiente da pesquisa com Python 3.14.2"
+   },
+   "situacao": "medido",
+   "efeito": "reprova",
+   "nota": "So o 3.14 foi testado e o lock so tem hashes cp314. As rodas do 3.12 e do 3.13 existem no PyPI (conferencia do M1), mas entram so com hashes no lock e regressao nessa versao. O 3.11 fica de fora porque o scipy 1.18.1 e o numpy 2.5.4 pedem 3.12 ou mais."
+  },
+  {
+   "id": "ambiente.trava_preparo_max_s",
+   "valor": 600,
+   "unidade": "segundos de idade da trava do preparo",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "3.6"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Trava mais velha que o timeout padrao do gancho (600 s, hooks.md) e de um preparo que morreu."
+  },
+  {
+   "id": "segredos.entropia_min_bits",
+   "valor": 3.0,
+   "unidade": "bits por caractere (entropia de Shannon do trecho achado)",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Hoje a entropia so e medida e gravada em segredos-bloqueados.json, para calibrar; nao decide bloqueio. O codigo ainda nao le este id."
+  },
+  {
+   "id": "regressao.tolerancia_prova_pixel_pct",
+   "valor": 0,
+   "unidade": "pontos percentuais de pixels acima do limiar",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas as perguntas da arquitetura, 3"
+   },
+   "situacao": "decidido",
+   "efeito": "reprova",
+   "nota": "A versao nova so entra se nada piorar: a prova de pixel de agora acima da base mais esta tolerancia e piora."
+  },
+  {
+   "id": "regressao.varredura_min_caracteres",
+   "valor": 4,
+   "unidade": "caracteres de um nome de camada ou texto de peca",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Separa o modo de procurar cada nome de camada ou texto de peca na saida padrao do modo c. Termo deste tamanho para cima: procurado em qualquer valor de texto. Termo mais curto: procurado como palavra inteira so no texto livre (o_que_fazer e conteudo), fora das palavras dos textos fixos do motor. Nos dois casos, o que aparece conta como achado."
+  },
+  {
+   "id": "leitor.filhos_paralelos",
+   "valor": 4,
+   "unidade": "processos filhos de smart object ao mesmo tempo",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Os embutidos PSD/PSB de um mesmo nivel rodam em paralelo, cada um no proprio Job Object. Cada filho custa cerca de 1,3 s so para subir o Python e importar as bibliotecas; na regressao do M1, os 148 filhos de smart object somaram 285 s rodando um de cada vez. Sem medicao de qual numero e o melhor."
+  },
+  {
+   "id": "leitor.orcamento_paralelo_bytes",
+   "valor": 8589934592,
+   "unidade": "bytes (soma da memoria esperada dos filhos que rodam juntos)",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto da soma da memoria esperada (base mais o custo de abrir, sem o termo do canvas) dos filhos de smart object que rodam ao mesmo tempo. Um filho acima disto roda sozinho. O teto de memoria de cada filho continua sendo o orcamento inteiro. A maquina de teste tem 31 GB, e a regressao roda ate 3 arquivos pequenos ao mesmo tempo."
+  }
+ ]
+}

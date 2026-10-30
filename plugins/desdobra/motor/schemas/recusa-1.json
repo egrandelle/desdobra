@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:recusa:1",
+  "title": "Recusa do processo filho do leitor (recusa/1)",
+  "description": "Gravado pelo filho quando ele recusa o arquivo inteiro (codigos 3, 4 e 5 do protocolo do filho).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "tipo", "etapa", "motivo", "codigo"],
+  "properties": {
+    "esquema": {"const": "recusa/1"},
+    "tipo": {
+      "description": "cabecalho: os 26 bytes do cabecalho nao batem; orcamento: a imagem que o cabecalho declara passa do orcamento de memoria, antes de alocar; formato: nao e PSD/PSB; leitura: ValueError ou OSError ao ler; profundidade: smart object aninhado alem do maximo; memoria: MemoryError controlado; auditoria: o gancho de auditoria barrou uma acao",
+      "enum": ["cabecalho", "orcamento", "formato", "leitura", "profundidade", "memoria", "auditoria"]
+    },
+    "etapa": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "codigo": {"enum": [3, 4, 5]},
+    "motivo": {"type": "string", "description": "Texto do motor; pode citar numeros do cabecalho, nunca nome de camada nem texto de peca"},
+    "medidas": {
+      "type": "object",
+      "description": "Numeros que explicam a recusa (largura, altura, canais, bits, estimativa_bytes, orcamento_bytes)",
+      "additionalProperties": {"type": ["number", "string", "boolean", "null"]}
+    },
+    "origem_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+  }
+}

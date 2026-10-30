@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:fontes-de-limites:1",
+  "title": "Registro de limites (fontes-de-limites/1)",
+  "description": "Todo numero que o motor usa como regra, com valor, unidade, fonte, situacao e efeito.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "limites"],
+  "properties": {
+    "esquema": {"const": "fontes-de-limites/1"},
+    "nota": {"type": "string"},
+    "limites": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/limite"}
+    }
+  },
+  "$defs": {
+    "fonte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arquivo"],
+      "properties": {
+        "arquivo": {
+          "type": "string",
+          "description": "Caminho relativo a pasta do projeto: pesquisa/<arquivo>, decisoes-v1.md, arquitetura-v1.md (so para a_calibrar) ou biblioteca-specs/<perfil> (folha)",
+          "pattern": "^(pesquisa/[^/]+|decisoes-v1\\.md|arquitetura-v1\\.md|biblioteca-specs/.+)$"
+        },
+        "secao": {"type": "string"}
+      }
+    },
+    "limite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "valor", "unidade", "fonte", "situacao", "efeito"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$"},
+        "valor": {
+          "description": "Numero, texto ou lista. null so quando a situacao e a_calibrar",
+          "type": ["number", "string", "array", "null"]
+        },
+        "unidade": {"type": "string", "minLength": 1},
+        "fonte": {"oneOf": [{"$ref": "#/$defs/fonte"}, {"type": "null"}]},
+        "situacao": {"enum": ["medido", "decidido", "folha", "a_calibrar"]},
+        "efeito": {"enum": ["reprova", "avisa", "registra"]},
+        "nota": {"type": "string"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"situacao": {"const": "a_calibrar"}}},
+          "then": {"properties": {"efeito": {"enum": ["avisa", "registra"]}}},
+          "else": {
+            "properties": {
+              "fonte": {"$ref": "#/$defs/fonte"},
+              "valor": {"type": ["number", "string", "array"]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"situacao": {"const": "decidido"}}},
+          "then": {"properties": {"fonte": {"properties": {"arquivo": {"const": "decisoes-v1.md"}}}}}
+        },
+        {
+          "if": {"properties": {"situacao": {"const": "medido"}}},
+          "then": {"properties": {"fonte": {"properties": {"arquivo": {"pattern": "^pesquisa/"}}}}}
+        },
+        {
+          "if": {"properties": {"situacao": {"const": "folha"}}},
+          "then": {"properties": {"fonte": {"properties": {"arquivo": {"pattern": "^(biblioteca-specs/|pesquisa/specs-)"}}}}}
+        }
+      ]
+    }
+  }
+}

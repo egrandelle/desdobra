@@ -1,0 +1,8 @@
+# Lista permitida no M1 (versoes fixadas). O lock com hash sai daqui por dev/gerar_lock.py.
+psd-tools[composite]==1.26.0
+aggdraw==1.4.1
+scipy==1.18.1
+numpy==2.5.4
+pillow==13.0.0
+attrs==26.1.0
+jsonschema==4.26.0

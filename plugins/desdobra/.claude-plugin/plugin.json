@@ -1,0 +1,17 @@
+{
+  "name": "desdobra",
+  "version": "0.1.0",
+  "description": "Desdobra peças de mídia estática (OOH, DOOH e banner digital) a partir do PSD do KV, com leitura isolada do arquivo, laudo camada por camada e confirmação do diretor de arte em cada decisão.",
+  "author": {
+    "name": "Trezion"
+  },
+  "userConfig": {
+    "teto_modo_dados": {
+      "type": "string",
+      "title": "Teto do modo de dados",
+      "description": "O modo mais aberto que a agência autorizou para o que o Claude pode ver de cada job. a: metadados, textos e miniaturas de camadas sem texto. b: metadados e textos, sem imagens. c: só contagens, estados e números do motor.",
+      "options": ["a", "b", "c"],
+      "required": true
+    }
+  }
+}

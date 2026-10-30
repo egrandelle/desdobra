@@ -1,0 +1,16 @@
+[build-system]
+requires = []
+build-backend = "construir"
+backend-path = ["_construcao"]
+
+[project]
+name = "desdobra"
+dynamic = ["version"]
+description = "Motor do desdobramento de peças de mídia estática"
+requires-python = ">=3.14"
+
+[project.scripts]
+desdobra = "desdobra.cli:principal"
+
+[tool.pytest.ini_options]
+testpaths = ["../testes"]

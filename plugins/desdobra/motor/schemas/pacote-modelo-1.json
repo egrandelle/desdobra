@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:pacote-modelo:1",
+  "title": "Pacote para o modelo (pacote-modelo/1)",
+  "description": "O que o Claude pode ler para sugerir funcoes, conforme o modo de dados do job (arquitetura-v1.md, 4.9 e 7.4). Rascunho do M1: sem miniaturas. Camada com segredo fica sem nome e sem textos. No modo c, nenhuma camada tem nome, textos ou geometria, e nao ha fontes_usadas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "modo_dados", "job_id", "arquivo_sha256", "exposto", "documento", "contagens", "camadas",
+               "miniaturas"],
+  "properties": {
+    "esquema": {"const": "pacote-modelo/1"},
+    "modo_dados": {"enum": ["a", "b", "c"]},
+    "job_id": {"type": ["string", "null"], "pattern": "^[0-9a-f]{8,64}$"},
+    "arquivo_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "nota": {"type": "string"},
+    "exposto": {
+      "description": "O que foi exposto ao modelo neste pacote",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metadados", "textos", "miniaturas"],
+      "properties": {
+        "metadados": {"type": "boolean"},
+        "textos": {"type": "boolean"},
+        "miniaturas": {"const": false, "description": "Sem miniaturas no M1"}
+      }
+    },
+    "documento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["largura", "altura", "n_camadas", "n_quadros"],
+      "properties": {
+        "largura": {"type": ["integer", "null"]},
+        "altura": {"type": ["integer", "null"]},
+        "n_camadas": {"type": "integer", "minimum": 0},
+        "n_quadros": {"type": "integer", "minimum": 0},
+        "quadros": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "layer_id"],
+            "properties": {
+              "id": {"type": ["string", "null"]},
+              "layer_id": {"type": ["integer", "null"]},
+              "caixa": {"type": ["array", "null"], "items": {"type": "integer"}},
+              "visivel_ao_salvar": {"type": ["boolean", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "contagens": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"type": "integer", "minimum": 0},
+      "required": ["lida", "degradada", "bloqueante", "segredos_bloqueados"]
+    },
+    "camadas": {"type": "array", "items": {"$ref": "#/$defs/camada"}},
+    "fontes_usadas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fonte_ps", "camadas"],
+        "properties": {
+          "fonte_ps": {"type": ["string", "null"]},
+          "camadas": {"type": "array", "items": {"type": "integer"}}
+        }
+      }
+    },
+    "miniaturas": {"type": "array", "maxItems": 0, "description": "Sem miniaturas no M1"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"modo_dados": {"const": "c"}}},
+      "then": {
+        "not": {"required": ["fontes_usadas"]},
+        "properties": {
+          "exposto": {"properties": {"metadados": {"const": false}, "textos": {"const": false}}},
+          "documento": {"not": {"required": ["quadros"]}},
+          "camadas": {"items": {"$ref": "#/$defs/camada_fechada"}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "camada": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer_id", "pai_id", "tipo", "situacao", "regras"],
+      "properties": {
+        "layer_id": {"type": "integer"},
+        "pai_id": {"type": ["integer", "null"]},
+        "tipo": {"type": ["string", "null"]},
+        "situacao": {"enum": ["lida", "degradada", "bloqueante", null]},
+        "regras": {"type": "array", "items": {"type": "string"}},
+        "segredo_bloqueado": {"const": true},
+        "nome": {"type": "string"},
+        "textos": {"type": "array", "items": {"type": "string"}},
+        "visivel": {"type": "boolean"},
+        "caixa": {"type": ["array", "null"], "items": {"type": "integer"}},
+        "quadro": {"type": ["string", "null"]},
+        "coberta_no_kv": {
+          "oneOf": [{"type": "null"}, {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["coberta", "ocupa_canvas", "sugestao_da_regra"],
+            "properties": {
+              "coberta": {"type": "boolean"},
+              "ocupa_canvas": {"type": "boolean"},
+              "sugestao_da_regra": {"oneOf": [{"type": "null"}, {
+                "type": "object",
+                "properties": {"funcao": {"enum": ["estrutura", "fora_da_peca"]}, "regra": {"const": "decisao-10"}}
+              }]}
+            }
+          }]
+        }
+      },
+      "if": {"required": ["segredo_bloqueado"]},
+      "then": {"allOf": [{"not": {"required": ["nome"]}}, {"not": {"required": ["textos"]}}]}
+    },
+    "camada_fechada": {
+      "allOf": [
+        {"not": {"required": ["nome"]}}, {"not": {"required": ["textos"]}}, {"not": {"required": ["caixa"]}},
+        {"not": {"required": ["coberta_no_kv"]}}, {"not": {"required": ["quadro"]}}, {"not": {"required": ["visivel"]}}
+      ]
+    }
+  }
+}

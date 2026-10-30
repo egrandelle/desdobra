@@ -1,0 +1,34 @@
+# Lock gerado por dev/gerar_lock.py a partir de "pip install --dry-run --report".
+# Instalar com: python -m pip install --require-hashes --no-deps --only-binary=:all: -r requirements.lock
+# Hashes conferidos so para Windows x86-64 com CPython 3.14 (rodas cp314-win_amd64 e py3-none-any).
+# Os hashes das rodas de Mac (macosx arm64 e x86-64) entram no porte para o Mac, junto com o teste no Mac.
+aggdraw==1.4.1 \
+    --hash=sha256:7c5f4314144abb1ebbb7af1e70fad4742e07303ee4cefde90a06d3313baba81e
+    # aggdraw-1.4.1-cp314-cp314-win_amd64.whl
+attrs==26.1.0 \
+    --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309
+    # attrs-26.1.0-py3-none-any.whl
+jsonschema==4.26.0 \
+    --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
+    # jsonschema-4.26.0-py3-none-any.whl
+jsonschema-specifications==2025.9.1 \
+    --hash=sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe
+    # jsonschema_specifications-2025.9.1-py3-none-any.whl
+numpy==2.5.4 \
+    --hash=sha256:2ca144f15135b6212a5c47b1e2aeca6e412f102f95a2d5d88d8aec77eb255de3
+    # numpy-2.5.4-cp314-cp314-win_amd64.whl
+pillow==13.0.0 \
+    --hash=sha256:f7cbb7a64e7ec664775195e4f81923bc8a93d9451b963f844e59118f63147a7a
+    # pillow-13.0.0-cp314-cp314-win_amd64.whl
+psd-tools==1.26.0 \
+    --hash=sha256:b40160e320360decc55944c22115922fa2aa7927d23c7fdfdd5ecba10d722c2c
+    # psd_tools-1.26.0-cp314-cp314-win_amd64.whl
+referencing==0.37.0 \
+    --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231
+    # referencing-0.37.0-py3-none-any.whl
+rpds-py==2026.9.1 \
+    --hash=sha256:837c6b305e26fe0f75b15c92cf3b2ba29e0ae19dc40b1c557b026cb426347d0c
+    # rpds_py-2026.9.1-cp314-cp314-win_amd64.whl
+scipy==1.18.1 \
+    --hash=sha256:78a0d7c918e74a232394117160e7e3db503377572a45bcef8826e4ab8a35feba
+    # scipy-1.18.1-cp314-cp314-win_amd64.whl

@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:regressao:1",
+  "title": "Relatorio da regressao (regressao/1)",
+  "description": "Saida de desdobra regressao: leitura de agora contra a linha de base da sonda 1.26.0 (docs/m1-interfaces.md, 11). Texto de camada entra so como sha256 e tamanho.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "gerado_em",
+    "motor",
+    "modo",
+    "paralelo",
+    "filtros",
+    "duracao_s",
+    "limites",
+    "causas",
+    "arquivos",
+    "totais",
+    "resultado"
+  ],
+  "properties": {
+    "esquema": {
+      "const": "regressao/1"
+    },
+    "gerado_em": {
+      "type": "string"
+    },
+    "motor": {
+      "type": "string"
+    },
+    "modo": {
+      "enum": [
+        "rodou",
+        "sem_rodar"
+      ]
+    },
+    "paralelo": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "filtros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "duracao_s": {
+      "type": "number"
+    },
+    "limites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "limite_id",
+          "valor",
+          "situacao",
+          "efeito"
+        ]
+      }
+    },
+    "causas": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "descricao",
+          "fonte"
+        ],
+        "properties": {
+          "descricao": {
+            "type": "string"
+          },
+          "fonte": {
+            "type": "object",
+            "required": [
+              "arquivo",
+              "secao"
+            ]
+          }
+        }
+      }
+    },
+    "arquivos": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/comparado"
+          },
+          {
+            "type": "object",
+            "required": [
+              "situacao"
+            ],
+            "properties": {
+              "situacao": {
+                "enum": [
+                  "sem_base",
+                  "so_na_base"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "totais": {
+      "type": "object",
+      "required": [
+        "arquivos",
+        "comparados",
+        "pioras_execucao",
+        "pioras_prova_pixel",
+        "arquivos_que_pioraram",
+        "diferencas_camadas",
+        "por_causa",
+        "sem_causa",
+        "tempo_total_s"
+      ]
+    },
+    "resultado": {
+      "enum": [
+        "nada_piorou",
+        "piorou"
+      ]
+    },
+    "base_execucao": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "duracao_s": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "paralelo": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      ],
+      "description": "Tempo de relogio e paralelo da rodada da linha de base (execucao.json da sonda)"
+    }
+  },
+  "$defs": {
+    "situacao_execucao": {
+      "enum": [
+        "ok",
+        "erro",
+        "tempo",
+        "recusado",
+        "orcamento",
+        "auditoria",
+        "sem_laudo",
+        "laudo_invalido"
+      ]
+    },
+    "comparado": {
+      "type": "object",
+      "required": [
+        "situacao",
+        "bytes",
+        "grande",
+        "execucao",
+        "prova_pixel",
+        "tempo_s",
+        "camadas",
+        "diferencas",
+        "por_causa",
+        "piorou"
+      ],
+      "properties": {
+        "situacao": {
+          "const": "comparado"
+        },
+        "bytes": {
+          "type": "integer"
+        },
+        "grande": {
+          "type": "boolean"
+        },
+        "execucao": {
+          "type": "object",
+          "required": [
+            "base",
+            "agora",
+            "resultado"
+          ],
+          "properties": {
+            "base": {
+              "$ref": "#/$defs/situacao_execucao"
+            },
+            "agora": {
+              "$ref": "#/$defs/situacao_execucao"
+            },
+            "resultado": {
+              "enum": [
+                "igual",
+                "piorou",
+                "melhorou",
+                "mudou"
+              ]
+            }
+          }
+        },
+        "prova_pixel": {
+          "type": "object",
+          "required": [
+            "base_pct",
+            "agora_pct",
+            "base_feita",
+            "agora_feita",
+            "resultado"
+          ],
+          "properties": {
+            "base_pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "agora_pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "base_feita": {
+              "type": "boolean"
+            },
+            "agora_feita": {
+              "type": "boolean"
+            },
+            "resultado": {
+              "enum": [
+                "igual",
+                "piorou",
+                "melhorou",
+                "sem_medida"
+              ]
+            }
+          }
+        },
+        "diferencas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "layer_id",
+              "campo",
+              "base",
+              "agora",
+              "causa"
+            ],
+            "properties": {
+              "layer_id": {
+                "type": "integer"
+              },
+              "campo": {
+                "enum": [
+                  "existencia",
+                  "situacao",
+                  "tipo",
+                  "caixa",
+                  "visivel",
+                  "texto",
+                  "texto_runs"
+                ]
+              },
+              "causa": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "piorou": {
+          "type": "boolean"
+        },
+        "camadas_mais_graves": {
+          "type": "integer",
+          "description": "Camadas que ficaram mais graves sem causa especifica: cada uma e piora"
+        }
+      }
+    }
+  }
+}

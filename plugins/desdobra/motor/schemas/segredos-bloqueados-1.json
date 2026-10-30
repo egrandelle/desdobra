@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:segredos-bloqueados:1",
+  "title": "Segredos bloqueados (segredos-bloqueados/1)",
+  "description": "sugestoes/segredos-bloqueados.json do job: o que o detector de segredos tirou das saidas para o Claude. So o DA ve este arquivo. Guarda o layer_id, o campo e o nome do padrao, nunca o trecho achado.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "atualizado_em", "total", "bloqueios"],
+  "properties": {
+    "esquema": {"const": "segredos-bloqueados/1"},
+    "atualizado_em": {"type": "string"},
+    "ultimo_comando": {"type": ["string", "null"]},
+    "total": {"type": "integer", "minimum": 0},
+    "bloqueios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["origem", "layer_id", "campos", "padroes"],
+        "properties": {
+          "origem": {"enum": ["camada", "fonte", "quadro", "o_que_fazer", "miniatura"]},
+          "layer_id": {"type": ["integer", "null"]},
+          "campos": {"type": "array", "items": {"enum": ["nome", "textos", "fonte_ps", "arquivo", "o_que_fazer"]}},
+          "padroes": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "entropia_bits": {"type": ["number", "null"], "description": "Maior entropia de Shannon por caractere entre os trechos achados. So medida, para calibrar"}
+        }
+      }
+    }
+  }
+}

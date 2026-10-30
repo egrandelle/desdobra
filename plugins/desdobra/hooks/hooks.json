@@ -1,0 +1,18 @@
+{
+  "description": "Prepara o ambiente Python do motor do desdobra na pasta de dados do plugin",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["-I", "-B", "${CLAUDE_PLUGIN_ROOT}/scripts/preparar_ambiente.py"],
+            "timeout": 600,
+            "statusMessage": "Preparando o ambiente Python do desdobra"
+          }
+        ]
+      }
+    ]
+  }
+}
