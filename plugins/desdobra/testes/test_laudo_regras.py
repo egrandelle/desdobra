@@ -212,6 +212,17 @@ def test_quadros_por_grupos_de_topo_e_variantes_ocultas():
     assert {c['identidade']['layer_id']: c['quadro'] for c in out['camadas']}[21] == 'q2'
 
 
+def test_tela_com_fundo_em_72_por_cento_do_canvas_vira_quadro_e_40_por_cento_nao():
+    # caso do corpus: a terceira tela de um DOOH vertical tem o maior fundo em 0,72 do canvas (decisoes-v1.md, 26)
+    cams = []
+    for i, (vis, x1) in enumerate(((True, 100), (False, 100), (False, 72), (False, 40))):
+        g = 10 * (i + 1)
+        cams.append(camada(g, 'group', visivel_propria=vis, visivel_efetiva=vis, caixa=[0, 0, x1, 50]))
+        cams.append(camada(g + 1, pai_id=g, caminho_ids=[g], caixa=[0, 0, x1, 50], visivel_efetiva=vis))
+    q = quadros.detectar(estrutura(cams))
+    assert [x['layer_id'] for x in q] == [10, 20, 30]
+
+
 def test_pranchetas_viram_quadros():
     p = [{'layer_id': 7, 'nome': 'p1', 'caixa': [0, 0, 50, 50], 'visivel_propria': True},
          {'layer_id': 8, 'nome': 'p2', 'caixa': [60, 0, 110, 50], 'visivel_propria': True}]

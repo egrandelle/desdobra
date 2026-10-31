@@ -70,15 +70,15 @@
   },
   {
    "id": "quadros.fracao_canvas_grupo_topo",
-   "valor": 0.9,
+   "valor": 0.5,
    "unidade": "fracao de 0 a 1 da area do canvas coberta pela caixa de uma camada do grupo de topo",
    "fonte": {
-    "arquivo": "pesquisa/corpus-testes.md",
-    "secao": "4, item 1"
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas as perguntas da arquitetura, 26 (31/10)"
    },
-   "situacao": "a_calibrar",
+   "situacao": "decidido",
    "efeito": "registra",
-   "nota": "Regra generica de quadros: grupo de topo com alguma camada que cobre ao menos esta fracao do canvas e candidato a quadro. A regra vem de pesquisa/corpus-testes.md, 4, item 1, que nao traz o numero: o 0,9 e o valor do instrumento usado na pesquisa (a sonda do corpus), por isso fica a calibrar."
+   "nota": "Regra generica de quadros (pesquisa/corpus-testes.md, 4, item 1): grupo de topo com alguma camada de fundo que cobre ao menos esta fracao do canvas e candidato a quadro. Medido nos 27 PSDs do corpus em 31/10: de 0,3 a 0,7 os quadros achados sao os mesmos; com 0,9 (valor antigo, do instrumento da pesquisa) a Tela 3 de um DOOH vertical ficava de fora, porque o maior fundo dela cobre 0,72 do canvas; de 0,97 para cima uma tela de outro DOOH sai. O 0,5 fica no meio da faixa que acerta o corpus."
   },
   {
    "id": "quadros.min_candidatos",

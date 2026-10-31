@@ -248,8 +248,10 @@ def test_limites_que_decidem_o_codigo_declaram_o_efeito_real():
     assert rec['decisao'] == esperado
 
 
-def test_limite_sem_numero_na_fonte_fica_a_calibrar():
-    assert limites.obter('quadros.fracao_canvas_grupo_topo').situacao == 'a_calibrar'
+def test_limiar_de_quadro_decidido_pelo_corpus():
+    lim = limites.obter('quadros.fracao_canvas_grupo_topo')
+    assert lim.situacao == 'decidido' and lim.valor == 0.5
+    assert lim.fonte['arquivo'] == 'decisoes-v1.md'
 
 
 # ------------------------------------------------------------------ correcoes da revisao do M2
