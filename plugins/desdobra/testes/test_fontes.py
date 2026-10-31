@@ -3,9 +3,10 @@
 
 Um job so (fixture de modulo) cobre os casos da conferencia: par certo com erro de largura 0, nome sem par com
 face da mesma familia em outro peso, arquivo faltando, glifo faltando com fallback, divergencia de largura,
-par pelo id unico e por um segundo registro do name ID 6, face de dentro de uma TTC, WOFF2, EULA que proibe
-@font-face, kit web, canal desconhecido e liberacao do DA. Os outros testes cobrem a entrada (job criar e
-trocar-entrada), o servidor local, o teste de cache e a face instalada com o mesmo nome.
+par pelo id unico e por um segundo registro do name ID 6, face de dentro de uma TTC, WOFF2 e fontes com marcas de
+licenca no arquivo (kit web, uso desktop proibido, fsType restrito, nenhuma licenca declarada), que passam sem
+bloqueio nem aviso (decisoes-v1.md, n. 19). Os outros testes cobrem a entrada (job criar e trocar-entrada), o
+servidor local, o teste de cache e a face instalada com o mesmo nome.
 """
 import hashlib
 import json
@@ -47,7 +48,6 @@ def _camadas():
         ('woff2', [('Abc', 'Comprimida-Regular', C, 100)], ap.largura('Abc', C, 450, tracking=100)),
         ('kit', [('Abc', 'Kit-Regular', C, 0)], ap.largura('Abc', C)),
         ('desconhecido', [('Abc', 'Paga-Regular', C, 0)], ap.largura('Abc', C)),
-        ('liberada', [('Abc', 'Liberada-Regular', C, 0)], ap.largura('Abc', C)),
     ]
 
 
@@ -60,9 +60,10 @@ FONTES = {
                       avanco=480),
     'comprimida.woff2': dict(ps='Comprimida-Regular', familia='Comprimida', estilo='Regular', peso=400, avanco=450,
                              formato='woff2'),
-    'kit.ttf': dict(ps='Kit-Regular', familia='Kit', estilo='Regular', peso=400, versao='Version 1.0;wfkit2', licenca=None),
+    # build de kit web, com uso desktop proibido no texto de licenca e o bit de licenca restrita no fsType
+    'kit.ttf': dict(ps='Kit-Regular', familia='Kit', estilo='Regular', peso=400, versao='Version 1.0;wfkit2',
+                    licenca='Web font kit. Web use only. Desktop use is strictly prohibited.', fs_type=2),
     'paga.ttf': dict(ps='Paga-Regular', familia='Paga', estilo='Regular', peso=400, licenca=None),
-    'liberada.ttf': dict(ps='Liberada-Regular', familia='Liberada', estilo='Regular', peso=400, licenca=None),
 }
 
 
@@ -86,14 +87,8 @@ def job_fontes(tmp_path_factory):
     ttc = ap.colecao(ap.fonte(ps='Colecao-Light', familia='Colecao', estilo='Light', peso=300, avanco=400),
                      ap.fonte(ps='Colecao-Bold', familia='Colecao', estilo='Bold', peso=700, avanco=530))
     ap.gravar(pasta_fontes, 'colecao.ttc', ttc)
-    licencas = {'esquema': 'licencas-fontes/1', 'faces': [
-        {'sha256': shas['comprimida.woff2'], 'canal': 'fundicao', 'eula': {'nome': 'EULA inventada', 'font_face': 'proibe'}},
-        {'sha256': shas['liberada.ttf'], 'canal': 'desconhecido',
-         'liberado_pelo_da': {'justificativa': 'Teste: o DA confirmou a licenca por fora.'}}]}
-    arq_lic = base / 'origem' / 'licencas.json'
-    arq_lic.write_text(json.dumps(licencas), encoding='utf-8')
     job = base / 'job'
-    nucleo.criar(job, psd, 'a', fontes=[pasta_fontes], licencas=arq_lic)
+    nucleo.criar(job, psd, 'a', fontes=[pasta_fontes])
     r = nucleo.proxima(job, todas=True)
     assert r.codigo == 0, (r.situacao, r.linhas_humanas)
     conf = contratos.ler(job / 'fontes' / 'conferencia.json', 'conferencia-fontes/1')
@@ -167,24 +162,48 @@ def test_ttc_e_woff2_aceitos_e_conferidos(job_fontes):
     assert _face(job_fontes, 'Comprimida-Regular')['formato'] == 'woff2'
 
 
-def test_eula_que_proibe_font_face_e_aviso_e_o_job_segue(job_fontes):
-    f = _face(job_fontes, 'Comprimida-Regular')
-    assert f['situacao'] == 'aviso' and 'eula_proibe_font_face' in _codigos(f)
+CODIGOS_DE_LICENCA = {'canal_desconhecido', 'kit_web', 'adobe_fonts', 'build_proibe_desktop', 'eula_proibe_font_face',
+                      'fs_type_restrito', 'liberado_pelo_da'}
+
+
+def test_fonte_com_fs_type_restrito_e_marcas_de_kit_web_passa_sem_bloqueio_nem_aviso(job_fontes):
+    """decisoes-v1.md, n. 19: toda fonte enviada tem direito de uso; a licenca e da agencia ou do usuario."""
+    leitura = contratos.ler(job_fontes['job'] / 'fontes' / 'bruto' / job_fontes['shas']['kit.ttf'] / 'leitura.json',
+                            'leitura-fonte/1')
+    assert leitura['faces'][0]['os2']['fs_type'] == 2 and 'marcas' not in leitura['faces'][0]
+    for ps, chave in (('Kit-Regular', 'kit'), ('Paga-Regular', 'desconhecido')):
+        f = _face(job_fontes, ps)
+        assert f['situacao'] == 'ok' and all(m['situacao'] == 'ok' for m in f['motivos']), (ps, f['motivos'])
+        assert 'canal' not in f and not _codigos(f) & CODIGOS_DE_LICENCA
+        c = _par(job_fontes, chave)
+        assert c['situacao'] == 'ok' and c['face_cdp_confere'] is True and c['largura_erro_max_pct'] <= 0.01
+    todos = {m['codigo'] for x in job_fontes['conf']['faces'] + job_fontes['conf']['camadas'] for m in x['motivos']}
+    assert not todos & CODIGOS_DE_LICENCA
+    assert _face(job_fontes, 'Comprimida-Regular')['situacao'] == 'ok'
+    assert 'licencas_sha256' not in job_fontes['conf']
+    assert not (job_fontes['job'] / 'manifesto-licenca.json').exists()
+    assert not (job_fontes['job'] / 'entrada' / 'licencas.json').exists()
     assert job_fontes['resultado'].codigo == 0
-    man = contratos.ler(job_fontes['job'] / 'manifesto-licenca.json', 'manifesto-licenca/1')
-    e = next(x for x in man['faces'] if x['face_id'] == f['id'])
-    assert e['eula']['font_face'] == 'proibe' and 'eula_proibe_font_face' in e['motivos']
-    assert {a['sha256'] for a in man['arquivos']} >= set(job_fontes['shas'].values())
 
 
-def test_kit_web_e_canal_desconhecido_bloqueiam_e_o_da_libera(job_fontes):
-    kit = _face(job_fontes, 'Kit-Regular')
-    assert kit['situacao'] == 'bloqueante' and 'kit_web' in _codigos(kit)
-    paga = _face(job_fontes, 'Paga-Regular')
-    assert paga['situacao'] == 'bloqueante' and 'canal_desconhecido' in _codigos(paga)
-    lib = _face(job_fontes, 'Liberada-Regular')
-    assert lib['situacao'] == 'aviso' and 'liberado_pelo_da' in _codigos(lib)
-    assert _face(job_fontes, 'Inventada-Bold')['canal'] == 'ofl'
+def test_job_nao_aceita_arquivo_de_licencas(tmp_path, capsys):
+    kv = _kv(tmp_path)
+    lic = tmp_path / 'licencas.json'
+    lic.write_text('{}', encoding='utf-8')
+    env = _envelope(['job', 'criar', tmp_path / 'job0', '--kv', kv, '--modo-dados', 'c', '--licencas', lic], capsys)
+    assert env['codigo'] == Codigo.USO and not (tmp_path / 'job0').exists()
+    with pytest.raises(TypeError):
+        nucleo.criar(tmp_path / 'job1', kv, 'c', licencas=lic)
+    job = tmp_path / 'job2'
+    nucleo.criar(job, kv, 'c')
+    with pytest.raises(ErroJob) as e:
+        nucleo.trocar_entrada(job, 'entrada/licencas.json', lic)
+    assert e.value.codigo == Codigo.USO
+    with pytest.raises(ErroJob):
+        nucleo.remover_entrada(job, 'entrada/licencas.json')
+    assert not (job / 'entrada' / 'licencas.json').exists()
+    for f in nucleo.ESTEIRA:
+        assert not any('licenca' in x for x in tuple(f.entradas) + tuple(f.saidas)), f.id
 
 
 def test_peso_declarado_vem_do_estilo_quando_o_os2_diverge(job_fontes):
@@ -255,7 +274,7 @@ def test_zero_byte_ou_caminho_de_fonte_no_envelope_log_e_pacote(job_fontes, pyth
             assert env['modo_dados'] == modo and ('conteudo' in env) == (modo != 'c')
             _sem_fonte(p.stdout, fontes, nomes)
     for rel in ('log/eventos.jsonl', 'sugestoes/pacote-modelo.json', 'fontes/conferencia.json',
-                'manifesto-licenca.json', 'laudo/laudo-fontes.json'):
+                'laudo/laudo-fontes.json'):
         _sem_fonte((job / rel).read_bytes(), fontes, nomes)
 
 
@@ -446,7 +465,7 @@ def _leitura_face(dados):
             'head': {'unidades_por_em': f['head'].unitsPerEm}, 'hhea': {'ascender': 800, 'descender': -200, 'line_gap': 0},
             'os2': {'us_weight_class': os2.usWeightClass, 's_typo_ascender': 800, 's_typo_descender': -200,
                     's_typo_line_gap': 0, 's_cap_height': 700, 's_x_height': 500, 'fs_type': 0},
-            'cmap': [[c, c] for c in sorted(f.getBestCmap())], 'marcas': ['ofl'], 'colecao': None}
+            'cmap': [[c, c] for c in sorted(f.getBestCmap())], 'colecao': None}
 
 
 def test_mensagens_do_motor_nao_mandam_instalar_fonte():
@@ -469,13 +488,13 @@ def _envelope(argv, capsys):
     return env
 
 
-def _job_com_fontes(base, camadas, fontes, licencas=None):
+def _job_com_fontes(base, camadas, fontes):
     psd = ap.psd_textos(base / 'origem' / 'kv.psd', camadas)
     pasta = base / 'origem' / 'fontes'
     for nome, dados in fontes.items():
         ap.gravar(pasta, nome, dados)
     job = base / 'job'
-    nucleo.criar(job, psd, 'c', fontes=[pasta] if fontes else None, licencas=licencas)
+    nucleo.criar(job, psd, 'c', fontes=[pasta] if fontes else None)
     return job
 
 
@@ -493,18 +512,9 @@ def test_bloqueio_de_fonte_aparece_no_job_estado_e_em_todo_job_proxima(tmp_path,
     env = _envelope(['job', 'proxima', job], capsys)
     assert env['situacao'] == 'ok_com_bloqueio' and env['contagens']['fases_rodadas_agora'] == 0
     assert 'trocar-entrada' in env['o_que_fazer']
-    # o DA traz o arquivo que faltava: continua o bloqueio de licenca (canal desconhecido), que pede decisao do DA
+    # o DA traz o arquivo que faltava: o job conclui (a fonte sem licenca declarada nao bloqueia, decisoes-v1.md, n. 19)
     sumida = ap.gravar(tmp_path / 'nova', 'sumida.ttf', ap.fonte(ps='Sumida-Bold', familia='Sumida'))
     nucleo.trocar_entrada(job, 'entrada/fontes/sumida.ttf', sumida)
-    r = nucleo.proxima(job, todas=True)
-    assert r.situacao == 'ok_com_bloqueio' and r.contagens['faces_bloqueantes'] == 1
-    assert _envelope(['job', 'estado', job], capsys)['situacao'] == 'ok_com_bloqueio'
-    # o DA libera pela entrada de licencas, com justificativa: o job conclui (fica so o aviso)
-    lic = tmp_path / 'licencas.json'
-    lic.write_text(json.dumps({'esquema': 'licencas-fontes/1', 'faces': [
-        {'sha256': hashlib.sha256(paga).hexdigest(), 'canal': 'desconhecido',
-         'liberado_pelo_da': {'justificativa': 'Teste: o DA conferiu a licenca por fora.'}}]}), encoding='utf-8')
-    nucleo.trocar_entrada(job, 'entrada/licencas.json', lic)
     r = nucleo.proxima(job, todas=True)
     assert r.situacao == 'concluido', (r.situacao, r.o_que_fazer)
     env = _envelope(['job', 'estado', job], capsys)

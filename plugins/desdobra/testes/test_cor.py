@@ -101,21 +101,16 @@ def test_parametros_vem_do_registro_ou_do_job():
     assert a == b
 
 
-def test_asset_com_outro_perfil_recebe_o_do_documento_sem_converter():
+def test_asset_com_outro_perfil_e_convertido_para_o_do_documento():
     doc = {'nome': 'documento', 'sha256': 'a' * 64}
     t = cor.tratamento_do_asset(doc, {'nome': 'asset', 'sha256': 'b' * 64})
-    assert t['tratamento'] == 'atribuir_perfil_do_documento' and t['converte_pixels'] is False
+    assert t['tratamento'] == 'converter_para_perfil_do_documento' and t['converte_pixels'] is True
     assert t['perfil_efetivo'] == doc and t['fonte']['arquivo'] == 'decisoes-v1.md'
-    assert cor.tratamento_do_asset(doc, {'nome': 'x', 'sha256': 'a' * 64})['tratamento'] == 'mesmo_perfil'
+    assert 'revista em 31/10' in t['fonte']['secao']
+    mesmo = cor.tratamento_do_asset(doc, {'nome': 'x', 'sha256': 'a' * 64})
+    assert mesmo['tratamento'] == 'mesmo_perfil' and mesmo['converte_pixels'] is False
     assert cor.tratamento_do_asset(doc, None)['tratamento'] == 'perfil_do_asset_nao_lido'
-    img = Image.new('RGB', (2, 2), (200, 30, 60))
-    assert cor.asset_atribuido(img).tobytes() == img.tobytes()
-    # atribuido: os numeros do asset vao pelo perfil do documento; convertido do perfil do asset daria outro valor
-    conv_doc = cor.Conversor(apoio.icc_srgb(), cor.parametros())
-    atribuido = conv_doc.imagem(cor.asset_atribuido(img)).getpixel((0, 0))
-    assert list(atribuido) == [200, 30, 60]
-    convertido = cor.Conversor(apoio.icc_adobe_rgb(), cor.parametros()).imagem(img).getpixel((0, 0))
-    assert list(convertido) != [200, 30, 60]
+    assert not hasattr(cor, 'asset_atribuido')
 
 
 # ------------------------------------------------------------------ pela esteira (leitor + ds)
@@ -127,15 +122,15 @@ def _job(tmp_path, psd, nome='job'):
     return pasta
 
 
-def test_asset_embutido_com_outro_perfil_fica_atribuido(tmp_path):
+def test_asset_embutido_com_outro_perfil_fica_para_converter(tmp_path):
     psd, _dados = sinteticos.embutido(tmp_path / 'origem', dados=apoio.interno_com_perfil(apoio.icc_adobe_rgb()))
     job = _job(tmp_path, psd)
     ds = contratos.ler(job / 'ds' / 'design-system.json', 'design-system/1')
     assert ds['documento']['perfil']['tratamento'] == cor.TRATAMENTO_SEM_PERFIL
     (asset,) = ds['assets']
-    assert asset['tratamento'] == 'atribuir_perfil_do_documento' and asset['converte_pixels'] is False
+    assert asset['tratamento'] == 'converter_para_perfil_do_documento' and asset['converte_pixels'] is True
     assert asset['perfil_asset']['sha256'] == cor.descrever_perfil(apoio.icc_adobe_rgb())['sha256']
-    assert ds['resumo']['n_assets_perfil_atribuido'] == 1
+    assert ds['resumo']['n_assets_perfil_convertido'] == 1
 
 
 def test_leitor_grava_o_perfil_e_os_descritores(tmp_path):

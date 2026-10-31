@@ -6,7 +6,7 @@ Fase "ds" da esteira, depois de "ler" e da conferencia de fontes (arquitetura-v1
 assets (laudo/assets/<sha256>.png, so o alfa) e, quando existe, fontes/conferencia.json. Grava:
   - ds/design-system.json (design-system/1): tokens de cor com a origem (desdobra.cor), de tipografia com as
     metricas do arquivo de fonte, medidas, caixa do sujeito pelo alfa ou "pedir ao DA", e o tratamento de cor
-    de cada asset (perfil do documento atribuido, sem converter);
+    de cada asset (convertido para o perfil do documento, decisoes-v1.md 29/10 nº 8 revista em 31/10);
   - ds/limites.json (limites/1): os limites que valem para o job, com valor, fonte, situacao e efeito. O que vem
     do PSD entra como referencia e nunca como piso.
 
@@ -299,8 +299,8 @@ def montar(pasta_laudo, laudo, estrutura, conferencia, parametros, *, sha_confer
                    'n_medidas': len(medidas),
                    'n_sujeito_alfa': sum(1 for s in sujeitos if s['metodo'] == mod_sujeito.METODO_ALFA),
                    'n_sujeito_pedir_ao_da': n_pedir,
-                   'n_assets_perfil_atribuido': sum(1 for a in assets
-                                                    if a['tratamento'] == 'atribuir_perfil_do_documento')},
+                   'n_assets_perfil_convertido': sum(1 for a in assets
+                                                     if a['tratamento'] == 'converter_para_perfil_do_documento')},
     }
     lim = montar_limites(parametros, _referencias_do_psd(tipografia, medidas, sha), origem)
     return ds, lim
@@ -375,7 +375,7 @@ def _montar(args):
                  'tipografia': r['n_tipografia'], 'tipografia_com_metricas': r['n_tipografia_com_metricas'],
                  'medidas': r['n_medidas'], 'sujeito_alfa': r['n_sujeito_alfa'],
                  'sujeito_pedir_ao_da': r['n_sujeito_pedir_ao_da'],
-                 'assets_perfil_atribuido': r['n_assets_perfil_atribuido'], 'limites': len(lim['limites']),
+                 'assets_perfil_convertido': r['n_assets_perfil_convertido'], 'limites': len(lim['limites']),
                  'pendencias': len(ds['pendencias'])}
     linhas = ['Design system gravado em %s' % (pasta / ARQUIVO_DS), 'Limites do job em %s' % (pasta / ARQUIVO_LIMITES),
               'Perfil do documento: %s (%s)' % (ds['documento']['perfil']['nome'], ds['documento']['perfil']['tratamento']),

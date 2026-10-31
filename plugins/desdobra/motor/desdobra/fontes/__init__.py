@@ -7,7 +7,7 @@ isolado (desdobra.fontes.filho, com o fontTools, arquitetura 15) e chega ao Chro
 servidor local (desdobra.chromium.servidor).
 
 Comandos (fases da esteira, com --job):
-    desdobra fontes conferir --job <pasta>   grava fontes/conferencia.json e manifesto-licenca.json
+    desdobra fontes conferir --job <pasta>   grava fontes/conferencia.json
     desdobra fontes laudo --job <pasta>      grava laudo/laudo-fontes.json (laudo/1, passada 2, regra B3)
 """
 import argparse
@@ -67,7 +67,7 @@ def _aceitar_tetos(p):
 def registrar(subparsers):
     p = subparsers.add_parser('fontes', help='Confere as fontes do job contra os arquivos de entrada/fontes/')
     sub = p.add_subparsers(dest='acao_fontes', metavar='ACAO', required=True)
-    c = sub.add_parser('conferir', help='Par de nome PostScript, glifos, Chromium, largura por linha e licença')
+    c = sub.add_parser('conferir', help='Par de nome PostScript, glifos, Chromium e largura por linha')
     c.add_argument('--job', required=True, help='Pasta do job')
     c.add_argument('--sem-chromium', action='store_true', help='Só para diagnóstico: pula a parte do Chromium')
     _aceitar_tetos(c)

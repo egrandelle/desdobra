@@ -19,14 +19,13 @@ Ordem:
   5. grava leitura.json (leitura-fonte/1) em <pasta_saida>, de forma atomica.
 
 O filho nunca grava contorno, glifo, atlas nem os bytes da fonte: so nomes, metricas, a cobertura do cmap em
-faixas de codigos e marcas de licenca achadas na tabela name (codigos, nunca o texto). Na saida padrao, no
-maximo uma linha JSON (filho/1). Codigos: 0 lida; 3 recusada; 4 memoria; 5 auditoria; 2 argumentos; 1 bug.
+faixas de codigos. Licenca nao e conferida (decisoes-v1.md, n. 19). Na saida padrao, no maximo uma linha JSON
+(filho/1). Codigos: 0 lida; 3 recusada; 4 memoria; 5 auditoria; 2 argumentos; 1 bug.
 """
 import argparse
 import enum
 import io
 import json
-import re
 import struct
 import sys
 from pathlib import Path
@@ -50,8 +49,6 @@ TABELAS_OBRIGATORIAS = ('head', 'hhea', 'maxp', 'cmap', 'name')
 # name IDs da tabela name (especificacao OpenType, fato do formato)
 NOME_COPYRIGHT, NOME_FAMILIA, NOME_ESTILO, NOME_ID_UNICO, NOME_COMPLETO, NOME_VERSAO, NOME_PS = 0, 1, 2, 3, 4, 5, 6  # numero-neutro: name IDs da especificacao OpenType
 NOME_FAMILIA_TIPOGRAFICA, NOME_ESTILO_TIPOGRAFICO = 16, 17  # numero-neutro: name IDs da especificacao OpenType
-# name IDs com texto de marca, fabricante, descricao e licenca, onde aparecem as marcas de kit web e de uso
-NOMES_COM_MARCAS = (0, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14)  # numero-neutro: name IDs da especificacao OpenType
 TAMANHO_CABECALHO_SFNT = 12  # numero-neutro: offset table do sfnt (especificacao OpenType)
 TAMANHO_REGISTRO_TABELA = 16  # numero-neutro: table record do sfnt (especificacao OpenType)
 
@@ -140,20 +137,6 @@ def _faixas(codigos):
     return faixas
 
 
-def _marcas(tabela, os2):
-    """Codigos das marcas de licenca achadas no arquivo, pelas expressoes do registro de limites."""
-    from desdobra import limites
-    textos = ' \n '.join(_nomes(tabela, NOMES_COM_MARCAS)).casefold()
-    marcas = []
-    for codigo, limite_id in (('kit_web', 'fontes.marcas_kit_web'), ('proibe_desktop', 'fontes.marcas_proibe_desktop'),
-                              ('ofl', 'fontes.marcas_ofl')):
-        if any(re.search(p, textos) for p in limites.valor(limite_id)):
-            marcas.append(codigo)
-    if os2 is not None and any(os2.fsType & int(b) for b in limites.valor('fontes.fs_type_bits_restritos')):
-        marcas.append('fs_type_restrito')
-    return marcas
-
-
 def ler_face(fonte, indice, colecao=None):
     for tag in TABELAS_OBRIGATORIAS:
         if tag not in fonte:
@@ -180,7 +163,6 @@ def ler_face(fonte, indice, colecao=None):
         'os2': None,
         'cmap': _faixas(cmap.keys()),
         'n_codigos': len(cmap),
-        'marcas': _marcas(nome, os2),
         'colecao': colecao,
     }
     if os2 is not None:

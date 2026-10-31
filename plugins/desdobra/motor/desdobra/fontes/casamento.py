@@ -99,8 +99,6 @@ def montar_faces(leituras):
             'us_weight_class': os2.get('us_weight_class'),
             'peso_estilo': peso_estilo,
             'peso_declarado': peso_estilo or os2.get('us_weight_class') or None,
-            'fs_type': os2.get('fs_type'),
-            'marcas': list(face.get('marcas') or []),
             'metricas': {'unidades_por_em': upm, 'ascender': asc, 'descender': desc,
                          'cap_height': os2.get('s_cap_height'), 'x_height': os2.get('s_x_height'),
                          'entrelinha_tipo': (asc - desc + (gap or 0)) if asc is not None and desc is not None else None},

@@ -240,8 +240,8 @@
         "camada": {"type": "integer"},
         "sha256": {"$ref": "#/$defs/sha_ou_nulo"},
         "tipo_detectado": {"type": ["string", "null"]},
-        "tratamento": {"enum": ["mesmo_perfil", "atribuir_perfil_do_documento", "asset_sem_perfil", "perfil_do_asset_nao_lido"]},
-        "converte_pixels": {"const": false},
+        "tratamento": {"enum": ["mesmo_perfil", "converter_para_perfil_do_documento", "asset_sem_perfil", "perfil_do_asset_nao_lido"]},
+        "converte_pixels": {"type": "boolean"},
         "perfil_efetivo": {"type": "object"},
         "perfil_asset": {"type": ["object", "null"]},
         "fonte": {"$ref": "#/$defs/fonte"}

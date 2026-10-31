@@ -7,11 +7,15 @@ Quatro partes (arquitetura-v1.md, 4.5 e 9.3):
   3. carrega cada face no Chromium pelo @font-face, servida pela rota propria no loopback, com familia propria do
      job e peso declarado, e confere por CDP que a face usada e a do arquivo;
   4. mede a largura de cada linha contra a caixa TySh do PSD.
-Mais a licenca de cada face (desdobra.fontes.licenca), o teste de cache do perfil do Chromium e a varredura da
-pasta do job atras de arquivo de fonte fora de entrada/fontes/.
+Mais o teste de cache do perfil do Chromium e a varredura da pasta do job atras de arquivo de fonte fora de
+entrada/fontes/.
 
-Saidas: fontes/conferencia.json (conferencia-fontes/1) e manifesto-licenca.json (manifesto-licenca/1, rascunho).
-Os dois levam ids, hashes, nomes de fonte e numeros; nunca texto de peca, caminho de arquivo ou byte de fonte.
+Sem controle de licenca (decisoes-v1.md, n. 19): toda fonte que a agencia envia e tratada como fonte com direito de
+uso, e a responsabilidade pela licenca e da agencia ou do usuario. A conferencia nao le canal, EULA, kit web, fsType
+nem restricao de uso desktop, e nada aqui bloqueia ou avisa por licenca.
+
+Saida: fontes/conferencia.json (conferencia-fontes/1), com ids, hashes, nomes de fonte e numeros; nunca texto de
+peca, caminho de arquivo ou byte de fonte.
 """
 import hashlib
 import shutil
@@ -20,14 +24,10 @@ from pathlib import Path
 
 from desdobra import arquivos, contratos, limites, plataforma
 from desdobra.chromium import navegador, servidor
-from desdobra.fontes import casamento, leitura, licenca, medicao
+from desdobra.fontes import casamento, leitura, medicao
 
 ESQUEMA = 'conferencia-fontes/1'
-ESQUEMA_MANIFESTO = 'manifesto-licenca/1'
-ESQUEMA_LICENCAS = 'licencas-fontes/1'
 ARQUIVO = Path('fontes') / 'conferencia.json'
-ARQUIVO_MANIFESTO = Path('manifesto-licenca.json')
-ARQUIVO_LICENCAS = Path('entrada') / 'licencas.json'
 PASTA_ENTRADA = 'entrada/fontes/'
 # o perfil do Chromium fica numa pasta temporaria curta da maquina, criada e apagada pelo motor (navegador.perfil_curto)
 PERFIL_TEMPORARIO = 'pasta temporaria curta do motor, apagada no fim'
@@ -55,7 +55,7 @@ DESCRICOES = {
                           'qual vale. Decisão do DA: tirar o arquivo que não vale com "desdobra job remover-entrada".',
     'cdp_sem_resposta': 'O Chromium não disse por CDP qual face desenhou o trecho: sem essa resposta, a face usada fica '
                         'sem prova.',
-    'face_com_bloqueio': 'A face do arquivo está bloqueante ou com aviso (licença ou carregamento).',
+    'face_com_bloqueio': 'A face do arquivo está bloqueante ou com aviso (carregamento, conferência no Chromium ou peso).',
     'so_em_espaco': 'Fonte usada só em caracteres sem tinta: não deixa marca.',
     'peso_os2_diverge_do_estilo': 'O usWeightClass do arquivo não bate com o peso do nome do estilo; o @font-face '
                                   'declara o peso do estilo.',
@@ -69,14 +69,12 @@ DESCRICOES = {
     'largura_nao_medida_warp': 'Texto com warp: a largura não é comparada.',
 }
 O_QUE_FAZER_OK = 'As fontes do job conferem com os arquivos de entrada/fontes/. Rode "desdobra job proxima" para seguir.'
-O_QUE_FAZER_BLOQUEIO = ('A conferência de fontes achou bloqueios: veja fontes/conferencia.json e o rascunho de '
-                        'manifesto-licenca.json. Para fonte faltando ou sem par, traga o arquivo (OTF, TTF, TTC, WOFF '
-                        'ou WOFF2) e acrescente com "desdobra job trocar-entrada <pasta> entrada/fontes/<arquivo> '
-                        '<arquivo>". Quando dois arquivos têm o mesmo nome PostScript, tire o que não vale com '
-                        '"desdobra job remover-entrada <pasta> entrada/fontes/<arquivo>". Divergência de largura e '
-                        'bloqueio de licença ficam para o DA decidir; a liberação de licença entra em '
-                        'entrada/licencas.json, com justificativa. O bloqueio fica no estado do job até a conferência '
-                        'rodar de novo sem ele.')
+O_QUE_FAZER_BLOQUEIO = ('A conferência de fontes achou bloqueios: veja fontes/conferencia.json. Para fonte faltando '
+                        'ou sem par, traga o arquivo (OTF, TTF, TTC, WOFF ou WOFF2) e acrescente com "desdobra job '
+                        'trocar-entrada <pasta> entrada/fontes/<arquivo> <arquivo>". Quando dois arquivos têm o mesmo '
+                        'nome PostScript, tire o que não vale com "desdobra job remover-entrada <pasta> '
+                        'entrada/fontes/<arquivo>". Divergência de largura fica para o DA decidir. O bloqueio fica no '
+                        'estado do job até a conferência rodar de novo sem ele.')
 
 
 def agora():
@@ -178,13 +176,12 @@ def _fontes_ps_da_camada(c):
 
 
 def conferir(pasta_job, *, plat=None, usar_chromium=True, cache_control='no-store'):
-    """Roda a conferencia e grava fontes/conferencia.json e manifesto-licenca.json. Devolve a conferencia."""
+    """Roda a conferencia e grava fontes/conferencia.json. Devolve a conferencia."""
     pasta_job = Path(pasta_job).resolve()
     plat = plat or plataforma.obter()
     estado = contratos.ler(pasta_job / 'estado.json', 'estado/1')
     laudo_arq = pasta_job / 'laudo' / 'laudo.json'
     laudo = contratos.ler(laudo_arq, 'laudo/1')
-    licencas = contratos.ler(pasta_job / ARQUIVO_LICENCAS, ESQUEMA_LICENCAS) if (pasta_job / ARQUIVO_LICENCAS).is_file() else None
     leituras, arqs, caminhos = _ler_arquivos(pasta_job, estado, plat)
     faces = casamento.montar_faces(leituras)
     servidos = {}
@@ -276,18 +273,13 @@ def conferir(pasta_job, *, plat=None, usar_chromium=True, cache_control='no-stor
                                {'us_weight_class': f['us_weight_class'], 'peso_do_estilo': f['peso_estilo']}))
         if f['id'] not in usadas:
             mot.append(_motivo('face_nao_usada', 'ok'))
-        canal, reg, mot_lic = licenca.avaliar(f, licencas)
-        mot.extend(mot_lic)
         sit = pior(mot)
-        por_face[f['id']] = {'canal': canal, 'registro': reg, 'situacao': sit, 'motivos': mot,
-                             'instalada_mesmo_nome': instalada, 'carregada': carregada, 'confere': confere,
-                             'conferencia': {'metodo': 'cdp_css_getplatformfontsfornode' if resposta else None,
-                                             'face_cdp_confere': confere, 'largura_erro_max_pct': None}}
+        por_face[f['id']] = {'situacao': sit}
         faces_saida.append({
             'id': f['id'], 'nome_ps': f['nome_ps'], 'nomes_ps': f['nomes_ps'], 'familia': f['familia'],
             'estilo': f['estilo'], 'formato': f['formato'], 'sha256': f['sha256'], 'indice': f['indice'],
             'versao_name': f['versao_name'], 'peso_declarado': f['peso_declarado'],
-            'us_weight_class': f['us_weight_class'], 'metricas': f['metricas'], 'canal': canal,
+            'us_weight_class': f['us_weight_class'], 'metricas': f['metricas'],
             'usada': f['id'] in usadas, 'carregada': carregada, 'face_cdp_confere': confere,
             'instalada_mesmo_nome': instalada, 'situacao': sit, 'motivos': mot})
 
@@ -355,23 +347,16 @@ def conferir(pasta_job, *, plat=None, usar_chromium=True, cache_control='no-stor
                 'largura_erro_max_pct': round(abs(erro), 4) if erro is not None and face is not None else None,  # numero-neutro: casas da medida
                 'largura_erro_pct': round(erro, 4) if erro is not None and face is not None else None,  # numero-neutro: casas da medida
                 'face_cdp_confere': confere, 'situacao': sit, 'decisao': decisao, 'motivos': mot})
-    for f in faces:
-        erros = [x['largura_erro_max_pct'] for x in camadas_saida if x['face_id'] == f['id'] and x['largura_erro_max_pct'] is not None]
-        por_face[f['id']]['conferencia']['largura_erro_max_pct'] = max(erros) if erros else None
 
     fora, varridos = varrer_fontes_fora_da_entrada(pasta_job)
     resumo = _resumo(faces_saida, camadas_saida, arqs, cache)
     conf = {'esquema': ESQUEMA, 'job_id': estado['job_id'], 'gerado_em': agora(),
             'laudo_sha256': arquivos.sha256_arquivo(laudo_arq), 'arquivo_sha256': laudo['origem']['sha256'],
-            'licencas_sha256': arquivos.sha256_arquivo(pasta_job / ARQUIVO_LICENCAS) if licencas is not None else None,
             'limites': [limiar.citacao()], 'chromium': chromium, 'faces': faces_saida, 'camadas': camadas_saida,
             'arquivos': arqs, 'cache': cache,
             'varredura': {'arquivos_de_fonte_fora_da_entrada': fora, 'arquivos_varridos': varridos},
             'resumo': resumo}
     contratos.gravar(pasta_job / ARQUIVO, conf, ESQUEMA)
-    man = licenca.manifesto(estado['job_id'], faces, [{k: a[k] for k in ('sha256', 'formato', 'situacao', 'motivo')}
-                                                       for a in arqs], por_face, conf['gerado_em'])
-    contratos.gravar(pasta_job / ARQUIVO_MANIFESTO, man, ESQUEMA_MANIFESTO)
     return conf
 
 

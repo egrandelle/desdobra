@@ -397,54 +397,6 @@
    "nota": "A pesquisa mediu ate 0,01% com o arquivo certo (pesquisa/corpus-testes.md, 4, item 8) e propos 0,2%. Ate o limiar ser fixado, a divergencia acima dele vira decisao bloqueante do DA, sem reprovacao automatica (arquitetura-v1.md, 4.5)."
   },
   {
-   "id": "fontes.marcas_kit_web",
-   "valor": ["wfkit", "web ?font ?kit", "web use only"],
-   "unidade": "expressoes regulares procuradas sem diferenca de maiusculas nos textos da tabela name",
-   "fonte": {
-    "arquivo": "pesquisa/wf_9612ef10-419-resultado.json",
-    "secao": "analise de fontes (build wfkit da fonte de kit web do corpus)"
-   },
-   "situacao": "medido",
-   "efeito": "avisa",
-   "nota": "Marca de build de kit web no arquivo. A face com a marca fica bloqueante ate o DA liberar com justificativa (arquitetura-v1.md, 4.5 e 5.8); o motor nao reprova sozinho."
-  },
-  {
-   "id": "fontes.marcas_proibe_desktop",
-   "valor": ["desktop use is (strictly )?prohibited", "not (licensed )?for desktop use", "desktop use (is )?not (permitted|allowed)"],
-   "unidade": "expressoes regulares procuradas sem diferenca de maiusculas nos textos da tabela name",
-   "fonte": {
-    "arquivo": "pesquisa/corpus-testes.md",
-    "secao": "4, item 11"
-   },
-   "situacao": "medido",
-   "efeito": "avisa",
-   "nota": "Build que proibe uso desktop, como o name ID 0 de uma fonte do corpus. A face fica bloqueante ate o DA liberar com justificativa (arquitetura-v1.md, 5.8)."
-  },
-  {
-   "id": "fontes.marcas_ofl",
-   "valor": ["open font license", "scripts\\.sil\\.org/ofl", "openfontlicense\\.org"],
-   "unidade": "expressoes regulares procuradas sem diferenca de maiusculas nos textos da tabela name",
-   "fonte": {
-    "arquivo": "arquitetura-v1.md",
-    "secao": "4.5 (as fontes OFL ficam fora do controle de canal, proposto, a registrar)"
-   },
-   "situacao": "a_calibrar",
-   "efeito": "registra",
-   "nota": "Face que declara a SIL Open Font License na tabela name sai com canal ofl, sem o bloqueio de canal desconhecido. A declaracao vem do proprio arquivo e nao foi conferida com o autor."
-  },
-  {
-   "id": "fontes.fs_type_bits_restritos",
-   "valor": [2],
-   "unidade": "bits do campo fsType da tabela OS/2",
-   "fonte": {
-    "arquivo": "pesquisa/wf_9612ef10-419-resultado.json",
-    "secao": "analise de fontes (fsType da fonte de kit web do corpus)"
-   },
-   "situacao": "a_calibrar",
-   "efeito": "avisa",
-   "nota": "Bit 0x0002 (licenca restrita) vira aviso na face. O bit 0x0004 (so pre-visualizacao e impressao) aparece tanto na fonte de kit web do corpus quanto numa OFL do corpus, entao sozinho nao separa kit web e fica fora."
-  },
-  {
    "id": "chromium.corpo_medicao_px",
    "valor": 100,
    "unidade": "pixels do maior corpo de cada camada na pagina de medicao",

@@ -24,8 +24,6 @@ def registrar(subparsers):
     c.add_argument('--specs', default=None, help='Pasta com as folhas de spec')
     c.add_argument('--fontes', nargs='+', action='extend', default=None,
                    help='Arquivos de fonte (OTF, TTF, TTC, WOFF, WOFF2) ou pastas com eles; entram em entrada/fontes/')
-    c.add_argument('--licencas', default=None,
-                   help='Dados de licença das fontes (licencas-fontes/1); entra como entrada/licencas.json')
     c.set_defaults(executar=_criar, nome_comando='job criar')
 
     x = sub.add_parser('proxima', help='Roda a próxima fase ou para no portão com o que fazer')
@@ -69,7 +67,7 @@ def _criar(args):
     try:
         estado = nucleo.criar(_abs(args.pasta), _abs(args.psd), args.modo_dados,
                               getattr(args, 'teto_modo_dados', None), _abs(args.campanha), _abs(args.specs),
-                              fontes=[_abs(f) for f in args.fontes or ()], licencas=_abs(args.licencas))
+                              fontes=[_abs(f) for f in args.fontes or ()])
     except ErroJob as e:
         return _erro('job criar', e)
     return Resultado(comando='job criar', situacao='ok', o_que_fazer=estado['proxima']['o_que_fazer'],

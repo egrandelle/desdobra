@@ -166,7 +166,7 @@ def conferencia(layer_id, job_id='0' * 32, arquivo_sha256='b' * 64, nome_ps=sint
     """fontes/conferencia.json sintetica, valida pelo contrato conferencia-fontes/1."""
     return {
         'esquema': 'conferencia-fontes/1', 'job_id': job_id, 'gerado_em': '2026-10-30T12:00:00',
-        'laudo_sha256': 'c' * 64, 'arquivo_sha256': arquivo_sha256, 'licencas_sha256': None, 'limites': [],
+        'laudo_sha256': 'c' * 64, 'arquivo_sha256': arquivo_sha256, 'limites': [],
         'chromium': {'feito': False, 'motivo': 'sintetico', 'versao': None, 'playwright': None},
         'faces': [{'id': 'f01', 'nome_ps': nome_ps, 'familia': 'Fonte Inventada', 'estilo': 'Bold',
                    'formato': 'otf', 'sha256': 'a' * 64, 'versao_name': 'Version 1.000', 'peso_declarado': 700,

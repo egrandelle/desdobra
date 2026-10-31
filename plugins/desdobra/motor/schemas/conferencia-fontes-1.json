@@ -12,7 +12,6 @@
     "gerado_em": {"type": "string"},
     "laudo_sha256": {"$ref": "#/$defs/sha256", "description": "Hash de laudo/laudo.json (primeira passada) que a conferencia leu"},
     "arquivo_sha256": {"$ref": "#/$defs/sha256", "description": "Hash do PSD"},
-    "licencas_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
     "limites": {"type": "array", "items": {"$ref": "#/$defs/citacao_limite"}},
     "chromium": {
       "type": "object",
@@ -127,7 +126,6 @@
             "entrelinha_tipo": {"$ref": "#/$defs/inteiro_ou_nulo", "description": "ascender - descender + line gap (OS/2 typo, ou hhea sem OS/2), em unidades do em"}
           }
         },
-        "canal": {"type": "string"},
         "usada": {"type": "boolean"},
         "carregada": {"type": ["boolean", "null"]},
         "face_cdp_confere": {"type": ["boolean", "null"]},

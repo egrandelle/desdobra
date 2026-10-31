@@ -3,8 +3,8 @@
 
 Pasta do job (arquitetura-v1.md, 5.1):
     estado.json      estado/1, gravado so pelo motor, de forma atomica
-    entrada/         kv.psd ou kv.psb, campanha/, specs/, fontes/ (os arquivos de fonte enviados pela agencia,
-                     M2) e licencas.json (dados de licenca das fontes); congelados por sha256 e so leitura
+    entrada/         kv.psd ou kv.psb, campanha/, specs/ e fontes/ (os arquivos de fonte enviados pela agencia,
+                     M2); congelados por sha256 e so leitura. Sem arquivo de licencas (decisoes-v1.md, n. 19)
     laudo/           laudo.json e as pastas do leitor
     log/eventos.jsonl  so eventos e codigos, sem texto das pecas nem conteudo bruto
 """
@@ -184,15 +184,6 @@ def validar_fonte(caminho, pasta_trabalho):
                       o_que_fazer=fontes.O_QUE_FAZER_RECUSA)
 
 
-def validar_licencas(caminho):
-    try:
-        contratos.ler(caminho, 'licencas-fontes/1')
-    except contratos.ErroContrato as e:
-        raise ErroJob('O arquivo de licenças das fontes não segue o contrato licencas-fontes/1 (%s).' % (e.onde or 'raiz'),
-                      o_que_fazer='Corrija o arquivo de licenças (um registro por sha256 de arquivo de fonte, com o '
-                                  'canal) e tente de novo.') from None
-
-
 def conferir_entradas(pasta, estado):
     """Confere se entrada/ esta como foi congelada. Devolve a lista de caminhos alterados, sumidos ou novos."""
     pasta = Path(pasta)
@@ -335,8 +326,7 @@ def _bloqueio_do_envelope(envelope):
 
 
 # ------------------------------------------------------------------ criar
-def criar(pasta, psd, modo_dados, teto_modo_dados=None, campanha=None, specs=None, fases=ESTEIRA, fontes=None,
-          licencas=None):
+def criar(pasta, psd, modo_dados, teto_modo_dados=None, campanha=None, specs=None, fases=ESTEIRA, fontes=None):
     validar_esteira(fases)
     # caminhos absolutos: as fases rodam em subprocesso com outra pasta de trabalho
     pasta, psd = Path(pasta).resolve(), Path(psd).resolve()
@@ -367,11 +357,6 @@ def criar(pasta, psd, modo_dados, teto_modo_dados=None, campanha=None, specs=Non
         _recusar_fontes(arquivos)
         pastas_extra[nome] = (origem, arquivos)
     oferecidas = _arquivos_de_fonte_oferecidos(fontes, ignorados)
-    if licencas is not None:
-        licencas = Path(licencas).resolve()
-        if not licencas.is_file():
-            raise ErroJob('O arquivo de licenças não foi encontrado.', o_que_fazer='Confira o caminho passado em --licencas.')
-        validar_licencas(licencas)
 
     existia = pasta.exists()
     for sub in PASTAS_DO_JOB:
@@ -393,8 +378,6 @@ def criar(pasta, psd, modo_dados, teto_modo_dados=None, campanha=None, specs=Non
             entradas[rel] = _copiar_congelado(arq, pasta / rel)
     for nome, arq in oferecidas:
         entradas['entrada/fontes/%s' % nome] = _copiar_congelado(arq, pasta / 'entrada' / 'fontes' / nome)
-    if licencas is not None:
-        entradas['entrada/licencas.json'] = _copiar_congelado(licencas, pasta / 'entrada' / 'licencas.json')
 
     instante = agora()
     estado = {'esquema': ESQUEMA_ESTADO, 'job_id': uuid.uuid4().hex, 'criado_em': instante, 'atualizado_em': instante,
@@ -441,10 +424,9 @@ def trocar_entrada(pasta, rel, novo, fases=ESTEIRA):
         if de_fonte and (len(Path(rel).parts) != 3 or Path(rel).name.startswith(PREFIXO_TEMPORARIO)):  # numero-neutro: entrada/fontes/<arquivo>
             raise ErroJob('A fonte entra direto em entrada/fontes/, sem subpasta.', codigo=Codigo.USO,
                           o_que_fazer='Use entrada/fontes/<nome do arquivo>.')
-        if rel not in estado['entradas'] and not de_fonte and rel != 'entrada/licencas.json' \
-                and not rel.startswith(('entrada/campanha/', 'entrada/specs/')):
+        if rel not in estado['entradas'] and not de_fonte and not rel.startswith(('entrada/campanha/', 'entrada/specs/')):
             raise ErroJob('Só dá para trocar uma entrada que já existe ou acrescentar em entrada/campanha, '
-                          'entrada/specs, entrada/fontes ou entrada/licencas.json.',
+                          'entrada/specs ou entrada/fontes.',
                           codigo=Codigo.USO, o_que_fazer='Confira o caminho com "desdobra job estado".')
         # no Windows (e no disco padrao do Mac) dois nomes que so diferem na caixa sao o mesmo arquivo: a mesma
         # conferencia casefold do job criar evita que o arquivo novo escreva por cima de outra entrada
@@ -457,8 +439,6 @@ def trocar_entrada(pasta, rel, novo, fases=ESTEIRA):
             raise ErroJob('O arquivo novo não foi encontrado.', o_que_fazer='Confira o caminho do arquivo novo.')
         if de_fonte:
             validar_fonte(novo, pasta / 'fontes' / '.trabalho-troca')
-        elif rel == 'entrada/licencas.json':
-            validar_licencas(novo)
         elif eh_arquivo_de_fonte(novo):
             raise ErroJob('O arquivo novo é um arquivo de fonte, ou um pacote com fonte dentro. Fonte só entra em '
                           'entrada/fontes/.',

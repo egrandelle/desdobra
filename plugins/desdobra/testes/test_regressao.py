@@ -630,4 +630,4 @@ def test_textos_da_regressao_e_da_cor_atualizados():
     from desdobra.regressao import comparar
     texto = comparar.CAUSAS['b3_fontes_conferidas_no_m2']['descricao']
     assert 'No M1' not in texto and 'segunda passada' in texto
-    assert 'asset de teste do corpus' in cor.__doc__
+    assert 'smart object' in cor.__doc__ and 'revista em 31/10' in cor.__doc__

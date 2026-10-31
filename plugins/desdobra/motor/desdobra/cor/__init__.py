@@ -8,9 +8,10 @@ Regras (arquitetura-v1.md, 4.6):
     e aberto no processo filho isolado (desdobra.cor.filho, arquitetura-v1.md, 7.1), que devolve so numeros ao
     processo principal (converter_isolado e ConversorPronto);
   - documento sem perfil usa a curva sRGB;
-  - asset com perfil diferente do documento recebe o perfil do documento, atribuido e sem converter
-    (decisoes-v1.md, 29/10, 8): no asset de teste do corpus, converter afastaria a peca do aprovado em 14,94 no
-    canal R;
+  - asset com perfil diferente do documento e convertido do perfil dele para o do documento (decisoes-v1.md,
+    29/10, 8, revista em 31/10): no corpus, o pixel que o Photoshop gravou para o smart object bate com a conversao
+    (diferenca ate 0,57), e atribuir afastava ate 9,79 no canal R. A conversao dos pixels e feita no render, no
+    processo filho, porque abre o perfil do asset;
   - o intent da conversao, a compensacao de ponto preto e a escrita "sRGB sem perfil embutido" sao parametros
     explicitos do job (arquitetura-v1.md, 10.2, pergunta 5). Sem parametro do job, vale o padrao do registro de
     limites, que esta a calibrar.
@@ -38,7 +39,7 @@ INTENTS = {
 }
 SIM_NAO = ('sim', 'nao')
 FONTE_CONVERSAO = {'arquivo': 'pesquisa/corpus-testes.md', 'secao': '3'}
-FONTE_ATRIBUIR = {'arquivo': 'decisoes-v1.md', 'secao': '29/10, respostas ao teste do corpus, 8'}
+FONTE_CONVERTER = {'arquivo': 'decisoes-v1.md', 'secao': '29/10, respostas ao teste do corpus, 8, revista em 31/10'}
 FONTE_SEM_PERFIL = {'arquivo': 'arquitetura-v1.md', 'secao': '4.6'}
 
 # perfil do documento -> como o token foi calculado
@@ -411,7 +412,7 @@ def converter_isolado(caminho_icc, parametros, cores, pasta_trabalho, *, plat=No
 
 # ------------------------------------------------------------------ asset com outro perfil
 def tratamento_do_asset(perfil_documento, perfil_asset):
-    """Como o asset entra na peca: sempre com o perfil do documento atribuido, sem converter os pixels.
+    """Como o asset entra na peca: com perfil diferente do documento, os pixels sao convertidos para o do documento.
 
     perfil_documento, perfil_asset: {'nome', 'sha256'} ou None (sem perfil, ou nao lido)."""
     sha_doc = (perfil_documento or {}).get('sha256')
@@ -423,16 +424,9 @@ def tratamento_do_asset(perfil_documento, perfil_asset):
     elif sha_asset == sha_doc:
         tratamento = 'mesmo_perfil'
     else:
-        tratamento = 'atribuir_perfil_do_documento'
-    return {'tratamento': tratamento, 'converte_pixels': False, 'perfil_efetivo': perfil_documento,
-            'fonte': FONTE_ATRIBUIR}
-
-
-def asset_atribuido(img_asset):
-    """Pixels do asset com o perfil do documento atribuido: os numeros ficam como estao (identidade).
-
-    Existe para deixar explicito no codigo que o asset nunca e convertido do perfil dele para o do documento."""
-    return img_asset
+        tratamento = 'converter_para_perfil_do_documento'
+    return {'tratamento': tratamento, 'converte_pixels': tratamento == 'converter_para_perfil_do_documento',
+            'perfil_efetivo': perfil_documento, 'fonte': FONTE_CONVERTER}
 
 
 # ------------------------------------------------------------------ medida de diferenca (registro)

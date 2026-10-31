@@ -10,7 +10,7 @@ aplicar_conferencia, que devolve uma nova versao do laudo (laudo/laudo-fontes.js
     CDP sem resposta, face que nao carregou, mais de um arquivo com o mesmo nome PostScript (o DA tira um) ou
     largura acima do limiar a calibrar (esta ultima e decisao do DA);
   - poe o alerta fonte_conferida_com_aviso quando a conferencia so avisa (par por id unico ou familia e
-    estilo, licenca);
+    estilo, peso do OS/2 diferente do estilo); licenca nao entra (decisoes-v1.md, n. 19);
   - grava a situacao de cada fonte usada (presente, ausente ou divergente), a face e o hash da conferencia. Fonte
     sem arquivo sai ausente mesmo quando so aparece em espaco (ai com so_em_espaco, sem efeito na peca).
 Funcao pura: recebe dicionarios e devolve um dicionario.
@@ -57,7 +57,7 @@ def aplicar_conferencia(laudo, conferencia, sha_conferencia, sha_laudo):
             elif item['situacao'] == 'aviso':
                 c['alertas'].append({'codigo': 'fonte_conferida_com_aviso', 'fonte': FONTE_CONFERENCIA,
                                      'descricao': 'A fonte do trecho passou na conferência com aviso (par fora do name '
-                                                  'ID 6 ou licença). Veja fontes/conferencia.json.',
+                                                  'ID 6 ou peso). Veja fontes/conferencia.json.',
                                      'medida': {'fonte_ps': item['nome_ps'], 'face_id': item['face_id'],
                                                 'motivos': sorted({m['codigo'] for m in item['motivos']
                                                                    if m['situacao'] == 'aviso'})}})

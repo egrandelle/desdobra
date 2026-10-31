@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:desdobra:schema:leitura-fonte:1",
   "title": "Leitura de um arquivo de fonte pelo processo filho (leitura-fonte/1)",
-  "description": "Gravado por desdobra.fontes.filho em fontes/bruto/<sha256>/leitura.json. So nomes, metricas, a cobertura do cmap em faixas de codigos Unicode e codigos de marcas de licenca. Nunca contorno, glifo, atlas nem bytes da fonte.",
+  "description": "Gravado por desdobra.fontes.filho em fontes/bruto/<sha256>/leitura.json. So nomes, metricas e a cobertura do cmap em faixas de codigos Unicode. Nunca contorno, glifo, atlas nem bytes da fonte.",
   "type": "object",
   "additionalProperties": false,
   "required": ["esquema", "leitor", "origem", "formato", "situacao", "recusa", "faces", "auditoria"],
@@ -57,7 +57,7 @@
     "face": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["indice", "nomes", "contornos", "n_glifos", "head", "hhea", "os2", "cmap", "n_codigos", "marcas", "colecao"],
+      "required": ["indice", "nomes", "contornos", "n_glifos", "head", "hhea", "os2", "cmap", "n_codigos", "colecao"],
       "properties": {
         "indice": {"type": "integer", "minimum": 0, "description": "Posicao da face na colecao (0 fora de TTC)"},
         "nomes": {
@@ -112,11 +112,6 @@
           "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 0}}
         },
         "n_codigos": {"type": "integer", "minimum": 0},
-        "marcas": {
-          "type": "array",
-          "description": "Marcas de licenca achadas no arquivo pelas expressoes do registro de limites: kit_web, proibe_desktop, ofl, fs_type_restrito",
-          "items": {"enum": ["kit_web", "proibe_desktop", "ofl", "fs_type_restrito"]}
-        },
         "colecao": {
           "oneOf": [
             {"type": "null"},

@@ -75,15 +75,16 @@ def _fase_ds(anteriores):
 
 
 # M2, fontes (arquitetura-v1.md, 4.4 e 4.5): a conferencia contra o arquivo enviado em entrada/fontes/ e a
-# segunda passada do laudo. A troca de um arquivo de fonte ou de entrada/licencas.json invalida so estas duas
+# segunda passada do laudo. A troca de um arquivo de fonte invalida so estas duas
 # fases (e as que dependem delas); a leitura do PSD fica como esta.
 FASE_FONTES = Fase(
     id='fontes', tipo='fase', descricao='Conferência das fontes contra os arquivos enviados',
-    entradas=('entrada/fontes', 'entrada/licencas.json'), depende_de=('ler',),
-    saidas=('fontes/conferencia.json', 'manifesto-licenca.json'),
+    entradas=('entrada/fontes',), depende_de=('ler',),
+    saidas=('fontes/conferencia.json',),
     comando=comando_motor('fontes', 'conferir'),
     # arquivo faltando, nome sem par, glifo faltando e fallback param o job (arquitetura-v1.md, 4.5); divergencia
-    # de largura e licenca liberavel pedem decisao do DA. Os dois casos ficam no estado ate a fase rodar sem bloqueio
+    # de largura pede decisao do DA. Os dois casos ficam no estado ate a fase rodar sem bloqueio. Licenca nao entra
+    # no portao (decisoes-v1.md, n. 19)
     bloqueio_persiste=True,
     o_que_fazer='A conferência de fontes falhou. Rode "desdobra fontes conferir --job <pasta>" para ver o motivo no '
                 'terminal, "desdobra job estado" para ver o código e "desdobra doctor" para conferir o ambiente.')
@@ -100,9 +101,8 @@ ESTEIRA = FASES_M2
 
 FIM_M1 = ('O laudo está pronto em laudo/laudo.json. As próximas fases (fontes, specs, design system e briefing) '
           'entram nos marcos seguintes.')
-FIM_M2 = ('O laudo, a conferência de fontes (fontes/conferencia.json, laudo/laudo-fontes.json e o rascunho de '
-          'manifesto-licenca.json) e o design system da peça estão prontos. As próximas fases (specs e briefing) '
-          'entram nos marcos seguintes.')
+FIM_M2 = ('O laudo, a conferência de fontes (fontes/conferencia.json e laudo/laudo-fontes.json) e o design system '
+          'da peça estão prontos. As próximas fases (specs e briefing) entram nos marcos seguintes.')
 FIM = FIM_M2
 
 

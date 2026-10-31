@@ -11,9 +11,9 @@ Neste marco, a skill cria o job com o KV e as fontes e roda a esteira do M2, que
 Regras desta skill:
 - Nunca calcule geometria, posição, escala, corpo ou limite. Quem mede é o motor.
 - Nunca dispare render nem aprovação.
-- Nunca leia, abra ou copie o PSD, o PSB, arquivo de fonte, arquivo de licenças ou imagem do job. Você só passa os caminhos para o motor.
-- Nunca leia `laudo/laudo.json`, `laudo/laudo-fontes.json`, `fontes/conferencia.json`, `manifesto-licenca.json`, `ds/design-system.json` nem outro arquivo da pasta do job. Tudo o que você sabe do job vem do envelope que o motor imprime.
-- Nunca escolha o modo de dados pelo DA, nem valor de teto, canal de licença, liberação de licença ou parâmetro de cor.
+- Nunca leia, abra ou copie o PSD, o PSB, arquivo de fonte ou imagem do job. Você só passa os caminhos para o motor.
+- Nunca leia `laudo/laudo.json`, `laudo/laudo-fontes.json`, `fontes/conferencia.json`, `ds/design-system.json` nem outro arquivo da pasta do job. Tudo o que você sabe do job vem do envelope que o motor imprime.
+- Nunca escolha o modo de dados pelo DA, nem valor de teto ou parâmetro de cor.
 - Nunca mande o DA instalar fonte no sistema. A fonte entra no job só pelo arquivo enviado, e o motor confere a fonte contra esse arquivo.
 
 ## Passos
@@ -30,16 +30,16 @@ Regras desta skill:
      - a fonte entra só por essa entrada. Arquivo de fonte (ou pacote com fonte) dentro da pasta de campanha ou de specs é recusado;
      - numa pasta, dois arquivos com o mesmo nome dão erro, porque o job guarda as fontes lado a lado. Os arquivos que o sistema grava sozinho (`.DS_Store`, `Thumbs.db`, `desktop.ini` e os `._*` do Mac) ficam de fora sem erro;
      - se o DA não tiver as fontes agora, o job pode ser criado sem elas, mas a conferência vai marcar as camadas de texto como fonte faltando, e o DA acrescenta os arquivos depois;
-   - o arquivo de licenças das fontes, chamado de LICENCAS, se o DA ou a agência tiverem um (contrato `licencas-fontes/1`, um registro por sha256 do arquivo de fonte, com o canal de compra, a EULA e, quando for o caso, a liberação do DA com justificativa). Explique que, sem esse arquivo, toda face que não declara a OFL sai com canal desconhecido e fica bloqueante até o DA informar o canal. Você não preenche nem edita esse arquivo: quem informa os dados de licença é o DA;
+     - o desdobra trata toda fonte enviada como fonte com direito de uso, e a responsabilidade pela licença é da agência ou do usuário. O motor não pede arquivo de licenças e não bloqueia nem avisa por licença. Não pergunte ao DA sobre licença;
    - o modo de dados deste job, chamado de MODO. Mostre só os modos permitidos pelo TETO: com teto `a`, os modos a, b e c; com teto `b`, os modos b e c; com teto `c`, só o c. Explique cada um:
      - a: você vê nomes e textos das camadas e as miniaturas das camadas sem texto;
      - b: você vê nomes e textos das camadas, sem nenhuma imagem;
      - c: você vê só contagens, estados e números do motor.
    Não sugira um modo e não siga sem a resposta do DA.
-5. Crie o job, numa linha só, pela ferramenta Bash (na ferramenta PowerShell, ponha `& ` antes do caminho entre aspas). Ponha cada caminho de FONTES entre aspas, um depois do outro, logo após `--fontes`. Sem fontes, tire `--fontes`; sem arquivo de licenças, tire `--licencas`. Como cada fonte é conferida num processo isolado antes de entrar, use timeout de 600000 ms:
+5. Crie o job, numa linha só, pela ferramenta Bash (na ferramenta PowerShell, ponha `& ` antes do caminho entre aspas). Ponha cada caminho de FONTES entre aspas, um depois do outro, logo após `--fontes`. Sem fontes, tire `--fontes`. Como cada fonte é conferida num processo isolado antes de entrar, use timeout de 600000 ms:
 
    ```
-   "PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job criar "PASTA" --kv "PSD" --modo-dados MODO --fontes "FONTE1" "FONTE2" --licencas "LICENCAS"
+   "PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job criar "PASTA" --kv "PSD" --modo-dados MODO --fontes "FONTE1" "FONTE2"
    ```
 
    Se o `codigo` do envelope não for `0`, diga ao DA o `o_que_fazer` e pare. Na recusa de fonte, o `o_que_fazer` diz quais formatos entram.
@@ -82,15 +82,12 @@ Regras desta skill:
    - `contagens.larguras_divergentes`: linhas em que a largura medida no navegador passou do limite de divergência contra a caixa do PSD (`numeros.largura_erro_max_pct` é a maior diferença, em porcentagem). Esse caso pede decisão do DA, sem reprovação automática: pode ser outra versão da fonte ou um ajuste manual no PSD. Você não decide.
    - `contagens.cdp_confere` e `contagens.cdp_diverge`: em quantos pares o navegador confirmou que desenhou com a face enviada, e em quantos entrou outra face.
    - `contagens.chromium_feito` igual a 0: a medição no navegador não rodou, e as camadas ficam sem essa conferência. Peça ao DA para rodar `/desdobra:doctor`.
-   - `contagens.faces_bloqueantes` e `contagens.faces_aviso`: faces com bloqueio ou aviso, de técnica ou de licença. O detalhe de cada face fica em `fontes/conferencia.json` e no rascunho `manifesto-licenca.json` da pasta do job, que só o DA abre. Explique os casos de licença:
-     - bloqueio de licença, que só o DA libera, informando o canal ou a liberação com justificativa no arquivo de licenças: canal desconhecido (o canal de compra não foi informado), kit web (o arquivo é um build para web) e build que proíbe uso desktop. Fonte do Adobe Fonts também bloqueia, e esse bloqueio nenhuma liberação tira: o DA traz o arquivo desktop por outro canal licenciado;
-     - aviso de licença, quando a EULA informada proíbe `@font-face` ou servidor web: o job segue, o aviso fica no manifesto, e a responsabilidade pela licença é da agência;
-     - você não faz parecer jurídico e não escolhe canal nem liberação pelo DA.
+   - `contagens.faces_bloqueantes` e `contagens.faces_aviso`: faces com bloqueio ou aviso técnico (face que não carregou no navegador, outra face no navegador, coleção que não dá para servir, peso do arquivo diferente do nome do estilo). O detalhe de cada face fica em `fontes/conferencia.json` da pasta do job, que só o DA abre.
    - `contagens.fontes_fora_da_entrada` maior que zero: há arquivo de fonte na pasta do job fora de `entrada/fontes/`. Diga isso ao DA.
 
    Fase `laudo-fontes` (a segunda passada do laudo, gravada em `laudo/laudo-fontes.json`; o laudo da primeira passada não muda):
    - `contagens.camadas`, `contagens.lidas`, `contagens.degradadas` e `contagens.bloqueantes`: o laudo de novo, agora com a conferência de fontes.
-   - `contagens.b3_fontes`: camadas que ficaram bloqueantes pela fonte (fonte faltando, sem par, glifo faltando, outra face no navegador, face que não carregou ou largura divergente). Bloqueio só de licença não entra nessa conta: fica na conferência e no manifesto.
+   - `contagens.b3_fontes`: camadas que ficaram bloqueantes pela fonte (fonte faltando, sem par, glifo faltando, outra face no navegador, face que não carregou ou largura divergente).
    - `contagens.fontes_presentes`, `contagens.fontes_ausentes` e `contagens.fontes_divergentes`: como saiu cada fonte usada no PSD.
    - Nos modos a e b, `conteudo.camadas` traz a situação nova de cada camada. No modo c, fale só de contagens.
 
@@ -99,13 +96,12 @@ Regras desta skill:
    - `contagens.tipografia` e `contagens.tipografia_com_metricas`: tokens de tipografia e quantos têm as métricas da face conferida.
    - `contagens.medidas`, `contagens.limites` e `contagens.pendencias`: medidas por camada, limites que o job usa e pendências do design system.
    - `contagens.sujeito_alfa` e `contagens.sujeito_pedir_ao_da`: em quantas camadas o motor achou a caixa do sujeito pelo recorte, e em quantas o sujeito está fundido à foto e o DA marca a caixa no briefing.
-   - `contagens.assets_perfil_atribuido`: imagens com outro perfil de cor, que recebem o perfil do documento sem converter os pixels.
+   - `contagens.assets_perfil_convertido`: imagens com outro perfil de cor, que são convertidas para o perfil do documento, como o Photoshop faz no próprio KV.
    - Os parâmetros de cor da saída (intent, compensação de ponto preto e perfil embutido) são decisão do DA. Sem decisão dele, vale o padrão do registro, que ainda é um valor a calibrar. Diga isso ao DA e, se ele quiser mudar, explique as opções sem recomendar nenhuma: intent `perceptual`, `relativo_colorimetrico`, `saturacao` ou `absoluto_colorimetrico`; compensação de ponto preto `sim` ou `nao`; perfil sRGB embutido na saída `sim` ou `nao`. Só com os valores dados por ele, rode `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO ds parametros-cor --job "PASTA"` com as opções que ele escolheu (`--intent X`, `--compensacao-ponto-preto sim|nao`, `--perfil-embutido sim|nao`) e depois `job proxima` de novo, que monta o design system com os parâmetros novos.
-8. Quando o DA quiser resolver um bloqueio de fonte ou de licença, peça a ele o caminho do arquivo novo e rode, com timeout de 600000 ms:
+8. Quando o DA quiser resolver um bloqueio de fonte, peça a ele o caminho do arquivo novo e rode, com timeout de 600000 ms:
    - para acrescentar ou trocar uma fonte: `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job trocar-entrada "PASTA" "entrada/fontes/NOME" "ARQUIVO"`, em que NOME é o nome do arquivo de fonte;
-   - para o arquivo de licenças: `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job trocar-entrada "PASTA" "entrada/licencas.json" "ARQUIVO"`;
    - para tirar uma fonte do job (por exemplo, quando dois arquivos têm o mesmo nome PostScript e o DA escolhe qual vale), sem arquivo novo: `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job remover-entrada "PASTA" "entrada/fontes/NOME"`. Quem escolhe o arquivo é o DA.
    Para trocar uma fonte, NOME tem de ser o nome do arquivo que já está no job, com as mesmas maiúsculas e minúsculas: um nome que só difere na caixa é recusado. Se o `codigo` não for `0`, diga ao DA o `o_que_fazer`. Senão, volte ao passo 6: a troca ou a remoção invalida só as fases `fontes`, `laudo-fontes` e `ds`, e a leitura do PSD fica como está.
-9. Pare quando a esteira estiver concluída ou o DA quiser parar. Diga ao DA o que foi gravado na pasta do job: o laudo da leitura em `laudo/laudo.json`, a conferência de fontes em `fontes/conferencia.json`, o rascunho do manifesto de licenças em `manifesto-licenca.json`, o laudo com a conferência em `laudo/laudo-fontes.json` e o design system e os limites em `ds/design-system.json` e `ds/limites.json` (só os das fases que rodaram). Diga também que as próximas fases (specs, render e tela de briefing) entram nos próximos marcos.
+9. Pare quando a esteira estiver concluída ou o DA quiser parar. Diga ao DA o que foi gravado na pasta do job: o laudo da leitura em `laudo/laudo.json`, a conferência de fontes em `fontes/conferencia.json`, o laudo com a conferência em `laudo/laudo-fontes.json` e o design system e os limites em `ds/design-system.json` e `ds/limites.json` (só os das fases que rodaram). Diga também que as próximas fases (specs, render e tela de briefing) entram nos próximos marcos.
 
 Lembre o DA de não usar `/feedback`, `/bug` nem `/share` numa sessão com job de cliente, porque esses comandos enviam a conversa.
