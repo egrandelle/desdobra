@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Gancho SessionStart e script de preparo do ambiente (scripts/preparar_ambiente.py).
 
-Nada aqui instala pacote: o executor de comandos e trocado por um falso, que so registra o pedido e cria o
-arquivo do Python do venv. O teste pela linha de comando usa um registro que recusa a versao do Python, para o
+Nada aqui instala pacote nem baixa o Chromium: o executor de comandos e trocado por um falso, que so registra o
+pedido e cria o arquivo do Python do venv, o browsers.json do Playwright e a marca de instalacao do headless shell. O teste pela linha de comando usa um registro que recusa a versao do Python, para o
 script parar antes de criar qualquer coisa.
 """
 import importlib.util
@@ -43,20 +43,37 @@ def _raiz_falsa(pasta, lock='aggdraw==1.4.1 \\\n    --hash=sha256:aa\n', aceitas
     return pasta
 
 
+REVISAO_FALSA = '1217'
+
+
 class Executor:
     """Executor falso: registra cada etapa pelo argv e simula o que o comando deixaria no disco."""
 
-    def __init__(self, falhar_em=None):
+    def __init__(self, falhar_em=None, chromium_ok=True):
         self.etapas = []
         self.falhar_em = falhar_em
+        self.chromium_ok = chromium_ok
+        self.ambientes = {}
 
-    def __call__(self, argv, log):
+    def __call__(self, argv, log, ambiente=None):
         argv = [str(a) for a in argv]
         if argv[1:3] == ['-I', '-m'] and argv[3] == 'venv':
             etapa = 'venv'
             python = pa.python_do_venv(Path(argv[4]))
             python.parent.mkdir(parents=True, exist_ok=True)
             python.write_bytes(b'')
+            pacote = Path(argv[4]) / 'Lib' / 'site-packages' / 'playwright' / 'driver' / 'package'
+            pacote.mkdir(parents=True, exist_ok=True)
+            (pacote / 'browsers.json').write_text(json.dumps({'browsers': [
+                {'name': 'chromium-headless-shell', 'revision': REVISAO_FALSA}]}), encoding='utf-8')
+        elif argv[2:5] == ['-m', 'playwright', 'install']:
+            etapa = 'chromium'
+            assert argv[5:] == ['--only-shell', 'chromium']
+            pasta = Path(ambiente['PLAYWRIGHT_BROWSERS_PATH'])
+            if self.chromium_ok:
+                marca = pasta / ('chromium_headless_shell-%s' % REVISAO_FALSA) / 'INSTALLATION_COMPLETE'
+                marca.parent.mkdir(parents=True, exist_ok=True)
+                marca.write_bytes(b'')
         elif 'pip' in argv and '-r' in argv:
             etapa = 'pip_lock'
             assert '--require-hashes' in argv and '--only-binary=:all:' in argv and '--no-deps' in argv
@@ -70,6 +87,7 @@ class Executor:
         else:
             raise AssertionError(argv)
         self.etapas.append(etapa)
+        self.ambientes[etapa] = dict(ambiente or {})
         if etapa == self.falhar_em:
             return 1, 'erro simulado'
         return 0, 'desdobra 0.1.0\n' if etapa == 'conferir' else 'ok'
@@ -89,7 +107,7 @@ def test_primeira_sessao_cria_o_ambiente(raiz, dados):
     ex = Executor()
     linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
     assert linha.startswith('ambiente Python criado em')
-    assert ex.etapas == ['venv', 'pip_lock', 'motor', 'conferir', 'pip_check']
+    assert ex.etapas == ['venv', 'pip_lock', 'motor', 'conferir', 'pip_check', 'chromium']
     interp = json.loads((dados / 'interpretador.json').read_text(encoding='utf-8'))
     assert interp['esquema'] == 'interpretador/1'
     assert pa.mesmo_caminho(interp['python'], pa.python_do_venv(dados / 'venv'))
@@ -126,6 +144,42 @@ def test_lock_mudado_recria_o_ambiente(raiz, dados):
     ex = Executor()
     pa.preparar(raiz, dados, executar=ex, python_base='python-base')
     assert ex.etapas[0] == 'venv' and len(ex.etapas) == 5
+
+
+# ------------------------------------------------------------------ Chromium fixado (simulado, sem download)
+def test_chromium_fixado_e_baixado_uma_vez_para_a_pasta_de_dados(raiz, dados):
+    ex = Executor()
+    pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert ex.etapas[-1] == 'chromium'
+    assert pa.mesmo_caminho(ex.ambientes['chromium']['PLAYWRIGHT_BROWSERS_PATH'], dados / 'ms-playwright')
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    etapa = preparo['etapas'][-1]
+    assert etapa['etapa'] == 'chromium' and etapa['baixado'] is True and isinstance(etapa['tempo_s'], float)
+    assert preparo['chromium'] == {'situacao': 'baixado', 'revisao': REVISAO_FALSA}
+    assert pa.chromium_presente(dados, REVISAO_FALSA)
+    # ja presente: a sessao seguinte nao baixa de novo
+    ex = Executor()
+    assert 'sem mudança' in pa.preparar(raiz, dados, executar=ex, python_base='python-base') and ex.etapas == []
+
+
+def test_ambiente_pronto_sem_o_chromium_so_baixa_o_chromium(raiz, dados):
+    import shutil
+    pa.preparar(raiz, dados, executar=Executor(), python_base='python-base')
+    shutil.rmtree(dados / 'ms-playwright')
+    ex = Executor()
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert ex.etapas == ['chromium'] and 'Chromium' in linha
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    assert preparo['acao'] == 'chromium' and preparo['etapas'][0]['baixado'] is True
+
+
+def test_falha_no_download_do_chromium_avisa_e_nao_desfaz_o_ambiente(raiz, dados):
+    ex = Executor(chromium_ok=False)
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert 'Chromium' in linha and '/desdobra:doctor' in linha
+    assert (dados / 'interpretador.json').exists()
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    assert preparo['situacao'] == 'ok' and preparo['chromium']['situacao'] == 'falhou'
 
 
 def test_falha_no_pip_nao_grava_interpretador_e_a_proxima_sessao_tenta_de_novo(raiz, dados):

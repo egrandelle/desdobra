@@ -117,6 +117,67 @@ def info_icc(psd):
     return out
 
 
+def dados_icc(psd):
+    """Bytes do perfil ICC do documento (recurso 1039), ou None. O filho grava em documento.icc para o modulo de
+    cor (desdobra.cor), que converte os descritores sem abrir o PSD no processo principal."""
+    if Resource.ICC_PROFILE not in psd.image_resources:
+        return None
+    dados = psd.image_resources.get_data(Resource.ICC_PROFILE)
+    return bytes(dados) if dados else None
+
+
+def _cor_bruta(d):
+    """Descritor de cor do Photoshop como fato: classe (RGBC, HSBC, LbCl, CMYC, Grsc, BkCl) e valores, sem
+    conversao. A conversao pelo perfil do documento e do desdobra.cor."""
+    if d is None or not hasattr(d, 'items'):
+        return None
+    cls = getattr(d, 'classID', None)
+    cls = getattr(cls, 'value', cls)
+    valores = {}
+    for k, v in d.items():
+        k = getattr(k, 'value', k)
+        valores[str(s(k)).strip()] = plain(v)
+    return {'classe': str(s(cls)).strip() if cls is not None else None, 'valores': valores}
+
+
+def descritores_cor(L, efeitos):
+    """Cores de preenchimento (SoCo, vscg), traco de forma (vstk), overlay e traco de efeito, no espaco do
+    documento. A cor do texto fica nos trechos (cor_valores)."""
+    out = []
+
+    def juntar(descritor, d, ativo, **extra):
+        cor = _cor_bruta(d)
+        if cor is not None:
+            out.append(dict(cor, descritor=descritor, ativo=bool(ativo), **extra))
+
+    try:
+        if L.kind == 'solidcolorfill':
+            juntar('preenchimento', L.data, True, bloco='SoCo')
+        if Tag.VECTOR_STROKE_CONTENT_DATA in L.tagged_blocks:
+            v = L.tagged_blocks.get_data(Tag.VECTOR_STROKE_CONTENT_DATA)
+            vstk = L.tagged_blocks.get_data(Tag.VECTOR_STROKE_DATA) if Tag.VECTOR_STROKE_DATA in L.tagged_blocks else None
+            preenche = plain(desc_get(vstk, b'fillEnabled')) if vstk is not None else None
+            juntar('preenchimento', desc_get(v, b'Clr '), preenche is not False, bloco='vscg')
+        if Tag.VECTOR_STROKE_DATA in L.tagged_blocks:
+            vstk = L.tagged_blocks.get_data(Tag.VECTOR_STROKE_DATA)
+            conteudo = desc_get(vstk, b'strokeStyleContent')
+            juntar('traco_forma', desc_get(conteudo, b'Clr '), bool(plain(desc_get(vstk, b'strokeEnabled'))),
+                   bloco='vstk', largura=num(plain(desc_get(vstk, b'strokeStyleLineWidth')), 4))
+    except Exception:
+        pass
+    try:
+        fx = L.effects if efeitos else None
+        for i, e in enumerate(fx or []):
+            tipo = type(e).__name__
+            if tipo not in ('ColorOverlay', 'Stroke'):
+                continue
+            juntar('overlay' if tipo == 'ColorOverlay' else 'traco', getattr(e, 'color', None),
+                   bool(fx.enabled and e.enabled), efeito=tipo, indice_efeito=i)
+    except Exception:
+        pass
+    return out
+
+
 def info_version(psd):
     vi = psd.image_resources.get_data(Resource.VERSION_INFO)
     if not vi:
@@ -643,6 +704,7 @@ def metadados(L, i, psd, base_de, contexto):
     else:
         reg['ajuste'] = None
     reg['preenchimento_tipo'] = L.kind if isinstance(L, FillLayer) else None
+    reg['cores_descritores'] = descritores_cor(L, bool(reg.get('efeitos')))
     reg['smart_object'] = None
     if L.kind == 'smartobject':
         try:

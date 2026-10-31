@@ -1,6 +1,6 @@
 {
   "name": "desdobra",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Desdobra peças de mídia estática (OOH, DOOH e banner digital) a partir do PSD do KV, com leitura isolada do arquivo, laudo camada por camada e confirmação do diretor de arte em cada decisão.",
   "author": {
     "name": "Trezion"

@@ -8,6 +8,15 @@ aggdraw==1.4.1 \
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309
     # attrs-26.1.0-py3-none-any.whl
+brotli==1.2.1 \
+    --hash=sha256:972a2e19dbaab47d0aa77c1d07f71c930bdc53538f2b33decc905e92a4be5cbd
+    # brotli-1.2.1-cp314-cp314-win_amd64.whl
+fonttools==4.68.0 \
+    --hash=sha256:1782f2cf952eb262c4126b1f57b5f0e027e71bf2b632350a033dec526f448428
+    # fonttools-4.68.0-cp314-cp314-win_amd64.whl
+greenlet==3.5.6 \
+    --hash=sha256:f8f0bd690e1a41294ac87905e8121c81a3761ec2583c768f13467428606c8c7a
+    # greenlet-3.5.6-cp314-cp314-win_amd64.whl
 jsonschema==4.26.0 \
     --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
     # jsonschema-4.26.0-py3-none-any.whl
@@ -20,9 +29,15 @@ numpy==2.5.4 \
 pillow==13.0.0 \
     --hash=sha256:f7cbb7a64e7ec664775195e4f81923bc8a93d9451b963f844e59118f63147a7a
     # pillow-13.0.0-cp314-cp314-win_amd64.whl
+playwright==1.59.0 \
+    --hash=sha256:d5a5cc064b82ca92996080025710844e417f44df8fda9001102c28f44174171c
+    # playwright-1.59.0-py3-none-win_amd64.whl
 psd-tools==1.26.0 \
     --hash=sha256:b40160e320360decc55944c22115922fa2aa7927d23c7fdfdd5ecba10d722c2c
     # psd_tools-1.26.0-cp314-cp314-win_amd64.whl
+pyee==13.0.1 \
+    --hash=sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228
+    # pyee-13.0.1-py3-none-any.whl
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231
     # referencing-0.37.0-py3-none-any.whl
@@ -32,3 +47,9 @@ rpds-py==2026.9.1 \
 scipy==1.18.1 \
     --hash=sha256:78a0d7c918e74a232394117160e7e3db503377572a45bcef8826e4ab8a35feba
     # scipy-1.18.1-cp314-cp314-win_amd64.whl
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+    # typing_extensions-4.16.0-py3-none-any.whl
+zopfli==0.4.3 \
+    --hash=sha256:921c2c9907f4364963848da5ad194b46d68865e07fdb975d04fd09bc42d47357
+    # zopfli-0.4.3-cp310-abi3-win_amd64.whl

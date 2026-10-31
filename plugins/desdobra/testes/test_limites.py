@@ -250,3 +250,15 @@ def test_limites_que_decidem_o_codigo_declaram_o_efeito_real():
 
 def test_limite_sem_numero_na_fonte_fica_a_calibrar():
     assert limites.obter('quadros.fracao_canvas_grupo_topo').situacao == 'a_calibrar'
+
+
+# ------------------------------------------------------------------ correcoes da revisao do M2
+def test_novos_limites_da_cor_tem_fonte():
+    for lid in ('cor.fator_abertura_max', 'cor.tempo_max_s'):
+        assert limites.obter(lid).fonte is not None
+
+
+def test_limites_do_chromium_tem_fonte_e_nota_de_origem():
+    for lid in ('chromium.corpo_medicao_px', 'chromium.tempo_max_s'):
+        lim = limites.obter(lid)
+        assert lim.fonte is not None and lim.situacao == 'a_calibrar' and 'Origem:' in lim.nota

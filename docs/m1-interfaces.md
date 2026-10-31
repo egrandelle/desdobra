@@ -21,7 +21,7 @@ Cada agente só edita o que é dele. Para mudar um arquivo compartilhado, o agen
 ## 2. Regras que valem para todos
 
 1. **PSD de cliente só no processo filho.** O processo principal nunca chama `PSDImage.open` em arquivo de cliente. Ele pode ler os 4 primeiros bytes (`8BPS`) para recusar um arquivo errado, com `desdobra.arquivos.tem_assinatura_psd`. Nunca use `smart_object.open()` nem `SmartObject.save()`. Leia `.data` só quando `kind == 'data'`, e abra sempre com `PSDImage.open(io.BytesIO(dados), ...)`. Nunca siga `fullPath` nem `relPath` de linkado.
-2. **Fonte.** Nenhum código lê, copia, guarda ou serve arquivo de fonte. `desdobra.arquivos.eh_arquivo_de_fonte` reconhece fonte pela extensão e pelos 4 primeiros bytes; o job recusa fonte nas entradas. Pacote é reconhecido pela assinatura (zip `PK`, tar com `ustar` na posição 257, gzip `1f 8b`, bzip2, xz, 7z, rar e zstd) e pela extensão. Zip e tar são inspecionados sem extrair (nomes e primeiros bytes de cada membro, na memória) e são recusados quando têm membro com nome ou assinatura de fonte ou outro pacote dentro; pacote comprimido ou ilegível, que não dá para inspecionar sem extrair, também é recusado.
+2. **Fonte.** Arquivo de fonte só entra no job pela entrada própria `entrada/fontes/` (M2, seção "M2: fontes"), só é parseado no processo filho isolado (`desdobra.fontes.filho`) e só chega ao Chromium pela rota própria do servidor local. Fora disso, nenhum código lê, copia, guarda ou serve arquivo de fonte. `desdobra.arquivos.eh_arquivo_de_fonte` reconhece fonte pela extensão e pelos 4 primeiros bytes; o job recusa fonte em todas as outras entradas (`--campanha`, `--specs`, KV). Pacote é reconhecido pela assinatura (zip `PK`, tar com `ustar` na posição 257, gzip `1f 8b`, bzip2, xz, 7z, rar e zstd) e pela extensão. Zip e tar são inspecionados sem extrair (nomes e primeiros bytes de cada membro, na memória) e são recusados quando têm membro com nome ou assinatura de fonte ou outro pacote dentro; pacote comprimido ou ilegível, que não dá para inspecionar sem extrair, também é recusado.
 3. **Material de cliente fora do repositório.** Teste usa só PSD sintético gerado na hora. Nenhum nome de camada, texto de peça, nome de cliente ou marca, nem caminho do corpus, em código, teste, comentário ou documento. O corpus entra por argumento da CLI.
 4. **Número de regra só pelo registro.** Ver a seção 6.
 5. **Gravação atômica.** Todo arquivo do job é gravado por `desdobra.arquivos.gravar_bytes_atomico`, `gravar_texto_atomico`, `gravar_json_atomico` ou `desdobra.contratos.gravar` (que valida antes). O temporário tem o prefixo `.tmp-` e fica na mesma pasta.
@@ -78,7 +78,7 @@ Códigos (`Codigo`, um `IntEnum`):
 
 | Módulo | Subcomandos | Dono |
 |---|---|---|
-| `desdobra.job` | `job criar`, `job proxima`, `job estado`, `job trocar-entrada` | fundação |
+| `desdobra.job` | `job criar`, `job proxima`, `job estado`, `job trocar-entrada`, `job remover-entrada` (M2) | fundação |
 | `desdobra.leitor` | `ler` | leitor-laudo |
 | `desdobra.regressao` | `regressao` | saida-regressao |
 | `desdobra.doctor` | `doctor` | plugin |
@@ -191,7 +191,7 @@ Limites já registrados para o M1:
 | `log/eventos.jsonl` | eventos e códigos | todos, por `nucleo.registrar_evento` |
 | `.desdobra.trava` | trava do job enquanto um comando roda | `desdobra.job` |
 
-Toda entrada é congelada: copiada, conferida por sha256 contra a origem, gravada só leitura e registrada em `estado.entradas` com `sha256`, `bytes` e `congelada_em`. Fonte é recusada. `job proxima` confere `entrada/` inteira antes de rodar: arquivo mudado, sumido ou novo dá código 3 com o que fazer. A troca legítima é `job trocar-entrada`.
+Toda entrada é congelada: copiada, conferida por sha256 contra a origem, gravada só leitura e registrada em `estado.entradas` com `sha256`, `bytes` e `congelada_em`. Fonte só entra em `entrada/fontes/` (M2); nas outras entradas é recusada. `job proxima` confere `entrada/` inteira antes de rodar: arquivo mudado, sumido ou novo dá código 3 com o que fazer. A troca legítima é `job trocar-entrada`.
 
 ### 7.2 Comandos
 
@@ -201,6 +201,7 @@ desdobra job criar <pasta> --kv <arquivo> --modo-dados {a,b,c} [--teto-modo-dado
 desdobra job proxima <pasta> [--todas]      (ou --job <pasta>)
 desdobra job estado <pasta>
 desdobra job trocar-entrada <pasta> <entrada/...> <arquivo_novo>
+desdobra job remover-entrada <pasta> entrada/fontes/<arquivo>      (M2)
 ```
 
 `--modo-dados` é obrigatório e não tem valor inicial. Com `--teto-modo-dados`, um modo mais aberto que o teto é recusado. O teto pode vir depois de `criar` ou como opção global antes do subcomando; sem a opção depois de `criar`, vale a global.
@@ -212,6 +213,8 @@ desdobra job trocar-entrada <pasta> <entrada/...> <arquivo_novo>
 - `entradas` e `saidas` são padrões glob relativos à pasta do job;
 - o hash de uma fase cobre as `entradas` dela e as `saidas` das fases em `depende_de`, cada padrão com o próprio sha256 (arquivo: sha256 do arquivo; pasta ou vários arquivos: sha256 da lista ordenada de caminho e sha256);
 - uma fase está válida quando está `concluida`, os hashes de agora batem com os gravados e as fases de que depende estão válidas. Mudar uma entrada invalida a fase que a usa e, em cadeia, as que dependem dela; as outras ficam como estão. Se a fase de cima roda de novo e grava a mesma saída, a de baixo volta a valer sem rodar. As saídas da própria fase também contam: ao concluir, a fase grava `hash_saidas`, e saída apagada ou mudada depois disso invalida a fase.
+
+Bloqueio que fica no estado (M2): a fase com `bloqueio_persiste` (hoje só `fontes`) que termina com `situacao` `ok_com_bloqueio` grava em `fases.<id>.bloqueio` a situação, o `o_que_fazer` e as contagens inteiras do envelope dela. O bloqueio só sai quando a fase roda de novo sem ele (o DA troca ou remove a entrada, ou libera a licença em `entrada/licencas.json`); invalidar a fase também o tira. Enquanto uma fase válida tem bloqueio, o job não fica concluído: com todas as fases em dia, `proxima.tipo` é `bloqueio` (com a fase e o `o_que_fazer` dela), o `job proxima` sai com `situacao` `ok_com_bloqueio`, código 0, `fase` da fase que bloqueou, `contagens.bloqueios_pendentes` e as contagens gravadas, mesmo sem rodar nada (`fases_rodadas_agora` 0). Um `job proxima` que roda outra fase com o bloqueio pendente também sai `ok_com_bloqueio`, com o `o_que_fazer` da próxima fase e o do bloqueio. O `job estado` sai `ok_com_bloqueio`, com `contagens.bloqueios_pendentes` e a linha `<fase>: concluida com bloqueio pendente`.
 
 `job proxima` acha a primeira fase inválida e:
 - se é portão cumprido, marca concluído e segue;
@@ -299,12 +302,12 @@ O esquema completo está em `motor/schemas/laudo-1.json`, com os campos de `arqu
 - as regras são B1 a B3 e D1 a D8 da sonda. A D9 foi aposentada no psd-tools 1.26.0 e o esquema não aceita `D9`;
 - `geometria.coberta_no_kv`: `coberta`, `fracao_coberta`, `ocupa_canvas`, `fracao_canvas`, `limites` e `sugestao_da_regra = {funcao: estrutura | fora_da_peca, regra: decisao-10, fonte}`. A função vem só como sugestão citada; o laudo não tem campo de função;
 - `documento.quadros` e `documento.variantes_ocultas` são entidades; `quadros[].regra` é `pranchetas` ou `grupos_de_topo`;
-- `fontes_usadas[].situacao` é `nao_conferida` no M1, porque a conferência das faces instaladas entra no M2;
+- `fontes_usadas[].situacao` é `nao_conferida` na primeira passada (`desdobra ler`); a segunda passada (fase `laudo-fontes`, seção "M2: fontes") grava `presente`, `ausente` ou `divergente`, conferidos contra o arquivo enviado em `entrada/fontes/`;
 - `prova_pixel.limiar` é a citação do limite `prova_pixel.limiar_diferenca`;
 - `efeitos_suportados` registra a lista de efeitos e ajustes que o psd-tools 1.26.0 desenha, conferida no M1;
 - cada camada tem `alertas` (casos de smart object da pesquisa e os subcasos da antiga D9, que não mudam a situação);
 - `coberta_no_kv` leva a sugestão só em `sugestao_da_regra` (`funcao` `estrutura` ou `fora_da_peca`, a regra e a fonte). A decisão usa as contagens inteiras de pixels da estrutura/1 (`px_cobertos`, `px_visiveis`, `px_area_ref`, declaradas como inteiras no esquema), sem arredondamento: a conta é exata em fração, com o limite lido como a fração decimal escrita no registro (0,07 vale 7/100); `fracao_coberta` e `fracao_canvas` ficam só para leitura.
-- Camada de texto com tinta em fonte não conferida leva o alerta `fonte_nao_conferida` (no M1, todas: a conferência das faces entra no M2). O envelope do `ler` conta `fontes_nao_conferidas` e `camadas_com_fonte_nao_conferida`.
+- Camada de texto com tinta em fonte não conferida leva o alerta `fonte_nao_conferida` (na primeira passada, todas; a segunda passada troca o alerta pela regra B3 com a conferência contra o arquivo enviado). O envelope do `ler` conta `fontes_nao_conferidas` e `camadas_com_fonte_nao_conferida`.
 - Passada de pixels que passa do orçamento numa camada (`pixels.pulado`) é B2, bloqueante.
 - Smart object embutido além da profundidade máxima fica com `abertura.situacao` `nao_aberto` e o alerta `smart_object_nao_aberto`.
 - `prova_pixel` leva também as contagens inteiras `px_acima_qualquer_canal` e `px_total`; a porcentagem fica para leitura.
@@ -337,7 +340,7 @@ from desdobra import plataforma
 p = plataforma.obter()          # PlataformaWindows no win32, PlataformaMac no darwin, PlataformaSemSuporte no resto
 r = p.executar_isolado(comando: list[str], orcamento_bytes: int, tempo_s: float, pasta_trabalho: Path,
                        *, ambiente: dict[str, str] | None = None) -> ResultadoFilho
-p.fontes_instaladas() -> list[FaceInstalada]     # M2; hoje NotImplementedError
+p.fontes_instaladas() -> list[FaceInstalada]     # só diagnóstico, sem papel no portão; sem implementação (o diagnóstico do M2 é feito pelo Chromium na conferência)
 p.porta_livre() -> int                           # porta livre em 127.0.0.1
 p.interpretador() -> Path                        # o Python do ambiente
 ```
@@ -386,6 +389,8 @@ desdobra regressao --corpus <pasta dos PSDs> --linha-de-base <pasta com <slug>/l
 
 - Marketplace na raiz (`.claude-plugin/marketplace.json`, nome `desdobra`, dono Trezion), plugin em `plugins/desdobra` (`plugin.json` com nome `desdobra` e versão `0.1.0`). A versão fica só no `plugin.json`; o motor lê a versão dali (`desdobra.__version__`).
 - `plugin.json` declara `userConfig.teto_modo_dados` (`options` a, b, c, obrigatório, sem padrão). Nas skills, o valor entra por `${user_config.teto_modo_dados}`, e a skill passa `--teto-modo-dados` ao motor. Em gancho, o valor chega como `CLAUDE_PLUGIN_OPTION_TETO_MODO_DADOS` (https://code.claude.com/docs/en/plugins-reference.md, User configuration).
+- Chromium fixado (M2): depois do ambiente Python, o gancho confere o headless shell da revisão que o Playwright do venv pede (`playwright/driver/package/browsers.json`, nome `chromium-headless-shell`) em `${CLAUDE_PLUGIN_DATA}/ms-playwright`. Se a pasta `chromium_headless_shell-<revisão>` não tem a marca `INSTALLATION_COMPLETE`, ele roda `python -I -m playwright install --only-shell chromium` com `PLAYWRIGHT_BROWSERS_PATH=${CLAUDE_PLUGIN_DATA}/ms-playwright`; já presente, não baixa. Vale também no caminho rápido (ambiente pronto sem o Chromium: `acao` `chromium`). A etapa `chromium` entra em `preparo.json` com `codigo`, `tempo_s` e `baixado`, e `preparo.json.chromium` diz `presente`, `baixado` ou `falhou`. A falha do download não desfaz o ambiente Python: a linha de situação avisa e o doctor confere. O motor aponta o Playwright para a mesma pasta (`desdobra.chromium.apontar_playwright`): `PLAYWRIGHT_BROWSERS_PATH` quando já vem definido; no ambiente do plugin, `<pasta de dados>/ms-playwright`; fora dele, o padrão do Playwright.
+- Doctor (M2): além do M1, confere a versão fixada do fontTools e do Playwright (pelos metadados, sem importar o fontTools), o Chromium fixado na pasta de navegadores do motor (`chromium_fixado`) e um carregamento de verdade (`fonte_no_chromium`): uma fonte sintética gerada num filho com o fontBuilder, servida pela rota própria no loopback, carregada pelo `@font-face` e conferida por CDP (face `isCustomFont` com o nome PostScript do arquivo), com a contagem de cópias no cache. Sem o Chromium, `fonte_no_chromium` sai `pulado`; `--sem-chromium` pula só essa verificação (desenvolvimento).
 - Ambiente do plugin em `${CLAUDE_PLUGIN_DATA}`: o gancho SessionStart cria o venv, instala `motor/requirements.lock` com `python -m pip install --require-hashes --no-deps --only-binary=:all: -r <lock>` e instala o motor com `python -m pip install --no-deps --no-build-isolation -e ${CLAUDE_PLUGIN_ROOT}/motor`. O motor usa um backend de construção próprio (`motor/_construcao/construir.py`), sem setuptools, que só aceita instalação editável. A instalação editável grava um `.pth` com o caminho de `motor/`; como `${CLAUDE_PLUGIN_ROOT}` muda a cada versão do plugin, o gancho tem de refazer esse passo quando o caminho mudar, mesmo com o lock igual.
 - O gancho grava `${CLAUDE_PLUGIN_DATA}/interpretador.json` com o caminho do Python do ambiente, porque `${CLAUDE_PLUGIN_ROOT}` e `${CLAUDE_PLUGIN_DATA}` não existem no Bash do Claude. A skill lê esse arquivo e chama `"<python>" -I -B -m desdobra --envelope --teto-modo-dados <teto> <comando> ...`.
 - O lock só tem hashes de Windows x86-64 com CPython 3.14. Os de Mac entram no porte.
@@ -403,3 +408,97 @@ desdobra regressao --corpus <pasta dos PSDs> --linha-de-base <pasta com <slug>/l
 - `--envelope` e `--teto-modo-dados` só valem antes do subcomando.
 - A trava do job (`.desdobra.trava`) não detecta processo morto: depois de uma queda, o DA apaga o arquivo, como diz o O QUE FAZER.
 - `interpretador.json` e `preparo.json`, gravados pelo gancho só com a biblioteca padrão, ainda não têm esquema em `motor/schemas`; o doctor lê os dois de forma defensiva.
+
+## M2: cor e design system (`desdobra/cor`, `desdobra/ds`)
+
+Dono: frente de cor e design system do M2. Arquivos: `motor/desdobra/cor/`, `motor/desdobra/ds/`, `motor/schemas/design-system-1.json`, `limites-1.json`, `ds-parametros-cor-1.json`, as entradas `cor.*` e `ds.*` de `motor/fontes-de-limites.json` e os testes `testes/test_cor*` e `testes/test_ds*` (`test_ds_apoio.py` gera os perfis ICC, o PSD sintético e a conferência sintética).
+
+### Cor (`desdobra.cor`)
+
+- Todo descritor de cor (preenchimento SoCo e vscg, traço de forma vstk, ColorOverlay, Stroke e cor de texto) passa pelo perfil ICC do documento antes de virar token sRGB, pelo LittleCMS do Pillow (`ImageCms`). O perfil do documento é dado de cliente e só é aberto no processo filho da cor (arquitetura 7.1): `desdobra.cor.converter_isolado(caminho, parametros, cores, pasta_trabalho)` grava o pedido (intent, compensação e as cores rgb em 8 bits e Lab), roda `python -I -B -m desdobra.cor.filho <perfil.icc> <pedido.json> <pasta_saida> --orcamento-bytes N` com o mesmo isolador e gancho de auditoria do leitor (orçamento `(isolador.base_python_bytes + cor.fator_abertura_max x bytes) x isolador.margem_orcamento`, tempo `cor.tempo_max_s`) e lê `conversao.json` (`conversao-cor/1`: perfil com nome, sha256 e bytes, tratamento, motivo e os pares de cor, só números). Devolve um `ConversorPronto`, com a mesma interface do `Conversor`. Queda, memória, tempo e bug viram `perfil_ilegivel` com o motivo; o alarme do gancho dá código 5 no `ds montar`. O processo principal só confere o sha256 do arquivo do perfil. Documento sem perfil usa a curva sRGB. O token guarda a origem: modelo, valor no espaço do documento (e em 8 bits), perfil (nome, sha256, tratamento), intent e compensação de ponto preto.
+- `Conversor(icc, parametros, indisponivel=False)`: `tratamento` é `icc_do_documento`, `sem_perfil_usa_srgb`, `perfil_indisponivel` (o documento tem perfil, mas a leitura não gravou o arquivo: o token sai `nao_convertido`, sem inventar) ou `perfil_ilegivel`. Documento fora do modo RGB fica `modo_fora_do_escopo`. Modelos RGB, HSB (vira RGB do documento) e Lab convertem; CMYK, cinza e cor de catálogo saem `nao_convertido` com o motivo.
+- Asset com outro perfil: `tratamento_do_asset` devolve sempre o perfil do documento atribuído, `converte_pixels: false` (`decisoes-v1.md`, 29/10 nº 8).
+- Parâmetros do job: intent (`perceptual`, `relativo_colorimetrico`, `saturacao`, `absoluto_colorimetrico`), compensação de ponto preto e perfil embutido na saída. Sem parâmetro do job vale o padrão do registro (`cor.intent_saida`, `cor.compensacao_ponto_preto`, `cor.saida_perfil_embutido`, todos a calibrar, arquitetura 10.2, pergunta 5). `desdobra ds parametros-cor --job <pasta> [--intent X] [--compensacao-ponto-preto sim|nao] [--perfil-embutido sim|nao]` grava `parametros/cor.json` (`ds-parametros-cor/1`), que é entrada da fase `ds`.
+
+### Mudança mínima no leitor
+
+O filho grava o perfil do documento em `laudo/bruto/<sha256>/documento.icc` e põe `documento.icc.arquivo` na estrutura; cada camada ganha `cores_descritores` (classe e valores crus de cada descritor, com `descritor`, `ativo` e o bloco ou efeito de origem); a camada com máscara raster ativa ganha `pixels.alfa_visivel_sha256`, um PNG em tons de cinza com o alfa da camada vezes a máscara, em `laudo/assets/`. Os três campos são opcionais na `estrutura/1`. Leitura antiga, sem eles, sai com as pendências `cores_nao_convertidas` e `descritores_nao_lidos`.
+
+### `desdobra ds montar --job <pasta>` e a fase `ds`
+
+- Fase `ds` da esteira, depois de `ler` e da conferência de fontes; entradas `laudo/laudo.json`, `laudo/bruto/*/estrutura.json`, `fontes/conferencia.json` e `parametros/cor.json`; saídas `ds/design-system.json` (`design-system/1`) e `ds/limites.json` (`limites/1`). Aceita e ignora `--teto-memoria-bytes` e `--tempo-max-s`, que o `job proxima` repassa a toda fase. Roda no processo principal e nunca abre PSD nem arquivo de fonte.
+- Tokens de cor: um por cor distinta no espaço do documento, com os usos (`camada`, `descritor`, `trecho`, `ativo`, `visivel`).
+- Tokens de tipografia: um por trecho com tinta, com fonte PostScript, corpo, entrelinha, tracking, caixa-alta e faux bold do PSD; corpo efetivo pela escala vertical da matriz (`|det| / |coluna x|`); família, estilo, peso e métricas (`unidades_por_em`, `ascender`, `descender`, `cap_height`, `x_height`, `entrelinha_tipo`) da face casada em `fontes/conferencia.json` pelo nome PostScript do trecho (ou pelo `face_id` da camada), com a origem (face, sha256 do arquivo, versão da tabela name). Sem a conferência, as métricas ficam nulas, `situacao_fonte` é `fontes_nao_conferidas` e a pendência `fontes_nao_conferidas` entra no design system, sem quebrar.
+- Medidas por camada visível: caixa, caixa de tinta, área de referência (canvas ou prancheta), rotação, folga por lado, folga pela máscara raster e folga de resolução do smart object embutido (ampliação sobre o original; vetorial marcado).
+- Caixa do sujeito, para cada camada de pixel ou smart object embutido visível com asset: limiar `ds.sujeito_limiar_alfa` (128, medido) no maior componente conexo do alfa (o alfa visível, quando há máscara). Sem recorte (nenhum pixel da camada abaixo do limiar), o método é `pedir_ao_da`; recorte que encosta nas quatro bordas, como uma foto em elipse, continua sendo recorte. Asset acima do teto de decodificação do Pillow sai `nao_medido`. A função sujeito continua sendo do DA no briefing.
+- `limites.json`: os limites do registro que o job usa (com citação), o parâmetro do job (`parametro_do_job`) e as referências do PSD (`psd.corpo_efetivo_min`, `psd.ampliacao_raster_max`, `psd.folga_tinta_min`), com `situacao: referencia_do_psd`, `efeito: registra` e `piso: false`, que o esquema obriga.
+- Código 0 com `situacao` `ok`, ou `ok_com_bloqueio` quando as cores não foram convertidas; código 3 sem laudo, sem estrutura ou com contrato violado. O envelope leva só contagens (`cores`, `tipografia`, `sujeito_alfa`, `sujeito_pedir_ao_da`, `assets_perfil_atribuido`, `pendencias` e outras), sem conteúdo.
+
+## M2: fontes (`desdobra/fontes`, `desdobra/chromium`, `desdobra/laudo/fontes.py`)
+
+Dono: frente de fontes do M2. Arquivos: `motor/desdobra/fontes/`, `motor/desdobra/chromium/`, `motor/desdobra/laudo/fontes.py`, as mudanças em `arquivos.py`, `job/`, `cli.py`, `laudo/`, `leitor/__init__.py` (só a mensagem de fonte); `motor/schemas/leitura-fonte-1.json`, `conferencia-fontes-1.json`, `manifesto-licenca-1.json`, `licencas-fontes-1.json` e os campos novos de `laudo-1.json`; as entradas `fontes.*` e `chromium.*` de `motor/fontes-de-limites.json`; `testes/test_fontes*` (`test_fontes_apoio.py` gera fontes sintéticas com o fontBuilder e PSD com texto e caixa TySh).
+
+### Entrada `entrada/fontes/`
+
+```
+desdobra job criar <pasta> --kv <psd> --modo-dados {a,b,c} [--fontes <arquivo ou pasta> ...] [--licencas <arquivo.json>]
+desdobra job trocar-entrada <pasta> entrada/fontes/<arquivo> <arquivo novo>      (troca ou acrescenta)
+desdobra job trocar-entrada <pasta> entrada/licencas.json <arquivo novo>
+```
+
+- `.DS_Store`, `Thumbs.db`, `desktop.ini` e os AppleDouble `._*` do Mac ficam fora de toda pasta copiada (`--fontes`, `--campanha`, `--specs`), sem recusar o job; o log ganha o evento `arquivos_do_sistema_ignorados` com a contagem.
+- `job trocar-entrada` recusa (código 2) caminho que só difere na caixa de uma entrada que já existe, a mesma conferência casefold do `job criar`: no Windows os dois nomes seriam o mesmo arquivo.
+- `job remover-entrada <pasta> entrada/fontes/<arquivo>` tira um arquivo de fonte do job (o nome exato, direto em `entrada/fontes/`; outro caminho dá código 2). Apaga só a cópia congelada, tira do `estado.entradas` e invalida pelo hash `fontes` e, em cadeia, `laudo-fontes` e `ds`. É o caminho do DA quando dois arquivos têm o mesmo nome PostScript.
+- Aceitos: OTF, TTF, TTC (e OTC), WOFF e WOFF2 (`decisoes-v1.md`, arquitetura 14), reconhecidos pela assinatura (`OTTO`, `00 01 00 00`, `true`, `ttcf`, `wOFF`, `wOF2`), não pela extensão (`desdobra.arquivos.classificar_fonte`). Recusados: pacote, Type 1 (`%!PS-AdobeFont`, `%!FontType1`, PFB `80 01`, `typ1`, extensões `.pfb .pfa .pfm .afm .t42`), outro formato de fonte, arquivo que não é fonte, e, já no filho, variable font (tabela `fvar`) e arquivo que o fontTools não abre (`malformada`). A pasta passada em `--fontes` vira arquivos lado a lado em `entrada/fontes/` (nome repetido é erro); `.DS_Store`, `Thumbs.db` e `desktop.ini` ficam de fora.
+- Cada arquivo é conferido no filho isolado antes de entrar; na recusa, o `job criar` desfaz a pasta que começou a montar. Congelamento, sha256 e só leitura como as outras entradas.
+- `entrada/licencas.json` (`licencas-fontes/1`): os dados de licença que o DA ou a agência informam, por sha256 do arquivo (e índice na coleção): canal (`fundicao`, `revenda`, `adobe_fonts`, `kit_web`, `ofl`, `desconhecido`), EULA (nome, versão, `font_face`: `proibe`, `permite`, `nao_lido`), titular, usuários, referência do comprovante e `liberado_pelo_da` com justificativa obrigatória.
+
+### Processo filho das fontes (`desdobra.fontes.filho`)
+
+```
+python -I -B -m desdobra.fontes.filho <arquivo> <pasta_saida> --orcamento-bytes N
+```
+
+Mesmo isolador (`plataforma.executar_isolado`, orçamento `(isolador.base_python_bytes + fontes.fator_abertura_max x bytes) x isolador.margem_orcamento`, tempo `fontes.tempo_max_s`), mesma linha `iniciar` e mesmo gancho de auditoria do leitor. Lê os bytes para a memória e abre com o fontTools a partir de `io.BytesIO` (WOFF e WOFF2 descompactados na memória, TTC face por face). Grava `leitura.json` (`leitura-fonte/1`): por face, todos os registros do name ID 6, família e estilo (1, 2, 16, 17), nome completo, id único (3), versão (5), `head` (unidades por em), `hhea`, `OS/2` (usWeightClass, fsType, sTypo*, usWin*, sCapHeight, sxHeight), o cmap em faixas de códigos, as marcas de licença (`kit_web`, `proibe_desktop`, `ofl`, `fs_type_restrito`, pelas expressões do registro) e, na TTC, o deslocamento e o tamanho do diretório de tabelas de cada face. Nunca contorno, glifo, atlas nem byte da fonte. Códigos: 0 lida; 3 recusada (`formato`, `type1`, `variavel`, `malformada`); 4 memória; 5 auditoria; 1 bug. O pai (`desdobra.fontes.leitura.ler`) transforma queda, memória, tempo e bug em recusa tipada, sem cair. O processo principal nunca importa o fontTools.
+
+### Esteira
+
+`nucleo.ESTEIRA = FASES_M2 = ler, fontes, laudo-fontes, ds` (`FASES_M1` continua só com `ler`).
+
+| Fase | Comando | Entradas | Depende de | Saídas |
+|---|---|---|---|---|
+| `fontes` | `desdobra --envelope fontes conferir --job <pasta>` | `entrada/fontes`, `entrada/licencas.json` | `ler` | `fontes/conferencia.json`, `manifesto-licenca.json` |
+| `laudo-fontes` | `desdobra --envelope fontes laudo --job <pasta>` | | `ler`, `fontes` | `laudo/laudo-fontes.json` |
+
+Trocar ou acrescentar fonte (ou o arquivo de licenças) invalida só `fontes` e, em cadeia, `laudo-fontes` e `ds`. As duas fases aceitam e ignoram `--teto-memoria-bytes` e `--tempo-max-s`. Saem com código 0, situação `ok` ou `ok_com_bloqueio`.
+
+### `desdobra fontes conferir --job <pasta>`
+
+1. Lê cada arquivo de `entrada/fontes/` no filho (`fontes/bruto/<sha256>/leitura.json`) e monta as faces, com id `f01`, `f02`... na ordem de (sha256, índice).
+2. Casa cada nome PostScript dos trechos do laudo (primeira passada) com uma face, nesta ordem: qualquer registro do name ID 6, o id único (name ID 3, pedaço depois do `;`), a família e o estilo (16 e 17, ou 1 e 2). O par fora do name ID 6 sai com aviso (`casada_por_id_unico`, `casada_por_familia_estilo`). Mais de uma face casando pelo mesmo método (dois arquivos com o mesmo nome PostScript) é bloqueante (`mais_de_um_arquivo`): o motor não escolhe, e o DA tira o arquivo que não vale com `job remover-entrada`. Sem par: `nome_ps_sem_par` quando há face da mesma família (mais `face_divergente` quando nenhuma tem o peso pedido; a face de outro peso nunca entra no lugar) ou `arquivo_faltando`.
+3. Cobertura: caracteres diferentes com tinta (depois da caixa alta) que o cmap não cobre (`glifo_faltando`, só a contagem).
+4. Chromium: servidor local (`desdobra.chromium.servidor`): só 127.0.0.1, porta escolhida pelo sistema, rotas `/entrar/<token>` (vira cookie HttpOnly SameSite=Strict), `/pagina`, `/fonte/<id da face>` e `/controle`; Host e Origin conferidos; token e cookie comparados em bytes (valor fora do ASCII dá 404 ou 403, sem exceção); `Cache-Control: no-store` em toda resposta menos `/controle`; sem CORS; qualquer outro caminho, id ou sha256 dá 404; nada é impresso, nem erro de requisição. `/controle` é o controle positivo do teste de cache: uma folha de estilo só com um comentário de marcador aleatório (nunca fonte), com `Cache-Control: max-age=3600`, que a página carrega. A TTC é servida com o diretório da face copiado para o início do arquivo, com os números que o filho mediu. A página (só na memória) tem um `@font-face` por face com a família `dsd-<8 primeiros do job_id>-<id>` e o peso declarado (do nome do estilo, ou o usWeightClass sem estilo conhecido; a divergência entre os dois é aviso). O peso pelo nome compara palavras inteiras (separadas por hífen, espaço, sublinhado e troca de caixa) e fica com o maior casamento (ExtraBold antes de Bold); num nome com hífen vale só o sufixo depois do último hífen, então `Thinker-Bold` é 700. Cada camada de texto de ponto vira uma linha por quebra (U+000D, U+000A, U+0003), com o mapeamento da pesquisa (`pesquisa/corpus-testes.md` §4 itens 8 e 9): corpo do espaço de texto escalado para `chromium.corpo_medicao_px`, letter-spacing do tracking, kerning do AutoKerning, ligaduras, caixa alta com `cpsp`, `font-synthesis: none`, trechos vizinhos de mesmo estilo juntos. O Chromium (headless shell do Playwright, perfil numa pasta temporária curta criada pelo motor na máquina e apagada no fim, porque num caminho longo, acima de uns 220 caracteres no Windows, o Chromium deixa de gravar cache; sem resolver nome fora de 127.0.0.1) mede cada linha (`Range.getBoundingClientRect`) e responde por CDP (`CSS.getPlatformFontsForNode`) quais faces desenharam cada trecho e cada sonda de face. Confere quando todas são `isCustomFont` e o nome PostScript está nos registros do name ID 6 do arquivo; senão `fallback` (entrou face do sistema) ou `face_cdp_divergente`. Sem resposta do CDP (elemento sem nó ou sem fontes), o par sai bloqueante com `cdp_sem_resposta`, e a face usada também (na face não usada, aviso). Face que não carrega: `face_nao_carregou`.
+5. Largura: maior linha, com e sem o letter-spacing do último caractere, contra `bounds` da caixa TySh (Rght - Left), na variante mais próxima. Acima de `fontes.largura_divergencia_pct` (0,2, a calibrar): `largura_divergente`, `decisao: pede_decisao_do_da`, bloqueante sem reprovação automática. Caixa de parágrafo, faux bold, escala diferente de 100%, warp ou trecho sem face: largura não comparada, com o motivo (`largura_nao_medida_*`).
+6. Licença (`desdobra.fontes.licenca`): canal desconhecido, kit web (marca no arquivo ou canal), build que proíbe desktop e canal Adobe Fonts dão a face bloqueante, e só `liberado_pelo_da` (com justificativa) baixa para aviso (Adobe Fonts nunca). EULA que proíbe `@font-face` é aviso, e o job segue. Face com a OFL declarada na tabela name sai com canal `ofl`.
+7. Diagnóstico (arquitetura 4.2, sem papel no portão): uma sonda pede a família do arquivo pelo nome, sem `@font-face`; se o CDP devolve face do sistema com o mesmo nome PostScript, a face leva `instalada_mesmo_nome`.
+8. Teste de cache: fechado o Chromium, a varredura procura em todo arquivo do perfil o sha256, a assinatura de fonte e trechos de 256 bytes (início, meio e fim) de cada fonte servida (`cache.copias_encontradas`) e o marcador do controle positivo (`cache.controle_encontrado`), e o perfil é apagado (`cache.perfil_apagado`). `cache.feito` só é verdadeiro quando o controle aparece no perfil, o que prova que o perfil grava cache; senão `cache.motivo` diz por quê (`perfil_nao_gravou_o_controle` ou `chromium_nao_rodou`) e `resumo.cache_provado` é 0. `cache.perfil_caracteres` guarda o tamanho do caminho do perfil (sem o caminho). O teste do método mostra cópia com `max-age` e 0 cópia com `no-store`.
+9. Varredura da pasta do job: arquivos de fonte fora de `entrada/fontes/` (`varredura.arquivos_de_fonte_fora_da_entrada`, esperado 0).
+
+`fontes/conferencia.json` (`conferencia-fontes/1`): `faces[]` com `id`, `nome_ps`, `nomes_ps`, `familia`, `estilo`, `formato`, `sha256`, `indice`, `versao_name`, `peso_declarado`, `us_weight_class`, `metricas` {`unidades_por_em`, `ascender`, `descender`, `cap_height`, `x_height`, `entrelinha_tipo`}, `canal`, `usada`, `carregada`, `face_cdp_confere`, `instalada_mesmo_nome`, `situacao` (`ok`, `aviso`, `bloqueante`) e `motivos[]` ({`codigo`, `situacao`, `descricao`, `medida`, `limite`}); `camadas[]`, um por par (camada, nome PostScript do PSD), com `layer_id`, `nome_ps`, `face_id` (ou null), `metodo_casamento`, `glifos_faltando`, `largura_erro_max_pct`, `largura_erro_pct` (com sinal), `face_cdp_confere`, `situacao`, `decisao` e `motivos[]`; `arquivos[]` (sha256, formato, aceito ou recusado e o motivo); `cache`; `varredura`; `chromium` (versão, Playwright, respostas por rota); `resumo` só com números. Sem texto de peça e sem caminho de arquivo de fonte. A situação da camada é a pior entre os motivos técnicos e a da face.
+
+`manifesto-licenca.json` (`manifesto-licenca/1`, rascunho): uma entrada por face (sha256 do arquivo, formato, versão da tabela name, origem `arquivo_enviado`, canal, EULA, titular, usuários, referência do comprovante, liberação do DA, conferência (método, `face_cdp_confere`, erro máximo de largura), diagnóstico de face instalada, situação e códigos dos motivos) e uma por arquivo (sha256, formato, situação e motivo). Rodapé de quem disparou o render fica para o M4.
+
+Envelope de `fontes conferir`: só contagens (`faces`, `faces_bloqueantes`, `camadas_bloqueantes`, `sem_par`, `glifos_faltando`, `larguras_divergentes`, `cdp_confere`, `cdp_diverge`, `copias_no_cache`, `chromium_feito`, `fontes_fora_da_entrada` e outras), `ids.conferencia_sha256` e `numeros.largura_erro_max_pct`, em qualquer modo; nunca byte, miniatura de glifo ou caminho de fonte.
+
+### Segunda passada do laudo (`desdobra fontes laudo`, `desdobra.laudo.fontes.aplicar_conferencia`)
+
+Função pura do laudo da primeira passada e da conferência. Grava `laudo/laudo-fontes.json` (`laudo/1` com `passada: 2` e `conferencia_fontes` = {`arquivo`, `sha256` da conferência, `laudo_primeira_passada_sha256`}). Tira o alerta `fonte_nao_conferida` das camadas cobertas, põe a B3 na camada cujo par tem motivo técnico bloqueante (`arquivo_faltando`, `nome_ps_sem_par`, `face_divergente`, `glifo_faltando`, `fallback`, `face_cdp_divergente`, `cdp_sem_resposta`, `face_nao_carregou`, `largura_divergente`, `chromium_nao_conferiu`, `colecao_nao_servivel`, `mais_de_um_arquivo`), com a medida e a citação do limite de largura quando é o caso, e o alerta `fonte_conferida_com_aviso` quando só há aviso. Bloqueio só de licença não vira B3: fica na conferência e no manifesto. `fontes_usadas[]` ganha `situacao` (`presente`, `ausente`, `divergente`) e `face_id`; fonte sem arquivo nunca sai `presente`: usada só em espaço, sai `ausente` com `so_em_espaco: true` (sem efeito na peça, sem B3); `resumo.n_b3_fontes` conta as camadas com B3 de fonte. O `laudo/laudo.json` da primeira passada não muda, e a regressão continua comparando só ele. O `pacote-modelo.json` continua saindo da primeira passada.
+
+### Limites novos
+
+`fontes.fator_abertura_max` (64, a calibrar), `fontes.tempo_max_s` (120, a calibrar), `fontes.largura_divergencia_pct` (0,2, a calibrar, efeito avisa), `fontes.marcas_kit_web` e `fontes.marcas_proibe_desktop` (expressões, medido), `fontes.marcas_ofl` (a calibrar), `fontes.fs_type_bits_restritos` ([2], a calibrar), `chromium.corpo_medicao_px` (100, a calibrar) e `chromium.tempo_max_s` (120, a calibrar), os dois com fonte na arquitetura 4.5 e a origem do valor na nota; `cor.fator_abertura_max` (64, a calibrar) e `cor.tempo_max_s` (120, a calibrar), do filho da cor, com fonte na arquitetura 7.1.
+
+### Pendências da frente de fontes
+
+- O OTS do Chromium sanitiza a fonte carregada pela página antes de usar (arquitetura 7.1, a confirmar): o teste mostra que fonte malformada é recusada no filho antes de chegar ao Chromium, mas não testa o OTS.
+- Faux bold, escala de trecho e caixa de parágrafo ficam sem comparação de largura (motivo registrado).

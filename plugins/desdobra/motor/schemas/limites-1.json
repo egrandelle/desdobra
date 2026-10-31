@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:limites:1",
+  "title": "Limites do job (limites/1)",
+  "description": "ds/limites.json do job, gravado pela fase ds (arquitetura-v1.md, 5.6). Cada limite tem valor, unidade, fonte, situacao e efeito. Os limites do registro (fontes-de-limites.json) entram com a citacao; o parametro do job entra com situacao parametro_do_job; o valor que vem do PSD entra como referencia_do_psd, so registra e nunca vira piso.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "origem", "limites"],
+  "properties": {
+    "esquema": {"const": "limites/1"},
+    "origem": {"$ref": "#/$defs/origem"},
+    "limites": {"type": "array", "items": {"$ref": "#/$defs/limite"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sha_ou_nulo": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "origem": {
+      "type": "object",
+      "required": ["arquivo_sha256", "motor"],
+      "properties": {
+        "arquivo_sha256": {"$ref": "#/$defs/sha256"},
+        "laudo_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "estrutura_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "conferencia_fontes_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "parametros_cor_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "motor": {"type": "string"}
+      }
+    },
+    "limite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "valor", "unidade", "fonte", "situacao", "efeito", "piso"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$"},
+        "valor": {"type": ["number", "string", "array", "null"]},
+        "unidade": {"type": "string", "minLength": 1},
+        "fonte": {"oneOf": [{"type": "object", "required": ["arquivo"]}, {"type": "null"}]},
+        "situacao": {"enum": ["medido", "decidido", "folha", "a_calibrar", "parametro_do_job", "referencia_do_psd"]},
+        "efeito": {"enum": ["reprova", "avisa", "registra"]},
+        "piso": {"type": "boolean", "description": "Se o valor serve de piso para os formatos. Nunca verdadeiro para referencia do PSD"},
+        "nota": {"type": "string"},
+        "padrao_do_registro": {"type": "object", "description": "Citacao do padrao do registro trocado pelo parametro do job"}
+      },
+      "allOf": [
+        {"if": {"properties": {"situacao": {"const": "a_calibrar"}}},
+         "then": {"properties": {"efeito": {"enum": ["avisa", "registra"]}}}},
+        {"if": {"properties": {"situacao": {"const": "referencia_do_psd"}}},
+         "then": {"properties": {"efeito": {"const": "registra"}, "piso": {"const": false},
+                                 "fonte": {"type": "object", "required": ["arquivo", "arquivo_sha256", "camada"]}}}},
+        {"if": {"properties": {"situacao": {"enum": ["medido", "decidido", "folha", "parametro_do_job"]}}},
+         "then": {"properties": {"fonte": {"type": "object"}, "valor": {"type": ["number", "string", "array"]}}}}
+      ]
+    }
+  }
+}

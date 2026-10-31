@@ -361,6 +361,114 @@
    "nota": "Separa o modo de procurar cada nome de camada ou texto de peca na saida padrao do modo c. Termo deste tamanho para cima: procurado em qualquer valor de texto. Termo mais curto: procurado como palavra inteira so no texto livre (o_que_fazer e conteudo), fora das palavras dos textos fixos do motor. Nos dois casos, o que aparece conta como achado."
   },
   {
+   "id": "fontes.fator_abertura_max",
+   "valor": 64,
+   "unidade": "vezes os bytes do arquivo de fonte, somado a isolador.base_python_bytes",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.5"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Orcamento de memoria do processo filho que le um arquivo de fonte: (isolador.base_python_bytes + este fator x bytes do arquivo) x isolador.margem_orcamento. A arquitetura pede orcamento de memoria e de tempo para a leitura da fonte, sem numero. O valor cobre a descompactacao do WOFF2 e o cmap de fontes grandes; o pico medido nas fontes do corpus fica no relatorio do M2."
+  },
+  {
+   "id": "fontes.tempo_max_s",
+   "valor": 120,
+   "unidade": "segundos de relogio por arquivo de fonte",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.5"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Tempo maximo do processo filho que le um arquivo de fonte. A leitura das tabelas name, cmap e metricas leva menos de 1 s nas fontes do corpus; o valor so evita filho preso."
+  },
+  {
+   "id": "fontes.largura_divergencia_pct",
+   "valor": 0.2,
+   "unidade": "porcentagem de diferenca entre a largura da linha no Chromium e a largura gravada na caixa TySh",
+   "fonte": {
+    "arquivo": "pesquisa/wf_9612ef10-419-resultado.json",
+    "secao": "analise de fontes, implicacoes (proposta de limiar)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "A pesquisa mediu ate 0,01% com o arquivo certo (pesquisa/corpus-testes.md, 4, item 8) e propos 0,2%. Ate o limiar ser fixado, a divergencia acima dele vira decisao bloqueante do DA, sem reprovacao automatica (arquitetura-v1.md, 4.5)."
+  },
+  {
+   "id": "fontes.marcas_kit_web",
+   "valor": ["wfkit", "web ?font ?kit", "web use only"],
+   "unidade": "expressoes regulares procuradas sem diferenca de maiusculas nos textos da tabela name",
+   "fonte": {
+    "arquivo": "pesquisa/wf_9612ef10-419-resultado.json",
+    "secao": "analise de fontes (build wfkit da fonte de kit web do corpus)"
+   },
+   "situacao": "medido",
+   "efeito": "avisa",
+   "nota": "Marca de build de kit web no arquivo. A face com a marca fica bloqueante ate o DA liberar com justificativa (arquitetura-v1.md, 4.5 e 5.8); o motor nao reprova sozinho."
+  },
+  {
+   "id": "fontes.marcas_proibe_desktop",
+   "valor": ["desktop use is (strictly )?prohibited", "not (licensed )?for desktop use", "desktop use (is )?not (permitted|allowed)"],
+   "unidade": "expressoes regulares procuradas sem diferenca de maiusculas nos textos da tabela name",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, item 11"
+   },
+   "situacao": "medido",
+   "efeito": "avisa",
+   "nota": "Build que proibe uso desktop, como o name ID 0 de uma fonte do corpus. A face fica bloqueante ate o DA liberar com justificativa (arquitetura-v1.md, 5.8)."
+  },
+  {
+   "id": "fontes.marcas_ofl",
+   "valor": ["open font license", "scripts\\.sil\\.org/ofl", "openfontlicense\\.org"],
+   "unidade": "expressoes regulares procuradas sem diferenca de maiusculas nos textos da tabela name",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.5 (as fontes OFL ficam fora do controle de canal, proposto, a registrar)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Face que declara a SIL Open Font License na tabela name sai com canal ofl, sem o bloqueio de canal desconhecido. A declaracao vem do proprio arquivo e nao foi conferida com o autor."
+  },
+  {
+   "id": "fontes.fs_type_bits_restritos",
+   "valor": [2],
+   "unidade": "bits do campo fsType da tabela OS/2",
+   "fonte": {
+    "arquivo": "pesquisa/wf_9612ef10-419-resultado.json",
+    "secao": "analise de fontes (fsType da fonte de kit web do corpus)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Bit 0x0002 (licenca restrita) vira aviso na face. O bit 0x0004 (so pre-visualizacao e impressao) aparece tanto na fonte de kit web do corpus quanto numa OFL do corpus, entao sozinho nao separa kit web e fica fora."
+  },
+  {
+   "id": "chromium.corpo_medicao_px",
+   "valor": 100,
+   "unidade": "pixels do maior corpo de cada camada na pagina de medicao",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.5 (largura de cada linha no Chromium contra a caixa TySh)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A pagina de medicao escala cada camada de texto para que o maior corpo tenha este tamanho, e divide a largura medida pela mesma escala. Evita corpo muito pequeno no espaco de texto. Origem: valor escolhido na implementacao do M2, sem medicao propria; a pesquisa mediu no corpo do espaco de texto, sem escala (pesquisa/corpus-testes.md, 4, item 8), e a arquitetura pede a medida sem dar numero."
+  },
+  {
+   "id": "chromium.tempo_max_s",
+   "valor": 120,
+   "unidade": "segundos por operacao do Chromium (abrir, carregar a pagina, medir)",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.5 (carregamento pelo @font-face e conferencia por CDP no Chromium fixado)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Teto de cada passo do Chromium na conferencia de fontes. Estourado, a conferencia sai sem a parte do Chromium e as camadas ficam bloqueantes para o DA decidir. Origem: valor escolhido na implementacao do M2, igual ao de fontes.tempo_max_s, sem medicao; a arquitetura pede o passo no Chromium sem dar tempo. A conferencia das fontes sinteticas dos testes leva poucos segundos."
+  },
+  {
    "id": "leitor.filhos_paralelos",
    "valor": 4,
    "unidade": "processos filhos de smart object ao mesmo tempo",
@@ -377,6 +485,114 @@
    "situacao": "a_calibrar",
    "efeito": "registra",
    "nota": "Teto da soma da memoria esperada (base mais o custo de abrir, sem o termo do canvas) dos filhos de smart object que rodam ao mesmo tempo. Um filho acima disto roda sozinho. O teto de memoria de cada filho continua sendo o orcamento inteiro. A maquina de teste tem 31 GB, e a regressao roda ate 3 arquivos pequenos ao mesmo tempo."
+  },
+  {
+   "id": "cor.intent_saida",
+   "valor": "relativo_colorimetrico",
+   "unidade": "intent da conversao para sRGB (perceptual, relativo_colorimetrico, saturacao ou absoluto_colorimetrico)",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "10.2, pergunta 5"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Padrao do job ate o Duda decidir o intent; o job troca com 'desdobra ds parametros-cor'. Nos perfis de matriz do corpus (Adobe RGB, sRGB e os de monitor), o LittleCMS da o mesmo resultado em perceptual e relativo colorimetrico."
+  },
+  {
+   "id": "cor.compensacao_ponto_preto",
+   "valor": "nao",
+   "unidade": "sim ou nao",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "10.2, pergunta 5"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Compensacao de ponto preto na conversao do perfil do documento para sRGB. Parametro do job ate o Duda decidir."
+  },
+  {
+   "id": "cor.saida_perfil_embutido",
+   "valor": "nao",
+   "unidade": "sim ou nao",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "10.2, pergunta 5"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A saida em sRGB leva o perfil embutido (sim) ou sai sem perfil, como os exports das agencias do corpus (pesquisa/corpus-testes.md, 3). Proposta da arquitetura: sem perfil. Parametro do job ate o Duda decidir."
+  },
+  {
+   "id": "cor.delta_e76_token_max",
+   "valor": null,
+   "unidade": "ΔE76 entre o token sRGB e o pixel do merged em area chapada",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "9.3"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O criterio do M2 e o erro do token ficar abaixo do erro sem conversao (ΔE76 de 10,9 a 13,0 nos arquivos Adobe RGB, pesquisa/corpus-testes.md, 3). O limite numerico fica a calibrar."
+  },
+  {
+   "id": "cor.gama_mistura_texto",
+   "valor": 1.45,
+   "unidade": "expoente G sobre a curva do perfil, na mistura da borda do texto",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas ao teste do corpus, 9"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "O render emula a mistura com gama do Photoshop (G = 1,45). O ds so leva o valor ao limites.json do job; quem usa e o render (M4)."
+  },
+  {
+   "id": "cor.fator_abertura_max",
+   "valor": 64,
+   "unidade": "vezes os bytes do perfil ICC do documento, somado a isolador.base_python_bytes",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "7.1 (o processo principal nunca parseia dado de cliente)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Orcamento de memoria do processo filho que abre o perfil ICC do documento e converte as cores: (isolador.base_python_bytes + este fator x bytes do perfil) x isolador.margem_orcamento. Origem: o mesmo fator de fontes.fator_abertura_max, sem medicao propria; um perfil de matriz tem poucos kB, e a arquitetura pede o filho isolado sem dar numero."
+  },
+  {
+   "id": "cor.tempo_max_s",
+   "valor": 120,
+   "unidade": "segundos de relogio do processo filho da cor",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "7.1 (timeout de relogio no pai)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Tempo maximo do processo filho que abre o perfil ICC e converte as cores do documento. Origem: o mesmo valor de fontes.tempo_max_s, sem medicao propria; o valor so evita filho preso. Estourado, as cores ficam nao convertidas, com o motivo no design system."
+  },
+  {
+   "id": "ds.sujeito_limiar_alfa",
+   "valor": 128,
+   "unidade": "nivel de alfa de 0 a 255",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, item 19"
+   },
+   "situacao": "medido",
+   "efeito": "registra",
+   "nota": "Com recorte em alfa, o limiar no maior componente conexo da a caixa certa do sujeito. Com o sujeito fundido a foto, o motor pede a caixa ao DA."
+  },
+  {
+   "id": "ds.ampliacao_raster_max",
+   "valor": null,
+   "unidade": "vezes o tamanho original do raster",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, item 18"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Ampliacao de raster acima disto avisa. Sem valor: o proprio KV ja amplia raster (foto a 145%, fotos de 2,04 a 2,39 vezes na pesquisa), entao a ampliacao do PSD e so referencia e nunca vira piso."
   }
  ]
 }

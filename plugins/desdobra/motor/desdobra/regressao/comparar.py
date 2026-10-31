@@ -34,9 +34,10 @@ CAUSAS = {
         'descricao': 'A regra D9 da sonda foi aposentada no psd-tools 1.26.0, e a camada perdeu só esse motivo.',
         'fonte': {'arquivo': 'pesquisa/render-local-pesquisa.md', 'secao': '9'}},
     'b3_fontes_conferidas_no_m2': {
-        'descricao': 'A sonda dava B3 (fonte ausente) olhando as fontes instaladas na máquina da pesquisa. No M1 o '
-                     'laudo não confere as faces instaladas: a camada tem texto com tinta e o alerta '
-                     'fonte_nao_conferida, e a conferência com licença entra no M2.',
+        'descricao': 'A sonda dava B3 (fonte ausente) olhando as fontes instaladas na máquina da pesquisa. A '
+                     'primeira passada do laudo, que a regressão compara, não olha fonte instalada: a camada tem '
+                     'texto com tinta e o alerta fonte_nao_conferida. A B3 de fonte sai na segunda passada '
+                     '(laudo/laudo-fontes.json), contra o arquivo enviado em entrada/fontes/.',
         'fonte': {'arquivo': 'arquitetura-v1.md', 'secao': '9.3'}},
     'd6_falso_positivo_medido': {
         'descricao': 'A sonda dava D6 para uma malha de deformação igual à grade identidade (ou warp sem curvatura). '

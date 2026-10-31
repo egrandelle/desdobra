@@ -23,7 +23,9 @@ REGRAS = {
     'B1': {'descricao': 'Smart object linkado ou externo: o arquivo não está no PSD e o caminho gravado nunca é seguido.',
            'situacao': 'bloqueante', 'fonte': FONTE_LINKADO},
     'B2': {'descricao': 'Erro ao ler os pixels ou os dados da camada.', 'situacao': 'bloqueante', 'fonte': FONTE_SINTESE},
-    'B3': {'descricao': 'Camada de texto com fonte ausente num trecho com tinta: o texto não pode ser refeito.',
+    'B3': {'descricao': 'Camada de texto com fonte ausente num trecho com tinta, ou que não passou na conferência contra o '
+                         'arquivo enviado (par de nome PostScript, glifos, face usada no Chromium ou largura da linha): o '
+                         'texto não pode ser refeito sem decisão.',
            'situacao': 'bloqueante', 'fonte': FONTE_FONTES},
     'D1': {'descricao': 'Efeito ativo que o psd-tools 1.26.0 não desenha, ou que exige pacote ausente.',
            'situacao': 'degradada', 'fonte': FONTE_SINTESE},
@@ -57,7 +59,7 @@ def _warp_tem_efeito(estilo, valores):
 
 def avaliar(reg, pacotes, fontes_status=None):
     """Lista de motivos de uma camada da estrutura/1. fontes_status: {fonte_ps: 'presente'|'ausente'} ou None
-    (no M1 a conferencia das faces instaladas nao existe, e a B3 nao dispara)."""
+    (na primeira passada a conferencia nao existe, e a B3 nao dispara; a segunda passada e desdobra.laudo.fontes)."""
     mot = []
     so = reg.get('smart_object')
     px = reg.get('pixels') or {}

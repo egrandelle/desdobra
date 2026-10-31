@@ -238,9 +238,17 @@
             "enum": [
               "presente",
               "ausente",
+              "divergente",
               "nao_conferida"
             ],
-            "description": "nao_conferida enquanto a conferencia de faces instaladas (M2) nao existir"
+            "description": "Primeira passada (desdobra ler): nao_conferida. Segunda passada (fase laudo-fontes, contra o arquivo enviado em entrada/fontes/): presente (a conferencia passou), ausente (sem arquivo ou sem par de nome PostScript) ou divergente (ha par, mas glifo, face no Chromium ou largura nao conferem)"
+          },
+          "face_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Face de fontes/conferencia.json que casou com este nome PostScript (so na segunda passada)"
           },
           "so_em_espaco": {
             "type": "boolean",
@@ -401,6 +409,34 @@
         }
       }
     },
+    "passada": {
+      "description": "1 no laudo de desdobra ler; 2 no laudo-fontes.json da fase laudo-fontes, que reaplica a regra B3 com a conferencia de fontes",
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "conferencia_fontes": {
+      "description": "So na segunda passada: o arquivo e o hash da conferencia de fontes e o hash do laudo da primeira passada",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arquivo",
+        "sha256",
+        "laudo_primeira_passada_sha256"
+      ],
+      "properties": {
+        "arquivo": {
+          "const": "fontes/conferencia.json"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "laudo_primeira_passada_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
     "efeitos_suportados": {
       "description": "Lista conferida no M1 de efeitos e ajustes que o psd-tools 1.26.0 desenha no composto",
       "type": "object",
@@ -459,7 +495,7 @@
         },
         "n_fonte_nao_conferida": {
           "type": "integer",
-          "description": "Camadas com alerta fonte_nao_conferida"
+          "description": "Camadas com alerta fonte_nao_conferida (na segunda passada, so as que ficaram sem registro na conferencia)"
         }
       }
     }

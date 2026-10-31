@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:leitura-fonte:1",
+  "title": "Leitura de um arquivo de fonte pelo processo filho (leitura-fonte/1)",
+  "description": "Gravado por desdobra.fontes.filho em fontes/bruto/<sha256>/leitura.json. So nomes, metricas, a cobertura do cmap em faixas de codigos Unicode e codigos de marcas de licenca. Nunca contorno, glifo, atlas nem bytes da fonte.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "leitor", "origem", "formato", "situacao", "recusa", "faces", "auditoria"],
+  "properties": {
+    "esquema": {"const": "leitura-fonte/1"},
+    "leitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motor", "fonttools"],
+      "properties": {"motor": {"type": "string"}, "fonttools": {"type": "string"}}
+    },
+    "origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "bytes"],
+      "properties": {
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "bytes": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "formato": {"enum": ["otf", "ttf", "ttc", "woff", "woff2", null], "description": "Pela assinatura do inicio do arquivo"},
+    "situacao": {"enum": ["lida", "recusada"]},
+    "recusa": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tipo", "motivo", "codigo"],
+          "properties": {
+            "tipo": {
+              "description": "formato: assinatura desconhecida; type1: Type 1; variavel: tabela fvar; malformada: o fontTools nao abre ou falta tabela obrigatoria; memoria: orcamento estourado; auditoria: o gancho barrou uma acao",
+              "enum": ["formato", "type1", "variavel", "malformada", "memoria", "auditoria"]
+            },
+            "motivo": {"type": "string"},
+            "codigo": {"enum": [3, 4, 5]},
+            "medidas": {"type": "object", "additionalProperties": {"type": ["number", "string", "boolean", "null"]}}
+          }
+        }
+      ]
+    },
+    "faces": {"type": "array", "items": {"$ref": "#/$defs/face"}},
+    "auditoria": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instalado", "bloqueios"],
+      "properties": {"instalado": {"type": "boolean"}, "bloqueios": {"type": "integer", "minimum": 0}}
+    }
+  },
+  "$defs": {
+    "texto_ou_nulo": {"type": ["string", "null"]},
+    "face": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["indice", "nomes", "contornos", "n_glifos", "head", "hhea", "os2", "cmap", "n_codigos", "marcas", "colecao"],
+      "properties": {
+        "indice": {"type": "integer", "minimum": 0, "description": "Posicao da face na colecao (0 fora de TTC)"},
+        "nomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ps", "familia", "estilo", "familia_tipografica", "estilo_tipografico", "nome_completo", "id_unico", "versao"],
+          "properties": {
+            "ps": {"type": "array", "items": {"type": "string"}, "description": "Todos os registros do name ID 6 (Mac e Windows), sem repetir"},
+            "familia": {"$ref": "#/$defs/texto_ou_nulo"},
+            "estilo": {"$ref": "#/$defs/texto_ou_nulo"},
+            "familia_tipografica": {"$ref": "#/$defs/texto_ou_nulo"},
+            "estilo_tipografico": {"$ref": "#/$defs/texto_ou_nulo"},
+            "nome_completo": {"$ref": "#/$defs/texto_ou_nulo"},
+            "id_unico": {"type": "array", "items": {"type": "string"}},
+            "versao": {"$ref": "#/$defs/texto_ou_nulo"}
+          }
+        },
+        "contornos": {"enum": ["glyf", "cff", "cff2"]},
+        "n_glifos": {"type": "integer", "minimum": 0},
+        "head": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unidades_por_em", "revisao", "mac_style"],
+          "properties": {"unidades_por_em": {"type": "integer"}, "revisao": {"type": "number"}, "mac_style": {"type": "integer"}}
+        },
+        "hhea": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ascender", "descender", "line_gap"],
+          "properties": {"ascender": {"type": "integer"}, "descender": {"type": "integer"}, "line_gap": {"type": "integer"}}
+        },
+        "os2": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["versao", "us_weight_class", "us_width_class", "fs_type", "fs_selection", "s_typo_ascender", "s_typo_descender", "s_typo_line_gap", "us_win_ascent", "us_win_descent", "s_cap_height", "s_x_height"],
+              "properties": {
+                "versao": {"type": "integer"}, "us_weight_class": {"type": "integer"}, "us_width_class": {"type": "integer"},
+                "fs_type": {"type": "integer"}, "fs_selection": {"type": "integer"},
+                "s_typo_ascender": {"type": "integer"}, "s_typo_descender": {"type": "integer"}, "s_typo_line_gap": {"type": "integer"},
+                "us_win_ascent": {"type": "integer"}, "us_win_descent": {"type": "integer"},
+                "s_cap_height": {"type": ["integer", "null"]}, "s_x_height": {"type": ["integer", "null"]}
+              }
+            }
+          ]
+        },
+        "cmap": {
+          "type": "array",
+          "description": "Faixas [inicio, fim] (inclusive) dos codigos Unicode que o arquivo cobre",
+          "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 0}}
+        },
+        "n_codigos": {"type": "integer", "minimum": 0},
+        "marcas": {
+          "type": "array",
+          "description": "Marcas de licenca achadas no arquivo pelas expressoes do registro de limites: kit_web, proibe_desktop, ofl, fs_type_restrito",
+          "items": {"enum": ["kit_web", "proibe_desktop", "ofl", "fs_type_restrito"]}
+        },
+        "colecao": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["deslocamento_diretorio", "tamanho_diretorio", "emendavel"],
+              "properties": {
+                "deslocamento_diretorio": {"type": "integer", "minimum": 0},
+                "tamanho_diretorio": {"type": "integer", "minimum": 0},
+                "emendavel": {"type": "boolean", "description": "O diretorio da face pode ser copiado para o inicio do arquivo sem cobrir dado de tabela"}
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

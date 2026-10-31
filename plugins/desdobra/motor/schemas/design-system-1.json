@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:design-system:1",
+  "title": "Design system da peca (design-system/1)",
+  "description": "ds/design-system.json do job, gravado pela fase ds (arquitetura-v1.md, 4.7 e 5.6). Tokens de cor com a origem (valor no espaco do documento, perfil, intent), de tipografia (do PSD e do arquivo de fonte, pela conferencia), medidas e caixa do sujeito. A camada e citada pelo layer_id; nenhum nome de camada, texto de peca, glifo ou contorno entra aqui.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "origem", "documento", "cor", "fontes", "tokens", "tipografia_resumo", "assets", "pendencias",
+               "resumo"],
+  "properties": {
+    "esquema": {"const": "design-system/1"},
+    "origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arquivo_sha256", "laudo_sha256", "estrutura_sha256", "conferencia_fontes_sha256",
+                   "parametros_cor_sha256", "motor"],
+      "properties": {
+        "arquivo_sha256": {"$ref": "#/$defs/sha256"},
+        "laudo_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "estrutura_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "conferencia_fontes_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "parametros_cor_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "motor": {"type": "string"}
+      }
+    },
+    "documento": {
+      "type": "object",
+      "required": ["largura", "altura", "modo", "perfil"],
+      "properties": {
+        "largura": {"type": "integer", "minimum": 1},
+        "altura": {"type": "integer", "minimum": 1},
+        "modo": {"type": ["string", "null"]},
+        "perfil": {
+          "type": "object",
+          "required": ["tratamento", "nome", "sha256", "motivo", "fonte"],
+          "properties": {
+            "tratamento": {"enum": ["icc_do_documento", "sem_perfil_usa_srgb", "perfil_indisponivel", "perfil_ilegivel",
+                                    "modo_fora_do_escopo"]},
+            "nome": {"type": ["string", "null"]},
+            "sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+            "motivo": {"type": ["string", "null"]},
+            "fonte": {"$ref": "#/$defs/fonte"}
+          }
+        }
+      }
+    },
+    "cor": {
+      "type": "object",
+      "required": ["parametros", "biblioteca"],
+      "properties": {
+        "parametros": {
+          "type": "object",
+          "required": ["intent", "compensacao_ponto_preto", "perfil_embutido_na_saida", "saida"],
+          "properties": {
+            "intent": {"$ref": "#/$defs/parametro"},
+            "compensacao_ponto_preto": {"$ref": "#/$defs/parametro"},
+            "perfil_embutido_na_saida": {"$ref": "#/$defs/parametro"},
+            "saida": {"type": "object", "required": ["espaco", "perfil_embutido"],
+                      "properties": {"espaco": {"const": "sRGB"}, "perfil_embutido": {"type": "boolean"}}}
+          }
+        },
+        "biblioteca": {"type": "object", "properties": {"lcms": {"type": ["string", "null"]}}}
+      }
+    },
+    "fontes": {
+      "type": "object",
+      "required": ["situacao", "n_faces", "n_camadas"],
+      "properties": {
+        "situacao": {"enum": ["conferencia_lida", "fontes_nao_conferidas"]},
+        "n_faces": {"type": "integer", "minimum": 0},
+        "n_camadas": {"type": "integer", "minimum": 0}
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cores", "tipografia", "medidas", "sujeito"],
+      "properties": {
+        "cores": {"type": "array", "items": {"$ref": "#/$defs/token_cor"}},
+        "tipografia": {"type": "array", "items": {"$ref": "#/$defs/token_tipografia"}},
+        "medidas": {"type": "array", "items": {"$ref": "#/$defs/medida"}},
+        "sujeito": {"type": "array", "items": {"$ref": "#/$defs/sujeito"}}
+      }
+    },
+    "tipografia_resumo": {
+      "type": "object",
+      "required": ["corpos_efetivos_px", "razoes_ao_maior"],
+      "properties": {
+        "corpos_efetivos_px": {"type": "array", "items": {"type": "number"}},
+        "razoes_ao_maior": {"type": "array", "items": {"type": "number"}}
+      }
+    },
+    "assets": {"type": "array", "items": {"$ref": "#/$defs/asset"}},
+    "pendencias": {
+      "type": "array",
+      "items": {"type": "object", "required": ["codigo", "descricao"], "properties": {
+        "codigo": {"enum": ["fontes_nao_conferidas", "cores_nao_convertidas", "descritores_nao_lidos",
+                            "sujeito_pedir_ao_da"]},
+        "descricao": {"type": "string"}}}
+    },
+    "resumo": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sha_ou_nulo": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "caixa": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4},
+    "caixa_ou_nulo": {"oneOf": [{"$ref": "#/$defs/caixa"}, {"type": "null"}]},
+    "fonte": {"type": "object", "required": ["arquivo"], "properties": {"arquivo": {"type": "string"}, "secao": {"type": "string"}}},
+    "citacao": {
+      "type": "object",
+      "required": ["limite_id", "valor", "unidade", "fonte", "situacao", "efeito"],
+      "properties": {"limite_id": {"type": "string"}, "situacao": {"type": "string"}, "efeito": {"type": "string"}}
+    },
+    "parametro": {
+      "type": "object",
+      "required": ["valor", "origem"],
+      "properties": {
+        "valor": {"type": ["string", "boolean"]},
+        "origem": {"enum": ["job", "registro"]},
+        "limite": {"$ref": "#/$defs/citacao"}
+      },
+      "if": {"properties": {"origem": {"const": "registro"}}},
+      "then": {"required": ["limite"]}
+    },
+    "rgb8": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 255}, "minItems": 3, "maxItems": 3},
+    "token_cor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "srgb", "srgb_hex", "situacao", "motivo", "origem", "usos"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^cor-[0-9]+$"},
+        "srgb": {"oneOf": [{"$ref": "#/$defs/rgb8"}, {"type": "null"}]},
+        "srgb_hex": {"type": ["string", "null"], "pattern": "^#[0-9A-F]{6}$"},
+        "situacao": {"enum": ["convertido", "nao_convertido"]},
+        "motivo": {"type": ["string", "null"]},
+        "origem": {
+          "type": "object",
+          "required": ["modelo", "valor_documento", "perfil", "intent", "compensacao_ponto_preto"],
+          "properties": {
+            "modelo": {"type": ["string", "null"]},
+            "valor_documento": {"type": ["array", "null"], "items": {"type": "number"}},
+            "valor_documento_8_bits": {"$ref": "#/$defs/rgb8"},
+            "convertido_de": {"type": "string"},
+            "perfil": {"type": "object", "required": ["nome", "sha256", "tratamento"]},
+            "intent": {"type": "string"},
+            "compensacao_ponto_preto": {"type": "boolean"}
+          }
+        },
+        "usos": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "object", "required": ["camada", "descritor", "ativo", "visivel"], "properties": {
+            "camada": {"type": "integer"},
+            "descritor": {"enum": ["preenchimento", "overlay", "traco", "traco_forma", "texto"]},
+            "trecho": {"type": "integer", "minimum": 0},
+            "ativo": {"type": "boolean"}, "visivel": {"type": "boolean"},
+            "efeito": {"type": "string"}, "bloco": {"type": "string"}}}
+        }
+      },
+      "if": {"properties": {"situacao": {"const": "convertido"}}},
+      "then": {"properties": {"srgb": {"$ref": "#/$defs/rgb8"}, "srgb_hex": {"type": "string"}}}
+    },
+    "metricas": {
+      "type": "object",
+      "required": ["unidades_por_em", "ascender", "descender", "cap_height", "x_height", "entrelinha_tipo"],
+      "properties": {
+        "unidades_por_em": {"type": ["integer", "number", "null"]},
+        "ascender": {"type": ["number", "null"]}, "descender": {"type": ["number", "null"]},
+        "cap_height": {"type": ["number", "null"]}, "x_height": {"type": ["number", "null"]},
+        "entrelinha_tipo": {"type": ["number", "null"]}
+      }
+    },
+    "token_tipografia": {
+      "type": "object",
+      "required": ["id", "camada", "trecho", "visivel", "fonte_ps", "familia", "estilo", "peso", "corpo_espaco_texto",
+                   "escala_vertical_matriz", "corpo_efetivo_px", "entrelinha", "tracking_milesimos_em", "cor", "origem",
+                   "metricas", "metricas_origem", "situacao_fonte"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^tipo-[0-9-]+$"},
+        "camada": {"type": "integer"},
+        "trecho": {"type": "integer", "minimum": 0},
+        "visivel": {"type": "boolean"},
+        "fonte_ps": {"type": ["string", "null"]},
+        "familia": {"type": ["string", "null"]},
+        "estilo": {"type": ["string", "null"]},
+        "peso": {"type": ["integer", "number", "null"]},
+        "corpo_espaco_texto": {"type": ["number", "null"]},
+        "escala_vertical_matriz": {"type": ["number", "null"]},
+        "corpo_efetivo_px": {"type": ["number", "null"]},
+        "entrelinha": {"type": ["number", "null"]},
+        "entrelinha_efetiva_px": {"type": ["number", "null"]},
+        "tracking_milesimos_em": {"type": ["number", "null"]},
+        "tracking_em": {"type": ["number", "null"]},
+        "cor": {"type": ["string", "null"]},
+        "origem": {"type": "object", "required": ["arquivo_sha256", "camada", "trecho", "fonte"]},
+        "metricas": {"oneOf": [{"$ref": "#/$defs/metricas"}, {"type": "null"}]},
+        "metricas_origem": {"oneOf": [{"type": "object", "required": ["face_id", "sha256", "nome_ps", "conferencia"]},
+                                      {"type": "null"}]},
+        "situacao_fonte": {"type": ["string", "null"]}
+      }
+    },
+    "medida": {
+      "type": "object",
+      "required": ["camada", "tipo", "caixa", "caixa_tinta", "area_ref", "rotacao_graus", "folga", "folga_mascara",
+                   "folga_resolucao"],
+      "properties": {
+        "camada": {"type": "integer"},
+        "tipo": {"type": ["string", "null"]},
+        "caixa": {"$ref": "#/$defs/caixa_ou_nulo"},
+        "caixa_tinta": {"$ref": "#/$defs/caixa_ou_nulo"},
+        "area_ref": {"$ref": "#/$defs/caixa"},
+        "rotacao_graus": {"type": ["number", "null"]},
+        "folga": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["esq", "topo", "dir", "base"]}]},
+        "folga_mascara": {"type": ["object", "null"]},
+        "folga_resolucao": {"type": ["object", "null"]}
+      }
+    },
+    "sujeito": {
+      "type": "object",
+      "required": ["camada", "tipo", "asset_sha256", "metodo", "caixa"],
+      "properties": {
+        "camada": {"type": "integer"},
+        "tipo": {"type": "string"},
+        "asset_sha256": {"$ref": "#/$defs/sha256"},
+        "metodo": {"enum": ["alfa", "pedir_ao_da", "sem_tinta", "nao_medido"]},
+        "alfa": {"enum": ["alfa_da_camada", "alfa_visivel_com_mascara"]},
+        "caixa": {"$ref": "#/$defs/caixa_ou_nulo"},
+        "medidas": {"type": "object"},
+        "limiar": {"$ref": "#/$defs/citacao"},
+        "motivo": {"type": ["string", "null"]}
+      },
+      "if": {"properties": {"metodo": {"const": "alfa"}}},
+      "then": {"properties": {"caixa": {"$ref": "#/$defs/caixa"}}},
+      "else": {"properties": {"caixa": {"type": "null"}}}
+    },
+    "asset": {
+      "type": "object",
+      "required": ["camada", "sha256", "tratamento", "converte_pixels", "perfil_efetivo", "perfil_asset", "fonte"],
+      "properties": {
+        "camada": {"type": "integer"},
+        "sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "tipo_detectado": {"type": ["string", "null"]},
+        "tratamento": {"enum": ["mesmo_perfil", "atribuir_perfil_do_documento", "asset_sem_perfil", "perfil_do_asset_nao_lido"]},
+        "converte_pixels": {"const": false},
+        "perfil_efetivo": {"type": "object"},
+        "perfil_asset": {"type": ["object", "null"]},
+        "fonte": {"$ref": "#/$defs/fonte"}
+      }
+    }
+  }
+}

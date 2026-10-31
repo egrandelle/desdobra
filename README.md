@@ -18,9 +18,11 @@ O passo a passo completo, com o que conferir depois, está em `docs/instalacao-t
 ## Linha de comando do motor
 
 ```
-desdobra job criar <pasta> --kv <arquivo.psd> --modo-dados {a,b,c}
+desdobra job criar <pasta> --kv <arquivo.psd> --modo-dados {a,b,c} [--fontes <arquivos ou pasta>] [--licencas <arquivo.json>]
 desdobra job proxima <pasta>
 desdobra ler <arquivo.psd> --saida <pasta>
+desdobra fontes conferir --job <pasta>
+desdobra fontes laudo --job <pasta>
 desdobra regressao --corpus <pasta> --linha-de-base <pasta> --saida <pasta>
 desdobra doctor
 ```
@@ -48,7 +50,7 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pytest plugins/desdobra/testes
 ```
 
-Regras do repositório: nada de material de cliente (PSD, imagem, nome de camada, texto de peça, nome de marca), nada de arquivo de fonte e nada de segredo. Os testes geram os PSDs sintéticos na hora.
+Regras do repositório: nada de material de cliente (PSD, imagem, nome de camada, texto de peça, nome de marca), nada de arquivo de fonte e nada de segredo. Os testes geram os PSDs e as fontes sintéticas na hora. As fontes de um job entram só por `--fontes`, ficam em `entrada/fontes/` da pasta do job e nunca vão para o repositório.
 
 Dois testes dependem de material que fica fora do repositório e só rodam quando a variável de ambiente aponta para ele:
 - `DESDOBRA_PALAVRAS_PROIBIDAS`: arquivo com as palavras que nunca podem aparecer no repositório (nomes de cliente, marca e fonte do material de teste), uma por linha; a linha que começa com `sigla:` conta só em maiúsculas e como palavra inteira. A lista nunca entra no repositório, nem codificada;

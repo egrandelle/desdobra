@@ -55,7 +55,8 @@ def test_criar_monta_a_pasta_e_congela_as_entradas(tmp_path, kv_psd, pastas_extr
         assert reg['sha256'] == sha256_arquivo(job / rel)
         assert eh_somente_leitura(job / rel)
     assert estado['entradas']['entrada/kv.psd']['sha256'] == sha256_arquivo(kv_psd)
-    assert estado['fases'] == {'ler': nucleo._registro_vazio()}
+    assert estado['fases'] == {f.id: nucleo._registro_vazio() for f in nucleo.ESTEIRA}
+    assert [f.id for f in nucleo.ESTEIRA][:3] == ['ler', 'fontes', 'laudo-fontes']
     assert estado['proxima']['tipo'] == 'fase' and estado['proxima']['fase'] == 'ler'
     eventos = [json.loads(l) for l in (job / 'log' / 'eventos.jsonl').read_text(encoding='utf-8').splitlines()]
     assert eventos[0]['evento'] == 'job_criado'
@@ -353,15 +354,15 @@ def executor_de_envelope(situacao, codigo=0, o_que_fazer='o que fazer da fase', 
 def test_bloqueio_da_fase_chega_ao_envelope_do_job_proxima(tmp_path, kv_psd, todas):
     contagens = {'recusas': 2, 'bloqueios_documento': 1, 'recusas_pedem_confirmacao': 1}
     job = tmp_path / 'job-ok'
-    nucleo.criar(job, kv_psd, 'c')
-    r = nucleo.proxima(job, todas=todas, executor=executor_de_envelope('ok_com_bloqueio', 0, 'decida com o DA',
+    nucleo.criar(job, kv_psd, 'c', fases=FASES_M1)
+    r = nucleo.proxima(job, fases=FASES_M1, todas=todas, executor=executor_de_envelope('ok_com_bloqueio', 0, 'decida com o DA',
                                                                        contagens))
     assert r.codigo == int(Codigo.OK) and r.situacao == 'ok_com_bloqueio' and r.o_que_fazer == 'decida com o DA'
     assert r.fase == 'ler'
     assert {k: r.contagens[k] for k in contagens} == contagens and r.contagens['codigo_da_fase'] == 0
     job = tmp_path / 'job-bloqueado'
-    nucleo.criar(job, kv_psd, 'c')
-    r = nucleo.proxima(job, todas=todas, executor=executor_de_envelope('bloqueado', int(Codigo.ORCAMENTO),
+    nucleo.criar(job, kv_psd, 'c', fases=FASES_M1)
+    r = nucleo.proxima(job, fases=FASES_M1, todas=todas, executor=executor_de_envelope('bloqueado', int(Codigo.ORCAMENTO),
                                                                        'confirme o teto', contagens))
     assert r.codigo == int(Codigo.FASE_FALHOU) and r.situacao == 'bloqueado' and r.o_que_fazer == 'confirme o teto'
     assert r.contagens['codigo_da_fase'] == int(Codigo.ORCAMENTO) and r.contagens['recusas'] == 2
@@ -369,16 +370,16 @@ def test_bloqueio_da_fase_chega_ao_envelope_do_job_proxima(tmp_path, kv_psd, tod
 
 def test_todas_sem_bloqueio_continua_concluido(tmp_path, kv_psd):
     job = tmp_path / 'job'
-    nucleo.criar(job, kv_psd, 'c')
-    r = nucleo.proxima(job, todas=True, executor=executor_de_envelope('ok'))
-    assert r.situacao == 'concluido' and r.codigo == 0 and r.o_que_fazer == nucleo.FIM_M1
+    nucleo.criar(job, kv_psd, 'c', fases=FASES_M1)
+    r = nucleo.proxima(job, fases=FASES_M1, todas=True, executor=executor_de_envelope('ok'))
+    assert r.situacao == 'concluido' and r.codigo == 0 and r.o_que_fazer == nucleo.FIM
 
 
 def test_alarme_de_auditoria_na_fase_leva_o_que_fazer_da_auditoria(tmp_path, kv_psd):
     from desdobra import leitor
     job = tmp_path / 'job'
-    nucleo.criar(job, kv_psd, 'c')
-    r = nucleo.proxima(job, executor=executor_de_envelope('recusado', int(Codigo.AUDITORIA),
+    nucleo.criar(job, kv_psd, 'c', fases=FASES_M1)
+    r = nucleo.proxima(job, fases=FASES_M1, executor=executor_de_envelope('recusado', int(Codigo.AUDITORIA),
                                                           leitor.O_QUE_FAZER[Codigo.AUDITORIA]))
     assert r.codigo == int(Codigo.FASE_FALHOU) and r.contagens['codigo_da_fase'] == int(Codigo.AUDITORIA)
     assert r.o_que_fazer == leitor.O_QUE_FAZER[Codigo.AUDITORIA]
@@ -386,36 +387,97 @@ def test_alarme_de_auditoria_na_fase_leva_o_que_fazer_da_auditoria(tmp_path, kv_
 
 def test_teto_novo_do_da_roda_de_novo_a_fase_ler(tmp_path, kv_psd):
     job = tmp_path / 'job'
-    nucleo.criar(job, kv_psd, 'c')
+    nucleo.criar(job, kv_psd, 'c', fases=FASES_M1)
     chamadas = []
     executor = executor_de_envelope('ok_com_bloqueio', 0, 'decida com o DA', {'recusas': 1}, chamadas)
-    assert nucleo.proxima(job, executor=executor).situacao == 'ok_com_bloqueio'
+    assert nucleo.proxima(job, fases=FASES_M1, executor=executor).situacao == 'ok_com_bloqueio'
     assert nucleo.ler_estado(job)['fases']['ler']['opcoes'] == []
     teto = ['--teto-memoria-bytes', '999999999']
-    r = nucleo.proxima(job, executor=executor, opcoes_da_fase=teto)
+    r = nucleo.proxima(job, fases=FASES_M1, executor=executor, opcoes_da_fase=teto)
     assert len(chamadas) == 2 and chamadas[1][-2:] == teto and r.fase == 'ler'
     estado = contratos.ler(job / 'estado.json', 'estado/1')
     assert estado['fases']['ler']['opcoes'] == teto and estado['fases']['ler']['situacao'] == 'concluida'
     # o mesmo teto nao roda de novo; outro teto (ou o tempo) roda
-    assert nucleo.proxima(job, executor=executor, opcoes_da_fase=teto).situacao == 'concluido'
+    assert nucleo.proxima(job, fases=FASES_M1, executor=executor, opcoes_da_fase=teto).situacao == 'concluido'
     assert len(chamadas) == 2
-    nucleo.proxima(job, executor=executor, opcoes_da_fase=['--tempo-max-s', '900.0'])
+    nucleo.proxima(job, fases=FASES_M1, executor=executor, opcoes_da_fase=['--tempo-max-s', '900.0'])
     assert len(chamadas) == 3
     # sem opcao nenhuma, a fase concluida fica como esta
-    assert nucleo.proxima(job, executor=executor).situacao == 'concluido' and len(chamadas) == 3
+    assert nucleo.proxima(job, fases=FASES_M1, executor=executor).situacao == 'concluido' and len(chamadas) == 3
 
 
 def test_acrescentar_na_campanha_invalida_a_fase_ler_da_esteira_do_m1(tmp_path, kv_psd):
     job = tmp_path / 'job'
-    nucleo.criar(job, kv_psd, 'c')
-    nucleo.proxima(job, executor=executor_de_envelope('ok'))
-    assert nucleo.fases_invalidas(job) == set()
+    nucleo.criar(job, kv_psd, 'c', fases=FASES_M1)
+    nucleo.proxima(job, fases=FASES_M1, executor=executor_de_envelope('ok'))
+    assert nucleo.fases_invalidas(job, FASES_M1) == set()
     novo = tmp_path / 'asset.txt'
     novo.write_bytes(b'x' * 1234)
-    _estado, avaliacao = nucleo.trocar_entrada(job, 'entrada/campanha/asset.txt', novo)
+    _estado, avaliacao = nucleo.trocar_entrada(job, 'entrada/campanha/asset.txt', novo, fases=FASES_M1)
     assert not avaliacao['ler'][0] and 'entrada/campanha' in avaliacao['ler'][1]
-    assert nucleo.fases_invalidas(job) == {'ler'}
+    assert nucleo.fases_invalidas(job, FASES_M1) == {'ler'}
     novo.write_bytes(b'y' * 1234)
-    nucleo.proxima(job, executor=executor_de_envelope('ok'))
-    nucleo.trocar_entrada(job, 'entrada/campanha/asset.txt', novo)
-    assert nucleo.fases_invalidas(job) == {'ler'}
+    nucleo.proxima(job, fases=FASES_M1, executor=executor_de_envelope('ok'))
+    nucleo.trocar_entrada(job, 'entrada/campanha/asset.txt', novo, fases=FASES_M1)
+    assert nucleo.fases_invalidas(job, FASES_M1) == {'ler'}
+
+
+# ------------------------------------------------------------------ correcoes da revisao do M2
+def _esteira_com_bloqueio():
+    """Fase 'f' com bloqueio_persiste: o envelope diz bloqueio quando entrada/campanha/x.txt tem 'bloqueio'."""
+    codigo = ('import sys, json, pathlib; p = pathlib.Path(sys.argv[1]); t = (p / "entrada/campanha/x.txt").read_text();'
+              ' o = p / "saidas/f.txt"; o.parent.mkdir(exist_ok=True); o.write_text(t);'
+              ' s = "ok_com_bloqueio" if "bloqueio" in t else "ok";'
+              ' print(json.dumps({"esquema": "envelope/1", "situacao": s, "codigo": 0, "o_que_fazer": "resolva " + s,'
+              ' "contagens": {"camadas_bloqueantes": 1 if "bloqueio" in t else 0}}))')
+    f = Fase(id='f', tipo='fase', descricao='fase com bloqueio', entradas=('entrada/campanha/x.txt',),
+             saidas=('saidas/f.txt',), comando=lambda pasta: [sys.executable, '-I', '-c', codigo, str(pasta)],
+             bloqueio_persiste=True)
+    g = Fase(id='g', tipo='fase', descricao='fase depois', depende_de=('f',), saidas=('saidas/g.txt',),
+             comando=lambda pasta: [sys.executable, '-I', '-c', 'import sys, pathlib; p = pathlib.Path(sys.argv[1]);'
+                                    ' (p / "saidas/g.txt").write_text("g")', str(pasta)])
+    return (f, g)
+
+
+def test_bloqueio_da_fase_persiste_no_estado_ate_a_entrada_mudar(tmp_path, kv_psd):
+    esteira = _esteira_com_bloqueio()
+    campanha = tmp_path / 'campanha'
+    campanha.mkdir()
+    (campanha / 'x.txt').write_text('bloqueio', encoding='utf-8')
+    job = tmp_path / 'job'
+    nucleo.criar(job, kv_psd, 'c', campanha=campanha, fases=esteira)
+    r = nucleo.proxima(job, fases=esteira, todas=True)
+    assert r.situacao == 'ok_com_bloqueio' and r.fase == 'f' and r.contagens['bloqueios_pendentes'] == 1
+    estado = contratos.ler(job / 'estado.json', 'estado/1')
+    assert estado['proxima']['tipo'] == 'bloqueio' and estado['proxima']['fase'] == 'f'
+    assert estado['fases']['f']['bloqueio']['situacao'] == 'ok_com_bloqueio'
+    # o job proxima seguinte nao roda nada e continua dizendo o bloqueio (antes: concluido)
+    for _ in range(2):
+        r = nucleo.proxima(job, fases=esteira)
+        assert r.situacao == 'ok_com_bloqueio' and r.codigo == 0 and r.contagens['fases_rodadas_agora'] == 0
+        assert 'resolva ok_com_bloqueio' in r.o_que_fazer and r.contagens['camadas_bloqueantes'] == 1
+    # o DA troca a entrada: a fase roda de novo sem bloqueio e o job conclui
+    novo = tmp_path / 'novo.txt'
+    novo.write_text('resolvido', encoding='utf-8')
+    nucleo.trocar_entrada(job, 'entrada/campanha/x.txt', novo, fases=esteira)
+    r = nucleo.proxima(job, fases=esteira, todas=True)
+    assert r.situacao == 'concluido' and r.contagens['bloqueios_pendentes'] == 0
+    assert 'bloqueio' not in nucleo.ler_estado(job)['fases']['f']
+
+
+def test_fase_sem_bloqueio_persiste_nao_muda(tmp_path, kv_psd):
+    """A leitura (ler) nao grava bloqueio: o comportamento do M1 continua."""
+    job = tmp_path / 'job'
+    nucleo.criar(job, kv_psd, 'c', fases=FASES_M1)
+    nucleo.proxima(job, fases=FASES_M1, executor=executor_de_envelope('ok_com_bloqueio'))
+    assert nucleo.proxima(job, fases=FASES_M1, executor=executor_de_envelope('ok')).situacao == 'concluido'
+
+
+def test_remover_entrada_so_tira_arquivo_de_fonte_que_existe(tmp_path, kv_psd):
+    job = tmp_path / 'job'
+    nucleo.criar(job, kv_psd, 'c')
+    for rel in ('entrada/kv.psd', 'entrada/fontes/../kv.psd', 'entrada/fontes/nao.ttf', 'entrada/fontes/a/b.ttf'):
+        with pytest.raises(ErroJob) as e:
+            nucleo.remover_entrada(job, rel)
+        assert e.value.codigo == Codigo.USO
+    assert (job / 'entrada' / 'kv.psd').is_file()

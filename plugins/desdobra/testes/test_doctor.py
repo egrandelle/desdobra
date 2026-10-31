@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """desdobra doctor: verificacoes, doctor.json (doctor/1), envelope e o teste do isolador."""
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from conftest import PASTA_MOTOR, RAIZ_PLUGIN
-from desdobra import contratos, limites, plataforma
+from desdobra import chromium, contratos, limites, plataforma
 from desdobra.doctor import verificacoes as v
 from desdobra.plataforma import ResultadoFilho
 from desdobra.resultado import Codigo
@@ -217,3 +218,60 @@ def test_isolador_de_verdade_no_windows(registro):
 def test_esquema_doctor_esta_na_pasta_de_esquemas():
     assert (PASTA_MOTOR / 'schemas' / 'doctor-1.json').is_file()
     assert 'doctor/1' in contratos.listar_esquemas()
+
+
+# ------------------------------------------------------------------ correcoes da revisao do M2
+def test_motor_aponta_o_playwright_para_a_pasta_de_dados_do_plugin(tmp_path, monkeypatch):
+    dados = tmp_path / 'data'
+    (dados / 'venv').mkdir(parents=True)
+    (dados / 'interpretador.json').write_text('{}', encoding='utf-8')
+    # setenv antes do delenv: o monkeypatch guarda o valor de antes e o restaura no fim, mesmo que o motor grave
+    monkeypatch.setenv(chromium.VARIAVEL_NAVEGADORES, 'x')
+    monkeypatch.delenv(chromium.VARIAVEL_NAVEGADORES)
+    monkeypatch.setattr(sys, 'prefix', str(dados / 'venv'))
+    assert chromium.pasta_navegadores() == dados / 'ms-playwright'
+    chromium.apontar_playwright()
+    assert os.environ[chromium.VARIAVEL_NAVEGADORES] == str(dados / 'ms-playwright')
+
+
+def test_doctor_confere_versao_do_fonttools_e_do_playwright(tmp_path):
+    from desdobra.doctor import chromium as vc
+    for nome in ('fonttools', 'playwright'):
+        assert vc.verificar_versao(nome, nome, nome).situacao == 'ok'
+    lock = tmp_path / 'requirements.lock'
+    lock.write_text('fonttools==0.0.1 \\\n    --hash=sha256:aa\n', encoding='utf-8')
+    v = vc.verificar_versao('fonttools', 'fonttools', 'fonttools', lock)
+    assert v.situacao == 'falha' and v.o_que_fazer
+    assert vc.verificar_versao('playwright', 'playwright', 'playwright', lock).situacao == 'falha'
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='o isolador do filho roda no Windows')
+def test_doctor_acha_o_chromium_fixado_e_falha_sem_ele(tmp_path):
+    from desdobra.doctor import chromium as vc
+    revisao, _versao = chromium.revisao_fixada()
+    assert revisao is not None
+    padrao = chromium.pasta_padrao_do_playwright()
+    if chromium.executavel_fixado(padrao, revisao) is None:
+        pytest.skip('o headless shell fixado nao esta na pasta padrao do Playwright desta maquina')
+    assert vc.verificar_chromium(padrao).situacao == 'ok'
+    v = vc.verificar_chromium(tmp_path / 'vazia')
+    assert v.situacao == 'falha' and v.o_que_fazer == vc.O_QUE_FAZER_CHROMIUM and str(tmp_path) not in v.o_que_fazer
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='o isolador do filho roda no Windows')
+def test_doctor_carrega_fonte_sintetica_pelo_font_face_e_confere_por_cdp():
+    from desdobra.doctor import chromium as vc
+    padrao = chromium.pasta_navegadores() or chromium.pasta_padrao_do_playwright()
+    if chromium.executavel_fixado(padrao, chromium.revisao_fixada()[0]) is None:
+        pytest.skip('o headless shell fixado nao esta instalado nesta maquina')
+    v = vc.verificar_fonte_no_chromium()
+    assert v.situacao == 'ok', v.detalhe
+    assert v.numeros == {'carregada': 1, 'cdp_confere': 1, 'copias_no_cache': 0}
+
+
+def test_doctor_lista_as_verificacoes_do_m2(monkeypatch):
+    from desdobra import doctor
+    lista, _sem = doctor.rodar_verificacoes('c', None, com_isolador=False, com_chromium=False)
+    ids = [x.id for x in lista]
+    assert {'fonttools', 'playwright', 'chromium_fixado', 'fonte_no_chromium'} <= set(ids)
+    assert next(x for x in lista if x.id == 'fonte_no_chromium').situacao == 'pulado'

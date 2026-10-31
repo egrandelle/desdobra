@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:licencas-fontes:1",
+  "title": "Dados de licenca das fontes, informados pelo DA ou pela agencia (licencas-fontes/1)",
+  "description": "Entrada opcional do job (entrada/licencas.json, por --licencas no job criar ou por job trocar-entrada). Cada registro vale para o arquivo de fonte com aquele sha256 (e, na colecao, para a face do indice). E o unico jeito de o DA informar o canal e a EULA e de liberar um bloqueio de licenca, sempre com justificativa.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "faces"],
+  "properties": {
+    "esquema": {"const": "licencas-fontes/1"},
+    "faces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "canal"],
+        "properties": {
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "indice": {"type": "integer", "minimum": 0},
+          "canal": {"enum": ["fundicao", "revenda", "adobe_fonts", "kit_web", "ofl", "desconhecido"]},
+          "eula": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "nome": {"type": "string"},
+              "versao": {"type": "string"},
+              "font_face": {"enum": ["proibe", "permite", "nao_lido"]}
+            }
+          },
+          "titular": {"type": "string"},
+          "usuarios": {"type": ["integer", "string"]},
+          "comprovante_ref": {"type": "string"},
+          "liberado_pelo_da": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["justificativa"],
+            "properties": {
+              "justificativa": {"type": "string", "minLength": 1},
+              "quem": {"type": "string"},
+              "quando": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

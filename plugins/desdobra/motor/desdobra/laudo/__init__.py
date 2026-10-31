@@ -65,7 +65,8 @@ def _coberta(reg, lim_cob, lim_ocupa):
 
 
 def _fontes_nao_conferidas(reg, fontes_status):
-    """Fontes de trechos com tinta que o laudo nao conferiu (no M1, todas: a conferencia das faces entra no M2)."""
+    """Fontes de trechos com tinta que o laudo nao conferiu (na primeira passada, todas: a conferencia contra o
+    arquivo enviado e a fase fontes, e a segunda passada e desdobra.laudo.fontes)."""
     tx = reg.get('texto') or {}
     return sorted({r['fonte_ps'] for r in tx.get('runs') or [] if r.get('tem_tinta') and r.get('fonte_ps')
                    and (fontes_status or {}).get(r['fonte_ps']) not in ('presente', 'ausente')})
@@ -77,8 +78,9 @@ def _alertas(reg, aninhadas, fontes_status=None):
     if nao_conferidas:
         # "lida" nao quer dizer que a fonte foi conferida: sem a conferencia, a B3 nao tem como disparar
         out.append({'codigo': 'fonte_nao_conferida', 'fonte': FONTE_FONTES,
-                    'descricao': 'Texto com tinta em fonte que o laudo não conferiu nas faces instaladas. A conferência '
-                                 'entra no M2; até lá, uma fonte ausente não aparece como bloqueante.',
+                    'descricao': 'Texto com tinta em fonte ainda não conferida contra o arquivo enviado em entrada/fontes/. '
+                                 'A conferência é a fase fontes, e a fase laudo-fontes grava o laudo com a regra B3 '
+                                 'reaplicada; nesta primeira passada, uma fonte ausente ainda não aparece como bloqueante.',
                     'medida': {'n_fontes': len(nao_conferidas)}})
     so = reg.get('smart_object')
     if not so:
@@ -212,7 +214,7 @@ def montar(estrutura, *, origem, recursos, aninhadas=None, recusa=None, casament
     aninhadas: {sha256 do embutido: {'estrutura' | 'recusa', 'pasta', 'motivo'}};
     recusa: lista de recusas (tipo, etapa, motivo, layer_id, medidas) que entram no laudo;
     casamentos: {unique_id do linkado: proposta de casamento com arquivo da pasta do job};
-    fontes_status: {fonte_ps: 'presente' | 'ausente'} quando houver conferencia de faces (M2)."""
+    fontes_status: {fonte_ps: 'presente' | 'ausente'}; a segunda passada usa desdobra.laudo.fontes."""
     aninhadas = aninhadas or {}
     limiar = limites.obter('prova_pixel.limiar_diferenca')
     laudo = {'esquema': 'laudo/1',

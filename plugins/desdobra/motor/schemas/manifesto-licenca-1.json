@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:manifesto-licenca:1",
+  "title": "Manifesto de licenca das fontes do job (manifesto-licenca/1)",
+  "description": "Rascunho gravado pela fase fontes em manifesto-licenca.json (arquitetura-v1.md, 5.8). Uma entrada por face e uma por arquivo, com sha256, situacao e motivo. Leitura tecnica, sem parecer juridico; nunca guarda o arquivo da fonte nem o caminho dele.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "rascunho", "job_id", "gerado_em", "situacao", "faces", "arquivos", "rodape"],
+  "properties": {
+    "esquema": {"const": "manifesto-licenca/1"},
+    "rascunho": {"type": "boolean"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "gerado_em": {"type": "string"},
+    "nota": {"type": "string"},
+    "situacao": {"$ref": "#/$defs/situacao"},
+    "faces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["face_id", "nome_ps", "arquivo_sha256", "formato", "versao_name", "origem", "canal", "eula", "conferencia", "situacao", "motivos"],
+        "properties": {
+          "face_id": {"type": "string", "pattern": "^f[0-9]{2,}$"},
+          "familia": {"type": ["string", "null"]},
+          "estilo": {"type": ["string", "null"]},
+          "nome_ps": {"type": ["string", "null"]},
+          "arquivo_sha256": {"$ref": "#/$defs/sha256"},
+          "formato": {"enum": ["otf", "ttf", "ttc", "woff", "woff2"]},
+          "versao_name": {"type": ["string", "null"]},
+          "origem": {"enum": ["arquivo_enviado", "ofl_autoteste"]},
+          "canal": {"enum": ["fundicao", "revenda", "adobe_fonts", "kit_web", "ofl", "desconhecido"]},
+          "eula": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nome", "versao", "font_face"],
+            "properties": {
+              "nome": {"type": ["string", "null"]},
+              "versao": {"type": ["string", "null"]},
+              "font_face": {"enum": ["proibe", "permite", "nao_lido"], "description": "O que a EULA diz sobre @font-face e servidor web"}
+            }
+          },
+          "titular": {"type": ["string", "null"]},
+          "usuarios": {"type": ["integer", "string", "null"]},
+          "comprovante_ref": {"type": ["string", "null"], "description": "Referencia do comprovante, nunca o arquivo da fonte"},
+          "liberacao_da": {"type": ["object", "null"]},
+          "conferencia": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["metodo", "face_cdp_confere", "largura_erro_max_pct"],
+            "properties": {
+              "metodo": {"type": ["string", "null"]},
+              "face_cdp_confere": {"type": ["boolean", "null"]},
+              "largura_erro_max_pct": {"type": ["number", "null"]}
+            }
+          },
+          "diagnostico_instalada_mesmo_nome": {"type": ["boolean", "null"]},
+          "situacao": {"$ref": "#/$defs/situacao"},
+          "motivos": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}}
+        }
+      }
+    },
+    "arquivos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "formato", "situacao", "motivo"],
+        "properties": {
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "formato": {"enum": ["otf", "ttf", "ttc", "woff", "woff2", null]},
+          "situacao": {"enum": ["aceito", "recusado"]},
+          "motivo": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "rodape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disparado_por", "por_onde"],
+      "properties": {
+        "disparado_por": {"type": ["string", "null"]},
+        "por_onde": {"type": ["string", "null"]},
+        "nota": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "situacao": {"enum": ["ok", "aviso", "bloqueante"]}
+  }
+}

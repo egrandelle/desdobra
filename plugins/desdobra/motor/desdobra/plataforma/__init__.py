@@ -79,8 +79,11 @@ class Plataforma(abc.ABC):
         """
 
     def fontes_instaladas(self):
-        """Lista de FaceInstalada, separando fonte de cliente de fonte do sistema. Entra no M2."""
-        raise NotImplementedError('fontes_instaladas entra no M2')
+        """So diagnostico (arquitetura-v1.md, 4.2): nenhum portao depende disto, e a fonte do job vem sempre do
+        arquivo de entrada/fontes/. No M2 o diagnostico de face instalada com o mesmo nome de uma face do job e feito
+        na conferencia, pelo Chromium (desdobra.fontes.conferencia, campo instalada_mesmo_nome), sem abrir arquivo
+        de fonte do sistema no processo principal. A lista completa fica sem implementacao."""
+        raise NotImplementedError('fontes_instaladas fica só como diagnóstico, feito pela conferência de fontes')
 
     def porta_livre(self):
         """Uma porta TCP livre em 127.0.0.1, escolhida pelo sistema."""

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:conversao-cor:1",
+  "title": "Conversao de cor no processo filho (conversao-cor/1)",
+  "description": "Gravado pelo filho da cor (desdobra.cor.filho), o unico processo que abre o perfil ICC do documento com o LittleCMS (arquitetura-v1.md, 7.1). So numeros: o perfil (nome, sha256, bytes), o tratamento e cada cor pedida com o sRGB calculado. Nunca os bytes do perfil.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "perfil", "tratamento", "motivo", "rgb", "lab", "recusa", "auditoria"],
+  "properties": {
+    "esquema": {"const": "conversao-cor/1"},
+    "perfil": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["nome", "sha256", "bytes"],
+          "properties": {
+            "nome": {"type": ["string", "null"]},
+            "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+            "bytes": {"type": ["integer", "null"], "minimum": 0}
+          }
+        }
+      ]
+    },
+    "tratamento": {"enum": ["icc_do_documento", "perfil_ilegivel", null]},
+    "motivo": {"type": ["string", "null"]},
+    "rgb": {
+      "description": "Pares [rgb do documento em 8 bits, sRGB em 8 bits]",
+      "type": "array",
+      "items": {"$ref": "#/$defs/par"}
+    },
+    "lab": {
+      "description": "Pares [Lab D50 do descritor, sRGB em 8 bits]",
+      "type": "array",
+      "items": {"$ref": "#/$defs/par"}
+    },
+    "recusa": {"enum": [null, "memoria", "auditoria"]},
+    "auditoria": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instalado", "bloqueios"],
+      "properties": {
+        "instalado": {"type": "boolean"},
+        "bloqueios": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "tripla": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "par": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/tripla"}}
+  }
+}

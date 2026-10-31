@@ -28,6 +28,8 @@ COMPONENTES = (
     ('desdobra.regressao', ('regressao',)),
     ('desdobra.doctor', ('doctor',)),
     ('desdobra.limites', ('limites',)),
+    ('desdobra.fontes', ('fontes',)),
+    ('desdobra.ds', ('ds',)),
 )
 MODULO_ENVELOPE = 'desdobra.sugestao.envelope'
 

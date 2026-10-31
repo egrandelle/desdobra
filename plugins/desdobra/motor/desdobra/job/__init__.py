@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Subcomandos "desdobra job ...": criar, proxima, estado e trocar-entrada."""
+"""Subcomandos "desdobra job ...": criar, proxima, estado, trocar-entrada e remover-entrada."""
 import argparse
 from pathlib import Path
 
@@ -22,6 +22,10 @@ def registrar(subparsers):
                    help='Teto autorizado pela agência (vem da configuração do plugin)')
     c.add_argument('--campanha', default=None, help='Pasta com os outros arquivos da campanha')
     c.add_argument('--specs', default=None, help='Pasta com as folhas de spec')
+    c.add_argument('--fontes', nargs='+', action='extend', default=None,
+                   help='Arquivos de fonte (OTF, TTF, TTC, WOFF, WOFF2) ou pastas com eles; entram em entrada/fontes/')
+    c.add_argument('--licencas', default=None,
+                   help='Dados de licença das fontes (licencas-fontes/1); entra como entrada/licencas.json')
     c.set_defaults(executar=_criar, nome_comando='job criar')
 
     x = sub.add_parser('proxima', help='Roda a próxima fase ou para no portão com o que fazer')
@@ -44,6 +48,12 @@ def registrar(subparsers):
     t.add_argument('arquivo', help='Arquivo novo')
     t.set_defaults(executar=_trocar, nome_comando='job trocar-entrada')
 
+    r = sub.add_parser('remover-entrada', help='Tira um arquivo de fonte de entrada/fontes/ e invalida só as fases que '
+                                               'dependem dele')
+    r.add_argument('pasta', help='Pasta do job')
+    r.add_argument('entrada', help='Caminho dentro do job, por exemplo entrada/fontes/<arquivo>')
+    r.set_defaults(executar=_remover, nome_comando='job remover-entrada')
+
 
 def _abs(caminho):
     """Caminho absoluto: as fases rodam em subprocesso com outra pasta de trabalho."""
@@ -58,11 +68,14 @@ def _erro(comando, e, pasta=None):
 def _criar(args):
     try:
         estado = nucleo.criar(_abs(args.pasta), _abs(args.psd), args.modo_dados,
-                              getattr(args, 'teto_modo_dados', None), _abs(args.campanha), _abs(args.specs))
+                              getattr(args, 'teto_modo_dados', None), _abs(args.campanha), _abs(args.specs),
+                              fontes=[_abs(f) for f in args.fontes or ()], licencas=_abs(args.licencas))
     except ErroJob as e:
         return _erro('job criar', e)
     return Resultado(comando='job criar', situacao='ok', o_que_fazer=estado['proxima']['o_que_fazer'],
-                     contagens={'entradas': len(estado['entradas'])}, ids={'job_id': estado['job_id']},
+                     contagens={'entradas': len(estado['entradas']),
+                                'fontes': sum(1 for r in estado['entradas'] if r.startswith('entrada/fontes/'))},
+                     ids={'job_id': estado['job_id']},
                      pasta_job=_abs(args.pasta), linhas_humanas=['Job criado em %s' % args.pasta])
 
 
@@ -90,16 +103,23 @@ def _estado(args):
     args.pasta = _abs(args.pasta)
     try:
         estado = nucleo.ler_estado(args.pasta)
-        avaliacao, _ = nucleo.avaliar(args.pasta, estado, nucleo.FASES_M1)
+        avaliacao, _ = nucleo.avaliar(args.pasta, estado, nucleo.ESTEIRA)
     except ErroJob as e:
         return _erro('job estado', e, args.pasta)
     linhas = []
     for fid, reg in estado['fases'].items():
         valida, motivo = avaliacao.get(fid, (False, 'fora da esteira'))
-        linhas.append('%s: %s%s' % (fid, reg['situacao'], '' if valida else ' (%s)' % motivo))
-    contagens = {'fases_validas': sum(1 for v, _m in avaliacao.values() if v), 'fases': len(avaliacao)}
-    return Resultado(comando='job estado', situacao='ok', fase=estado['proxima']['fase'],
-                     o_que_fazer=estado['proxima']['o_que_fazer'], contagens=contagens,
+        com_bloqueio = ' com bloqueio pendente' if valida and reg.get('bloqueio') else ''
+        linhas.append('%s: %s%s%s' % (fid, reg['situacao'], com_bloqueio, '' if valida else ' (%s)' % motivo))
+    pendentes = nucleo.bloqueios_pendentes(estado, avaliacao, nucleo.ESTEIRA)
+    proxima = nucleo.calcular_proxima(estado, avaliacao, nucleo.ESTEIRA)
+    contagens = {'fases_validas': sum(1 for v, _m in avaliacao.values() if v), 'fases': len(avaliacao),
+                 'bloqueios_pendentes': len(pendentes)}
+    if pendentes:
+        for k, v in pendentes[0][1].get('contagens', {}).items():
+            contagens.setdefault(k, v)
+    return Resultado(comando='job estado', situacao='ok_com_bloqueio' if pendentes else 'ok', fase=proxima['fase'],
+                     o_que_fazer=proxima['o_que_fazer'], contagens=contagens,
                      ids={'job_id': estado['job_id']}, pasta_job=Path(args.pasta), linhas_humanas=linhas)
 
 
@@ -111,5 +131,17 @@ def _trocar(args):
         return _erro('job trocar-entrada', e, args.pasta)
     invalidas = sorted(k for k, (v, _m) in avaliacao.items() if not v)
     return Resultado(comando='job trocar-entrada', situacao='ok', o_que_fazer=estado['proxima']['o_que_fazer'],
+                     contagens={'fases_invalidas': len(invalidas)}, ids={'job_id': estado['job_id']},
+                     pasta_job=Path(args.pasta), linhas_humanas=['Fases a refazer: %s' % (', '.join(invalidas) or 'nenhuma')])
+
+
+def _remover(args):
+    args.pasta = _abs(args.pasta)
+    try:
+        estado, avaliacao = nucleo.remover_entrada(args.pasta, args.entrada)
+    except ErroJob as e:
+        return _erro('job remover-entrada', e, args.pasta)
+    invalidas = sorted(k for k, (v, _m) in avaliacao.items() if not v)
+    return Resultado(comando='job remover-entrada', situacao='ok', o_que_fazer=estado['proxima']['o_que_fazer'],
                      contagens={'fases_invalidas': len(invalidas)}, ids={'job_id': estado['job_id']},
                      pasta_job=Path(args.pasta), linhas_humanas=['Fases a refazer: %s' % (', '.join(invalidas) or 'nenhuma')])

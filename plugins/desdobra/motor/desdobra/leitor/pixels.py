@@ -169,6 +169,20 @@ def medir_camada(L, reg, psd, pasta_saida, cobertura, por_id, parametros, contex
         px['asset_sha256'] = sha
         px['asset_dims'] = [img.width, img.height]
         del dados
+        # com mascara raster ativa, o alfa visivel (alfa da camada vezes a mascara) vai junto: o design system
+        # (desdobra.ds) mede a caixa do sujeito por ele, porque o asset guarda so os pixels proprios
+        alfa_proprio = np.asarray(img.getchannel('A'), dtype=np.uint8) if 'A' in img.mode else None
+        if alfa_proprio is None:
+            alfa_proprio = np.full(alfa.shape, 255, np.uint8)  # numero-neutro: alfa cheio em 8 bits
+        if not np.array_equal(alfa_proprio, alfa):
+            dados_alfa = png_bytes(Image.fromarray(alfa, 'L'))
+            sha_alfa = hashlib.sha256(dados_alfa).hexdigest()
+            destino_alfa = pasta_saida / 'assets' / ('%s.png' % sha_alfa)
+            if not destino_alfa.exists():
+                arquivos.gravar_bytes_atomico(destino_alfa, dados_alfa)
+            px['alfa_visivel_sha256'] = sha_alfa
+            del dados_alfa
+        del alfa_proprio
     del img, alfa
 
 

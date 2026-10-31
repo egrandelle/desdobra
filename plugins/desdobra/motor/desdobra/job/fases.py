@@ -8,6 +8,9 @@ Uma Fase e um passo que o motor roda sozinho (tipo "fase") ou um portao humano (
   - comando: devolve o argv que roda a fase num subprocesso. Codigo de retorno diferente de zero interrompe.
   - o_que_fazer: no portao, o que o humano precisa fazer; na fase, o que fazer quando ela falha.
   - cumprido: no portao, devolve True quando o humano ja fez a parte dele (por exemplo, gravou o briefing).
+  - bloqueio_persiste: a fase que termina com bloqueio (envelope ok_com_bloqueio) grava o bloqueio no estado, e ele
+    continua no job estado e em todo job proxima seguinte ate a fase rodar de novo sem bloqueio (o DA troca ou
+    remove a entrada, ou libera pela entrada propria). Enquanto houver bloqueio, o job nao fica concluido.
 """
 import sys
 from collections.abc import Callable
@@ -26,6 +29,7 @@ class Fase:
     comando: Callable[[Path], list] | None = None
     o_que_fazer: str = ''
     cumprido: Callable[[Path], bool] | None = None
+    bloqueio_persiste: bool = False
 
     def __post_init__(self):
         if self.tipo not in ('fase', 'portao'):
@@ -56,8 +60,50 @@ FASES_M1 = (
                      'a entrada com "desdobra job trocar-entrada".'),
 )
 
+
+def _fase_ds(anteriores):
+    """Fase ds (M2): design system da peca e limites do job. Vem depois de ler e, quando a esteira tem, da
+    conferencia de fontes; sem fontes/conferencia.json, sai com a pendencia "fontes nao conferidas"."""
+    return Fase(id='ds', tipo='fase', descricao='Design system da peça e limites do job',
+                entradas=('laudo/laudo.json', 'laudo/bruto/*/estrutura.json', 'fontes/conferencia.json',
+                          'parametros/cor.json'),
+                depende_de=tuple(f.id for f in anteriores if f.id in ('ler', 'fontes')),
+                saidas=('ds/design-system.json', 'ds/limites.json'),
+                comando=comando_motor('ds', 'montar'),
+                o_que_fazer='A montagem do design system falhou. Rode "desdobra ds montar --job <pasta>" para ver '
+                            'o motivo no terminal e "desdobra job estado" para ver o código.')
+
+
+# M2, fontes (arquitetura-v1.md, 4.4 e 4.5): a conferencia contra o arquivo enviado em entrada/fontes/ e a
+# segunda passada do laudo. A troca de um arquivo de fonte ou de entrada/licencas.json invalida so estas duas
+# fases (e as que dependem delas); a leitura do PSD fica como esta.
+FASE_FONTES = Fase(
+    id='fontes', tipo='fase', descricao='Conferência das fontes contra os arquivos enviados',
+    entradas=('entrada/fontes', 'entrada/licencas.json'), depende_de=('ler',),
+    saidas=('fontes/conferencia.json', 'manifesto-licenca.json'),
+    comando=comando_motor('fontes', 'conferir'),
+    # arquivo faltando, nome sem par, glifo faltando e fallback param o job (arquitetura-v1.md, 4.5); divergencia
+    # de largura e licenca liberavel pedem decisao do DA. Os dois casos ficam no estado ate a fase rodar sem bloqueio
+    bloqueio_persiste=True,
+    o_que_fazer='A conferência de fontes falhou. Rode "desdobra fontes conferir --job <pasta>" para ver o motivo no '
+                'terminal, "desdobra job estado" para ver o código e "desdobra doctor" para conferir o ambiente.')
+FASE_LAUDO_FONTES = Fase(
+    id='laudo-fontes', tipo='fase', descricao='Segunda passada do laudo com a conferência de fontes (regra B3)',
+    depende_de=('ler', 'fontes'), saidas=('laudo/laudo-fontes.json',),
+    comando=comando_motor('fontes', 'laudo'),
+    o_que_fazer='A segunda passada do laudo falhou. Rode "desdobra fontes laudo --job <pasta>" para ver o motivo.')
+
+_FASES_FONTES = FASES_M1 + (FASE_FONTES, FASE_LAUDO_FONTES)
+FASES_M2 = _FASES_FONTES + (_fase_ds(_FASES_FONTES),)
+# a esteira que job criar e job proxima usam
+ESTEIRA = FASES_M2
+
 FIM_M1 = ('O laudo está pronto em laudo/laudo.json. As próximas fases (fontes, specs, design system e briefing) '
           'entram nos marcos seguintes.')
+FIM_M2 = ('O laudo, a conferência de fontes (fontes/conferencia.json, laudo/laudo-fontes.json e o rascunho de '
+          'manifesto-licenca.json) e o design system da peça estão prontos. As próximas fases (specs e briefing) '
+          'entram nos marcos seguintes.')
+FIM = FIM_M2
 
 
 def validar_esteira(fases):

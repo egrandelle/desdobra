@@ -75,6 +75,17 @@
         "motivo": {
           "description": "Texto fixo do motor (nunca conteudo do job), por exemplo a lista de entradas que mudaram",
           "type": ["string", "null"]
+        },
+        "bloqueio": {
+          "description": "Bloqueio com que a fase terminou (so nas fases com bloqueio_persiste, como a conferencia de fontes). Fica ate a fase rodar de novo sem bloqueio; enquanto existe numa fase valida, o job nao fica concluido",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["situacao", "o_que_fazer", "contagens"],
+          "properties": {
+            "situacao": {"enum": ["ok_com_bloqueio", "bloqueado"]},
+            "o_que_fazer": {"type": "string", "description": "Texto fixo do motor que a fase mandou"},
+            "contagens": {"type": "object", "additionalProperties": {"type": "integer"}}
+          }
         }
       }
     },
@@ -83,7 +94,7 @@
       "additionalProperties": false,
       "required": ["tipo", "fase", "o_que_fazer"],
       "properties": {
-        "tipo": {"enum": ["fase", "portao", "falha", "concluido"]},
+        "tipo": {"enum": ["fase", "portao", "falha", "bloqueio", "concluido"], "description": "bloqueio: todas as fases estao validas, mas uma terminou com bloqueio que continua pendente"},
         "fase": {"oneOf": [{"$ref": "#/$defs/id_fase"}, {"type": "null"}]},
         "o_que_fazer": {"type": "string"}
       }

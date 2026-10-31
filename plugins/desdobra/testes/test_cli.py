@@ -26,7 +26,7 @@ def test_versao_e_ajuda():
     assert codigo == 0 and saida.startswith('desdobra ')
     codigo, saida, _ = rodar('--help')
     assert codigo == 0
-    for comando in ('job', 'ler', 'regressao', 'doctor', 'limites'):
+    for comando in ('job', 'ler', 'regressao', 'doctor', 'limites', 'fontes'):
         assert comando in saida
 
 

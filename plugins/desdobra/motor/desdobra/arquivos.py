@@ -201,6 +201,58 @@ def eh_arquivo_de_fonte(caminho):
     return tipo == 'comprimido'
 
 
+# ------------------------------------------------------------------ fontes do job (entrada/fontes/, M2)
+# Formatos aceitos em entrada/fontes/ (decisoes-v1.md, arquitetura 14), reconhecidos pela assinatura do inicio do
+# arquivo, nunca so pela extensao. A colecao OTC tem a mesma assinatura da TTC. Variable font so se ve abrindo
+# as tabelas (fvar), o que so o processo filho faz (desdobra.fontes.filho).
+FORMATOS_FONTE_POR_ASSINATURA = ((b'OTTO', 'otf'), (b'\x00\x01\x00\x00', 'ttf'), (b'true', 'ttf'), (b'ttcf', 'ttc'),
+                                 (b'wOFF', 'woff'), (b'wOF2', 'woff2'))
+FORMATOS_FONTE_ACEITOS = ('otf', 'ttf', 'ttc', 'woff', 'woff2')
+EXTENSOES_FONTE_ACEITAS = ('.otf', '.ttf', '.ttc', '.otc', '.woff', '.woff2')
+# Type 1: em texto (PFA), binario (PFB, que comeca com o marcador de segmento 0x80 0x01) e o "typ1" do Mac
+ASSINATURAS_TYPE1 = (b'%!PS-AdobeFont', b'%!FontType1', b'\x80\x01', b'typ1')
+EXTENSOES_TYPE1 = ('.pfb', '.pfa', '.pfm', '.afm', '.t42')
+# arquivos que o sistema grava sozinho numa pasta copiada (nunca sao fonte); ficam fora da entrada de fontes
+ARQUIVOS_DO_SISTEMA = ('.ds_store', 'thumbs.db', 'desktop.ini')
+PREFIXO_APPLEDOUBLE = '._'  # metadados que o Mac grava ao lado de cada arquivo copiado para disco sem HFS
+
+
+def eh_arquivo_do_sistema(nome):
+    """True para o que o sistema grava sozinho numa pasta copiada, que nunca e entrada do job."""
+    nome = str(nome)
+    return nome.lower() in ARQUIVOS_DO_SISTEMA or nome.startswith(PREFIXO_APPLEDOUBLE)
+
+
+def classificar_fonte(caminho):
+    """Classifica um arquivo oferecido como fonte do job, so pelos primeiros bytes e pela extensao (sem parse).
+
+    Devolve (formato, None) quando a assinatura e de um formato aceito, ou (None, motivo) com motivo em
+    'pacote', 'type1', 'formato_nao_aceito' (outra fonte, como bitmap ou EOT), 'nao_abre' (extensao de fonte
+    sem assinatura conhecida) e 'nao_e_fonte'. A leitura das tabelas (variable font, arquivo malformado) e do
+    processo filho."""
+    caminho = Path(caminho)
+    try:
+        with open(caminho, 'rb') as f:
+            inicio = f.read(BYTES_ASSINATURA)
+    except OSError:
+        return None, 'nao_abre'
+    if tipo_de_pacote(caminho.name, inicio) is not None:
+        return None, 'pacote'
+    nome = caminho.name.lower()
+    if inicio.startswith(ASSINATURAS_TYPE1) or nome.endswith(EXTENSOES_TYPE1):
+        return None, 'type1'
+    for assinatura, formato in FORMATOS_FONTE_POR_ASSINATURA:
+        if inicio.startswith(assinatura):
+            return formato, None
+    if assinatura_de_fonte(inicio):
+        return None, 'formato_nao_aceito'
+    if nome.endswith(EXTENSOES_FONTE_ACEITAS):
+        return None, 'nao_abre'
+    if eh_nome_de_fonte(nome):
+        return None, 'formato_nao_aceito'
+    return None, 'nao_e_fonte'
+
+
 def tem_assinatura_psd(caminho):
     """Confere so os 4 primeiros bytes (8BPS). Nao e parse: o processo principal nunca parseia PSD."""
     with open(caminho, 'rb') as f:

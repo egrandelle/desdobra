@@ -1,5 +1,5 @@
 ---
-description: Confere o ambiente do desdobra (Python, versões fixadas, psd-tools com o compositor, isolador de memória e teto do modo de dados) e diz o que fazer quando algo falha. Use quando o DA pedir para conferir a instalação, quando outra skill do desdobra mandar rodar o doctor ou quando o motor não responder.
+description: Confere o ambiente do desdobra (Python, versões fixadas, psd-tools com o compositor, fontTools e Playwright, o Chromium fixado com um teste de fonte, isolador de memória e teto do modo de dados) e diz o que fazer quando algo falha. Use quando o DA pedir para conferir a instalação, quando outra skill do desdobra mandar rodar o doctor ou quando o motor não responder.
 ---
 
 # Doctor do desdobra
@@ -25,7 +25,7 @@ Regras desta skill:
    "PY" -I -B -m desdobra --envelope --teto-modo-dados TETO doctor
    ```
 
-   Na ferramenta PowerShell, ponha `& ` antes do caminho entre aspas. O teste do isolador leva alguns segundos.
+   Na ferramenta PowerShell, ponha `& ` antes do caminho entre aspas. O teste do isolador e o teste de fonte no navegador levam alguns segundos.
 5. A saída é uma linha JSON, o envelope do motor. Explique pelo campo `codigo`:
    - `0`: o ambiente está pronto. Se `contagens.avisos` for maior que zero, conte quantos avisos há.
    - `3`: alguma verificação falhou. Diga ao DA o que está no campo `o_que_fazer`, com as palavras do motor.

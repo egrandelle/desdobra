@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:ds-parametros-cor:1",
+  "title": "Parametros de cor do job (ds-parametros-cor/1)",
+  "description": "parametros/cor.json do job, gravado por 'desdobra ds parametros-cor'. Campo ausente: vale o padrao do registro de limites (cor.intent_saida, cor.compensacao_ponto_preto, cor.saida_perfil_embutido), que esta a calibrar ate o Duda decidir (arquitetura-v1.md, 10.2, pergunta 5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema"],
+  "properties": {
+    "esquema": {"const": "ds-parametros-cor/1"},
+    "intent": {"enum": ["perceptual", "relativo_colorimetrico", "saturacao", "absoluto_colorimetrico"]},
+    "compensacao_ponto_preto": {"type": "boolean"},
+    "perfil_embutido_na_saida": {"type": "boolean", "description": "false: a saida sai em sRGB sem perfil embutido"}
+  }
+}

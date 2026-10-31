@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:conferencia-fontes:1",
+  "title": "Conferencia das fontes do job (conferencia-fontes/1)",
+  "description": "Gravado pela fase fontes (desdobra fontes conferir) em fontes/conferencia.json. Por face: sha256, formato, nomes, versao da tabela name, peso declarado e metricas. Por par (camada, nome PostScript do PSD): a face do arquivo, a cobertura de glifos, o erro de largura contra a caixa TySh e a conferencia no Chromium. Nunca texto de peca, caminho de arquivo, contorno, glifo nem byte de fonte.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "gerado_em", "laudo_sha256", "arquivo_sha256", "limites", "chromium", "faces", "camadas", "arquivos", "cache", "varredura", "resumo"],
+  "properties": {
+    "esquema": {"const": "conferencia-fontes/1"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "gerado_em": {"type": "string"},
+    "laudo_sha256": {"$ref": "#/$defs/sha256", "description": "Hash de laudo/laudo.json (primeira passada) que a conferencia leu"},
+    "arquivo_sha256": {"$ref": "#/$defs/sha256", "description": "Hash do PSD"},
+    "licencas_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "limites": {"type": "array", "items": {"$ref": "#/$defs/citacao_limite"}},
+    "chromium": {
+      "type": "object",
+      "required": ["feito", "motivo", "versao", "playwright"],
+      "properties": {
+        "feito": {"type": "boolean", "description": "true so quando a varredura achou no perfil o controle positivo (folha de estilo com cache liberado): prova de que o perfil grava cache"},
+        "controle_encontrado": {"type": ["boolean", "null"]},
+        "perfil_caracteres": {"type": ["integer", "null"], "minimum": 0, "description": "Tamanho do caminho do perfil (o Chromium deixa de gravar cache num caminho longo)"},
+        "motivo": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$", "description": "Por que o teste de cache nao ficou provado"},
+        "motivo": {"type": ["string", "null"]},
+        "versao": {"type": ["string", "null"]},
+        "playwright": {"type": ["string", "null"]},
+        "rotas": {"type": "object", "additionalProperties": {"type": "integer"}, "description": "Respostas do servidor local por rota (entrar, pagina, fonte, nao_encontrado, proibido)"}
+      }
+    },
+    "faces": {"type": "array", "items": {"$ref": "#/$defs/face"}},
+    "camadas": {"type": "array", "items": {"$ref": "#/$defs/camada"}},
+    "arquivos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "formato", "situacao", "motivo"],
+        "properties": {
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "formato": {"enum": ["otf", "ttf", "ttc", "woff", "woff2", null]},
+          "situacao": {"enum": ["aceito", "recusado"]},
+          "motivo": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$"},
+          "faces": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "required": ["feito", "copias_encontradas", "metodo"],
+      "properties": {
+        "feito": {"type": "boolean", "description": "true so quando a varredura achou no perfil o controle positivo (folha de estilo com cache liberado): prova de que o perfil grava cache"},
+        "controle_encontrado": {"type": ["boolean", "null"]},
+        "perfil_caracteres": {"type": ["integer", "null"], "minimum": 0, "description": "Tamanho do caminho do perfil (o Chromium deixa de gravar cache num caminho longo)"},
+        "motivo": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$", "description": "Por que o teste de cache nao ficou provado"},
+        "copias_encontradas": {"type": ["integer", "null"], "minimum": 0},
+        "arquivos_varridos": {"type": "integer", "minimum": 0},
+        "metodo": {"type": "string"},
+        "cache_control": {"type": "string"},
+        "perfil_apagado": {"type": ["boolean", "null"]},
+        "perfil": {"type": "string", "description": "Onde fica o perfil temporario (descricao fixa, sem caminho)"}
+      }
+    },
+    "varredura": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arquivos_de_fonte_fora_da_entrada", "arquivos_varridos"],
+      "properties": {
+        "arquivos_de_fonte_fora_da_entrada": {"type": "integer", "minimum": 0},
+        "arquivos_varridos": {"type": "integer", "minimum": 0}
+      }
+    },
+    "resumo": {"type": "object", "additionalProperties": {"type": ["integer", "number", "null"]}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "situacao": {"enum": ["ok", "aviso", "bloqueante"]},
+    "citacao_limite": {
+      "type": "object",
+      "required": ["limite_id", "valor", "situacao", "efeito"],
+      "properties": {
+        "limite_id": {"type": "string"}, "valor": {}, "unidade": {"type": "string"},
+        "fonte": {"type": ["object", "null"]},
+        "situacao": {"enum": ["medido", "decidido", "folha", "a_calibrar"]},
+        "efeito": {"enum": ["reprova", "avisa", "registra"]}
+      }
+    },
+    "motivo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codigo", "situacao", "descricao"],
+      "properties": {
+        "codigo": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "situacao": {"$ref": "#/$defs/situacao"},
+        "descricao": {"type": "string"},
+        "medida": {"type": ["object", "null"]},
+        "limite": {"oneOf": [{"$ref": "#/$defs/citacao_limite"}, {"type": "null"}]}
+      }
+    },
+    "inteiro_ou_nulo": {"type": ["integer", "null"]},
+    "face": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "nome_ps", "familia", "estilo", "formato", "sha256", "versao_name", "peso_declarado", "metricas", "situacao", "motivos"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^f[0-9]{2,}$"},
+        "nome_ps": {"type": ["string", "null"], "description": "Nome PostScript preferido (registro do Windows do name ID 6)"},
+        "nomes_ps": {"type": "array", "items": {"type": "string"}, "description": "Todos os registros do name ID 6"},
+        "familia": {"type": ["string", "null"]},
+        "estilo": {"type": ["string", "null"]},
+        "formato": {"enum": ["otf", "ttf", "ttc", "woff", "woff2"]},
+        "sha256": {"$ref": "#/$defs/sha256", "description": "sha256 do arquivo em entrada/fontes/"},
+        "indice": {"type": "integer", "minimum": 0},
+        "versao_name": {"type": ["string", "null"]},
+        "peso_declarado": {"$ref": "#/$defs/inteiro_ou_nulo", "description": "Peso do @font-face: o do nome do estilo, ou o usWeightClass sem estilo conhecido"},
+        "us_weight_class": {"$ref": "#/$defs/inteiro_ou_nulo"},
+        "metricas": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unidades_por_em", "ascender", "descender", "cap_height", "x_height", "entrelinha_tipo"],
+          "properties": {
+            "unidades_por_em": {"type": "integer"},
+            "ascender": {"$ref": "#/$defs/inteiro_ou_nulo"},
+            "descender": {"$ref": "#/$defs/inteiro_ou_nulo"},
+            "cap_height": {"$ref": "#/$defs/inteiro_ou_nulo"},
+            "x_height": {"$ref": "#/$defs/inteiro_ou_nulo"},
+            "entrelinha_tipo": {"$ref": "#/$defs/inteiro_ou_nulo", "description": "ascender - descender + line gap (OS/2 typo, ou hhea sem OS/2), em unidades do em"}
+          }
+        },
+        "canal": {"type": "string"},
+        "usada": {"type": "boolean"},
+        "carregada": {"type": ["boolean", "null"]},
+        "face_cdp_confere": {"type": ["boolean", "null"]},
+        "instalada_mesmo_nome": {"type": ["boolean", "null"], "description": "So diagnostico (arquitetura-v1.md, 4.2); sem papel no portao"},
+        "situacao": {"$ref": "#/$defs/situacao"},
+        "motivos": {"type": "array", "items": {"$ref": "#/$defs/motivo"}}
+      }
+    },
+    "camada": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer_id", "nome_ps", "face_id", "glifos_faltando", "largura_erro_max_pct", "face_cdp_confere", "situacao", "motivos"],
+      "properties": {
+        "layer_id": {"type": "integer"},
+        "nome_ps": {"type": "string", "description": "Nome PostScript da fonte que o PSD grava no trecho"},
+        "face_id": {"type": ["string", "null"], "pattern": "^f[0-9]{2,}$"},
+        "metodo_casamento": {"enum": ["nome_ps", "id_unico", "familia_estilo", null]},
+        "glifos_faltando": {"type": "integer", "minimum": 0, "description": "Caracteres diferentes com tinta que o arquivo nao cobre (so a contagem)"},
+        "largura_erro_max_pct": {"type": ["number", "null"], "minimum": 0, "description": "Erro absoluto da largura da camada contra a caixa TySh, na variante mais proxima"},
+        "largura_erro_pct": {"type": ["number", "null"], "description": "O mesmo erro com sinal (negativo: mais estreita no Chromium)"},
+        "face_cdp_confere": {"type": ["boolean", "null"]},
+        "situacao": {"$ref": "#/$defs/situacao"},
+        "decisao": {"enum": ["pede_decisao_do_da", null]},
+        "motivos": {"type": "array", "items": {"$ref": "#/$defs/motivo"}}
+      }
+    }
+  }
+}

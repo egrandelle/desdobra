@@ -622,3 +622,12 @@ def test_cli_regressao_recusa_saida_dentro_do_repositorio_do_plugin(tmp_path, mo
     A.saida = os.path.relpath(PASTA_PLUGIN / 'motor' / 'outra-saida')
     r = _executar(A())
     assert r.codigo == Codigo.USO
+
+
+# ------------------------------------------------------------------ correcoes da revisao do M2
+def test_textos_da_regressao_e_da_cor_atualizados():
+    from desdobra import cor
+    from desdobra.regressao import comparar
+    texto = comparar.CAUSAS['b3_fontes_conferidas_no_m2']['descricao']
+    assert 'No M1' not in texto and 'segunda passada' in texto
+    assert 'asset de teste do corpus' in cor.__doc__

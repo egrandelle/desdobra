@@ -410,7 +410,8 @@ def _executar(args):
         return _uso('O arquivo de entrada não existe.')
     if arquivos.eh_arquivo_de_fonte(psd):
         return Resultado(comando='ler', codigo=int(Codigo.RECUSADO), situacao='recusado',
-                         o_que_fazer='O arquivo de entrada é uma fonte. O desdobra não lê arquivo de fonte.')
+                         o_que_fazer='O arquivo de entrada é uma fonte, e o ler só lê PSD ou PSB. As fontes entram no '
+                                     'job por --fontes (entrada/fontes/) e são conferidas pela fase fontes.')
     if not arquivos.tem_assinatura_psd(psd):
         return Resultado(comando='ler', codigo=int(Codigo.RECUSADO), situacao='recusado',
                          o_que_fazer='O arquivo de entrada não é PSD nem PSB.')

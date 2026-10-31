@@ -283,6 +283,13 @@ def executar(a, gancho, coletor, t0, info):
         pacotes = adaptador.pacotes_opcionais()
         camadas = list(psd.descendants())
         doc = extrair.documento(psd, camadas, cab)
+        icc_dados = extrair.dados_icc(psd)
+        if icc_dados:
+            # o perfil sai do PSD so aqui, no filho: o modulo de cor (desdobra.cor) le este arquivo
+            from desdobra import arquivos as arq_icc
+            arq_icc.gravar_bytes_atomico(pasta / 'documento.icc', icc_dados)
+            doc['icc']['arquivo'] = 'documento.icc'
+        del icc_dados
         ppi = extrair.dpi_em_ppi(doc.get('dpi'))
         contexto = {'pacotes': pacotes, 'ppi': ppi, 'indice_por_uid': {r['unique_id']: r for r in registros},
                     'arquivo': f, 'erros': erros, 'nome_arquivo_camada': nome_arquivo_camada,
