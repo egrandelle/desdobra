@@ -158,6 +158,32 @@ def test_filho_nao_consegue_criar_outro_processo(win, trabalho):
     assert r.stdout_bytes.split()[0] == b'barrado'
 
 
+LER_AREA_DE_TRANSFERENCIA = '''
+    import ctypes, json
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    u.GetClipboardData.restype = ctypes.c_void_p
+    abriu = u.OpenClipboard(None)
+    dados = bool(u.GetClipboardData(13)) if abriu else False  # 13: CF_UNICODETEXT
+    if abriu:
+        u.CloseClipboard()
+'''
+
+
+def test_filho_roda_com_as_restricoes_de_interface_e_nao_le_a_area_de_transferencia(win, trabalho):
+    from desdobra.plataforma.windows import RESTRICOES_UI
+    r = win.executar_isolado(filho(LER_AREA_DE_TRANSFERENCIA + '''
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    ui = wintypes.DWORD()
+    ok = k.QueryInformationJobObject(None, 4, ctypes.byref(ui), ctypes.sizeof(ui), None)  # 4: BasicUIRestrictions
+    print(json.dumps({"ok": ok, "ui": ui.value, "dados": dados}))
+    '''), 256 * MB, 60, trabalho)
+    assert r.situacao == 'ok', r
+    dados = json.loads(r.stdout_bytes)
+    assert dados['ok'] and dados['ui'] == int(RESTRICOES_UI)
+    assert dados['dados'] is False  # o teste nao escreve na area de transferencia do usuario
+
+
 def test_stdout_e_cortado_no_teto_e_o_filho_nao_trava(win, trabalho):
     teto = limites.valor('isolador.stdout_max_bytes')
     r = win.executar_isolado(filho('''

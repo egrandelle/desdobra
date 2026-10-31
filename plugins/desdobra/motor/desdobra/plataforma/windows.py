@@ -7,7 +7,8 @@ PSD sintetico. Este e o unico arquivo do motor que importa ctypes.wintypes.
 Como o filho roda:
   1. o pai cria um Job Object com teto de memoria por processo (orcamento_bytes), no maximo 1 processo ativo,
      KILL_ON_JOB_CLOSE (o filho morre junto com o pai) e DIE_ON_UNHANDLED_EXCEPTION (excecao nativa mata o
-     filho sem janela de erro). Uma porta de conclusao ligada ao job recebe o aviso de teto de memoria;
+     filho sem janela de erro), mais as restricoes de interface (RESTRICOES_UI: sem area de transferencia, sem
+     janelas de outros processos, sem atomos globais). Uma porta de conclusao ligada ao job recebe o aviso de teto de memoria;
   2. o filho nasce SUSPENSO (CREATE_SUSPENDED), sem shell, sem janela, com cwd na pasta de trabalho vazia e
      stdin, stdout e stderr em pipe. Enquanto esta suspenso, nenhuma instrucao dele roda;
   3. o pai coloca o processo no job e so entao retoma a thread principal. Nao ha janela de corrida: o filho
@@ -47,6 +48,26 @@ class Limite(enum.IntFlag):
     KILL_ON_JOB_CLOSE = 0x00002000
 
 
+class RestricaoUI(enum.IntFlag):
+    """UIRestrictionsClass de JOBOBJECT_BASIC_UI_RESTRICTIONS (winnt.h, JOB_OBJECT_UILIMIT_*)."""
+    HANDLES = 0x00000001
+    READCLIPBOARD = 0x00000002
+    WRITECLIPBOARD = 0x00000004
+    SYSTEMPARAMETERS = 0x00000008
+    DISPLAYSETTINGS = 0x00000010
+    GLOBALATOMS = 0x00000020
+    DESKTOP = 0x00000040
+    EXITWINDOWS = 0x00000080
+
+
+# O filho le arquivo de cliente e nao precisa de nada da sessao do usuario: sem area de transferencia, sem janelas
+# de outros processos, sem atomos globais, sem trocar desktop, configuracao do sistema ou da tela, sem encerrar o
+# Windows (decisoes-v1.md, arquitetura n 25).
+RESTRICOES_UI = (RestricaoUI.HANDLES | RestricaoUI.READCLIPBOARD | RestricaoUI.WRITECLIPBOARD
+                 | RestricaoUI.SYSTEMPARAMETERS | RestricaoUI.DISPLAYSETTINGS | RestricaoUI.GLOBALATOMS
+                 | RestricaoUI.DESKTOP | RestricaoUI.EXITWINDOWS)
+
+
 class Criacao(enum.IntFlag):
     """dwCreationFlags de CreateProcess (processthreadsapi.h)."""
     CREATE_SUSPENDED = 0x00000004
@@ -63,6 +84,7 @@ class Acesso(enum.IntFlag):
 
 class Classe(enum.IntEnum):
     """JOBOBJECTINFOCLASS usadas aqui."""
+    BASIC_UI_RESTRICTIONS = 4
     ASSOCIATE_COMPLETION_PORT = 7
     EXTENDED_LIMIT_INFORMATION = 9
 
@@ -100,6 +122,10 @@ class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
     _fields_ = [('BasicLimitInformation', JOBOBJECT_BASIC_LIMIT_INFORMATION), ('IoInfo', IO_COUNTERS),
                 ('ProcessMemoryLimit', ctypes.c_size_t), ('JobMemoryLimit', ctypes.c_size_t),
                 ('PeakProcessMemoryUsed', ctypes.c_size_t), ('PeakJobMemoryUsed', ctypes.c_size_t)]
+
+
+class JOBOBJECT_BASIC_UI_RESTRICTIONS(ctypes.Structure):
+    _fields_ = [('UIRestrictionsClass', wintypes.DWORD)]
 
 
 class JOBOBJECT_ASSOCIATE_COMPLETION_PORT(ctypes.Structure):
@@ -298,6 +324,11 @@ class _Job:
             if not k32.SetInformationJobObject(self.handle, Classe.EXTENDED_LIMIT_INFORMATION, ctypes.byref(info),
                                                ctypes.sizeof(info)):
                 raise _ErroIsolador('O Windows recusou os limites do Job Object.', ctypes.get_last_error())
+            ui = JOBOBJECT_BASIC_UI_RESTRICTIONS(RESTRICOES_UI)
+            if not k32.SetInformationJobObject(self.handle, Classe.BASIC_UI_RESTRICTIONS, ctypes.byref(ui),
+                                               ctypes.sizeof(ui)):
+                raise _ErroIsolador('O Windows recusou as restrições de interface do Job Object.',
+                                    ctypes.get_last_error())
             self.porta = k32.CreateIoCompletionPort(_INVALIDO, None, 0, 1)
             if not self.porta:
                 raise _ErroIsolador('O Windows não criou a porta de avisos do Job Object.', ctypes.get_last_error())
