@@ -38,6 +38,9 @@ psd-tools==1.26.0 \
 pyee==13.0.1 \
     --hash=sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228
     # pyee-13.0.1-py3-none-any.whl
+pypdfium2==5.14.0 \
+    --hash=sha256:149fd5c6397b8df8bf7911a93506eff0be874f877afe7ac936cf5d37d21a6a06
+    # pypdfium2-5.14.0-py3-none-win_amd64.whl
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231
     # referencing-0.37.0-py3-none-any.whl

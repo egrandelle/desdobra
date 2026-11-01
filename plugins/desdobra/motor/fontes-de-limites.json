@@ -545,6 +545,114 @@
    "situacao": "a_calibrar",
    "efeito": "avisa",
    "nota": "Ampliacao de raster acima disto avisa. Sem valor: o proprio KV ja amplia raster (foto a 145%, fotos de 2,04 a 2,39 vezes na pesquisa), entao a ampliacao do PSD e so referencia e nunca vira piso."
+  },
+  {
+   "id": "specs.fator_abertura_max",
+   "valor": 64,
+   "unidade": "vezes o tamanho do arquivo da folha",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "7.1 (o processo principal nunca parseia dado de cliente)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Parte do orcamento de memoria do filho que le a folha de spec (PDFium, html.parser, csv). Origem: o mesmo valor de fontes.fator_abertura_max, sem medicao propria. Estourado, a folha e recusada com o motivo memoria."
+  },
+  {
+   "id": "specs.tempo_max_s",
+   "valor": 120,
+   "unidade": "segundos",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "7.1 (timeout de relogio no pai)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Tempo maximo do filho que le uma folha de spec. Origem: o mesmo valor de fontes.tempo_max_s; o valor so evita filho preso."
+  },
+  {
+   "id": "specs.recorte_escala",
+   "valor": 2,
+   "unidade": "pixels por ponto do PDF",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.8 (folha sem camada de texto: o DA digita o valor ao lado do recorte)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Escala do PNG da pagina sem texto que o DA le para digitar o valor (2 da 144 pixels por polegada). So legibilidade; nao decide nada."
+  },
+  {
+   "id": "specs.fator_incoerencia_unidade",
+   "valor": 10,
+   "unidade": "vezes, entre a area total e a area util da mesma entrada",
+   "fonte": {
+    "arquivo": "pesquisa/v1-estatico-sintese.md",
+    "secao": "5 (unidade errada na folha PME)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "A area total maior que a area util por este fator, na mesma unidade, vira o alerta unidade_incoerente nas duas (o \"120m x 175m\" contra \"1,17m x 1,71m\" da PME). So alerta: o valor continua rascunho e quem decide e o DA."
+  },
+  {
+   "id": "specs.peso_reprova_acima_da_leitura_binaria",
+   "valor": "binaria",
+   "unidade": "leitura de KB, MB e GB",
+   "fonte": {
+    "arquivo": "pesquisa/v1-estatico-sintese.md",
+    "secao": "5 (nenhuma folha diz se MB e decimal ou binario)"
+   },
+   "situacao": "medido",
+   "efeito": "reprova",
+   "nota": "Peso sem base declarada: o arquivo so reprova acima da leitura mais folgada (5 MB = 5.242.880 bytes), como o validar_entrega.py do BB (divide por 1.048.576)."
+  },
+  {
+   "id": "specs.peso_avisa_acima_da_leitura_decimal",
+   "valor": "decimal",
+   "unidade": "leitura de KB, MB e GB",
+   "fonte": {
+    "arquivo": "pesquisa/v1-estatico-sintese.md",
+    "secao": "5 (nenhuma folha diz se MB e decimal ou binario)"
+   },
+   "situacao": "medido",
+   "efeito": "avisa",
+   "nota": "Peso sem base declarada: o export mira a leitura mais estrita (5 MB = 5.000.000 bytes); entre as duas leituras, a validacao avisa."
+  },
+  {
+   "id": "specs.trechos_max",
+   "valor": 20000,
+   "unidade": "trechos de texto por folha",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "7.1 (o processo principal nunca parseia dado de cliente)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Teto de trechos que o filho devolve por folha. A maior folha real (a pagina de orientacoes gerais da Globo) tem perto de mil; acima disto a folha e recusada (trechos_demais), para o processo principal nunca montar o modelo sobre texto sem limite."
+  },
+  {
+   "id": "specs.trecho_caracteres_max",
+   "valor": 4000,
+   "unidade": "caracteres por trecho",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "7.1 (o processo principal nunca parseia dado de cliente)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Teto do tamanho de um trecho. O maior paragrafo das folhas reais tem menos de mil caracteres; acima disto a folha e recusada (trecho_longo)."
+  },
+  {
+   "id": "specs.pdf_trechos_por_pagina_max",
+   "valor": 1000,
+   "unidade": "pedacos de texto por pagina de PDF",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "7.1 (o processo principal nunca parseia dado de cliente)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Teto de pedacos de texto por pagina de PDF (a folha PME tem ate 26). A colagem dos pedacos e a busca do valor ao lado do rotulo comparam os pedacos da pagina entre si; o teto mantem esse custo limitado."
   }
  ]
 }

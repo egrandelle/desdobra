@@ -1,0 +1,1076 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:spec:1",
+  "title": "Spec em 4 niveis: folha, veiculador, circuito e formato (spec/1)",
+  "description": "arquitetura-v1.md, 4.8 e 5.5. Tres tipos com a mesma forma: rascunho (specs/rascunho.json, tudo o que a folha diz), formatos_do_job (specs/formatos-do-job.json, so valores confirmados pelo DA) e perfil (biblioteca-specs/<perfil>-<versao>.json, valores extraidos de folha publica, com a citacao da folha, da pagina e do trecho, sem a folha). Todo valor carrega forma, valor, texto original, numeros literais, unidade normalizada, base da unidade, fonte, origem e situacao. Campo ausente e registro sem valor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "tipo",
+    "gerado_em",
+    "motor_versao",
+    "job_id",
+    "perfis",
+    "folhas",
+    "veiculadores",
+    "circuitos",
+    "formatos",
+    "resumo"
+  ],
+  "properties": {
+    "esquema": {
+      "const": "spec/1"
+    },
+    "tipo": {
+      "enum": [
+        "rascunho",
+        "formatos_do_job",
+        "perfil"
+      ]
+    },
+    "gerado_em": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "motor_versao": {
+      "type": "string"
+    },
+    "job_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "perfis": {
+      "type": "array",
+      "description": "Um perfil por veiculador, com versao: folha nova gera a versao seguinte",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "versao",
+          "folhas_sha256",
+          "historico",
+          "biblioteca"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "versao": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "folhas_sha256": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "historico": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "versao",
+                "folhas_sha256"
+              ],
+              "properties": {
+                "versao": {
+                  "type": "integer"
+                },
+                "folhas_sha256": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/sha256"
+                  }
+                }
+              }
+            }
+          },
+          "biblioteca": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "arquivo",
+                  "perfil",
+                  "versao"
+                ],
+                "properties": {
+                  "arquivo": {
+                    "type": "string"
+                  },
+                  "perfil": {
+                    "type": "string"
+                  },
+                  "versao": {
+                    "type": "integer"
+                  }
+                }
+              }
+            ]
+          },
+          "nota": {
+            "type": "string"
+          },
+          "fontes_publicas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "So no perfil da biblioteca: de onde a folha publica veio"
+          }
+        }
+      }
+    },
+    "mapeamento": {
+      "type": "array",
+      "description": "So no perfil da biblioteca: a curadoria trecho para campo, aplicada quando a mesma folha (mesmo sha256) entra num job. Sem numero: o motor extrai do trecho",
+      "items": {
+        "$ref": "#/$defs/proposta"
+      }
+    },
+    "folhas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/folha"
+      }
+    },
+    "veiculadores": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/veiculador"
+      }
+    },
+    "circuitos": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/circuito"
+      }
+    },
+    "formatos": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/formato"
+      }
+    },
+    "resumo": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "tipo": {
+            "const": "formatos_do_job"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "formatos": {
+            "items": {
+              "properties": {
+                "campos": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/valor_confirmado"
+                  }
+                }
+              }
+            }
+          },
+          "circuitos": {
+            "items": {
+              "properties": {
+                "campos": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/valor_confirmado"
+                  }
+                }
+              }
+            }
+          },
+          "veiculadores": {
+            "items": {
+              "properties": {
+                "campos": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/valor_confirmado"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "campos": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/valor"
+      }
+    },
+    "fonte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "folha",
+        "pagina",
+        "trecho",
+        "rotulo_trecho",
+        "recorte",
+        "secao",
+        "recorte_texto"
+      ],
+      "properties": {
+        "folha": {
+          "type": "string"
+        },
+        "pagina": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "trecho": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Trecho de onde o numero saiu"
+        },
+        "rotulo_trecho": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Trecho do rotulo, quando a folha separa rotulo e valor"
+        },
+        "recorte": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Recorte da pagina sem texto ao lado do qual o DA digitou o valor"
+        },
+        "secao": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recorte_texto": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Pedaco literal do trecho de onde o numero saiu"
+        },
+        "trechos_adicionais": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "leitura": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "valor",
+        "forma",
+        "texto_original",
+        "numeros_literais",
+        "unidade",
+        "unidade_original",
+        "base_unidade",
+        "condicao",
+        "fonte"
+      ],
+      "properties": {
+        "valor": {},
+        "forma": {
+          "enum": [
+            "exato",
+            "maximo",
+            "faixa",
+            "conjunto",
+            "condicional",
+            null
+          ]
+        },
+        "texto_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "numeros_literais": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unidade": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unidade_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_unidade": {
+          "enum": [
+            "decimal",
+            "binaria",
+            "nao_declarada",
+            null
+          ]
+        },
+        "condicao": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fonte": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/fonte"
+            }
+          ]
+        }
+      }
+    },
+    "valor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "campo",
+        "forma",
+        "valor",
+        "texto_original",
+        "numeros_literais",
+        "unidade",
+        "unidade_original",
+        "base_unidade",
+        "condicao",
+        "fonte",
+        "origem",
+        "mapeamento",
+        "situacao",
+        "alertas",
+        "confirmacao"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "campo": {
+          "type": "string"
+        },
+        "forma": {
+          "enum": [
+            "exato",
+            "maximo",
+            "faixa",
+            "conjunto",
+            "condicional",
+            null
+          ]
+        },
+        "valor": {
+          "description": "Numero, texto, lista ou objeto; null quando a folha nao traz o campo, quando o motor nao reconheceu o numero ou quando as fontes divergem"
+        },
+        "texto_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "numeros_literais": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Os numeros como aparecem no trecho: todos existem literalmente no trecho citado"
+        },
+        "unidade": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Normalizada: px, bytes, mime, pct, m, cm, mm"
+        },
+        "unidade_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_unidade": {
+          "enum": [
+            "decimal",
+            "binaria",
+            "nao_declarada",
+            null
+          ]
+        },
+        "condicao": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fonte": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/fonte"
+            }
+          ]
+        },
+        "origem": {
+          "enum": [
+            "extraido_do_trecho",
+            "digitado_pelo_da_a_partir_do_recorte",
+            "ausente"
+          ]
+        },
+        "mapeamento": {
+          "enum": [
+            "rotulo_da_folha",
+            "proposta_do_modelo",
+            "biblioteca",
+            "da",
+            null
+          ],
+          "description": "Quem disse que o trecho e deste campo; o numero e sempre do motor"
+        },
+        "situacao": {
+          "enum": [
+            "rascunho",
+            "confirmado",
+            "registro"
+          ]
+        },
+        "alertas": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "confirmacao": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "por",
+                "meio",
+                "em",
+                "leitura"
+              ],
+              "properties": {
+                "por": {
+                  "const": "da"
+                },
+                "meio": {
+                  "const": "terminal"
+                },
+                "em": {
+                  "type": "string"
+                },
+                "leitura": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "leituras": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/leitura"
+          },
+          "description": "Fontes divergentes ou mais de um numero: o motor nao escolhe"
+        },
+        "texto_digitado": {
+          "type": "string"
+        },
+        "herdado_de": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "origem": {
+                "const": "ausente"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "valor": {
+                "const": null
+              },
+              "situacao": {
+                "const": "registro"
+              },
+              "numeros_literais": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origem": {
+                "const": "digitado_pelo_da_a_partir_do_recorte"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "texto_digitado"
+            ],
+            "properties": {
+              "fonte": {
+                "$ref": "#/$defs/fonte_com_recorte"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origem": {
+                "const": "extraido_do_trecho"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fonte": {
+                "$ref": "#/$defs/fonte"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "situacao": {
+                "const": "confirmado"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "confirmacao": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fonte_com_recorte": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/fonte"
+        },
+        {
+          "properties": {
+            "recorte": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "valor_confirmado": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/valor"
+        },
+        {
+          "properties": {
+            "situacao": {
+              "const": "confirmado"
+            }
+          }
+        }
+      ]
+    },
+    "trecho": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pagina",
+        "texto",
+        "caixa",
+        "linha",
+        "coluna",
+        "linha_tabela",
+        "tabela",
+        "rotulo",
+        "secao",
+        "papel"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^p[0-9]{2,}-t[0-9]{3,}$"
+        },
+        "pagina": {
+          "type": "integer"
+        },
+        "texto": {
+          "type": "string"
+        },
+        "caixa": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          }
+        },
+        "linha": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "coluna": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tabela": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rotulo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secao": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "papel": {
+          "enum": [
+            "texto",
+            "cabecalho",
+            "celula"
+          ]
+        },
+        "linha_tabela": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Numero da linha dentro da tabela (o HTML salvo costuma ter a tabela inteira numa linha so)"
+        }
+      }
+    },
+    "folha": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "arquivo",
+        "sha256",
+        "bytes",
+        "formato",
+        "n_paginas",
+        "camada_texto",
+        "titulo",
+        "veiculador",
+        "recortes",
+        "trechos",
+        "campos",
+        "situacao_confirmacao"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^f[0-9a-f]{8}$"
+        },
+        "arquivo": {
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "formato": {
+          "enum": [
+            "pdf",
+            "html",
+            "csv",
+            "texto"
+          ]
+        },
+        "n_paginas": {
+          "type": "integer"
+        },
+        "camada_texto": {
+          "type": "boolean"
+        },
+        "titulo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "veiculador": {
+          "type": "string"
+        },
+        "recortes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "pagina",
+              "arquivo",
+              "sha256"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "pagina": {
+                "type": "integer"
+              },
+              "arquivo": {
+                "type": "string"
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              }
+            }
+          }
+        },
+        "trechos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trecho"
+          }
+        },
+        "campos": {
+          "$ref": "#/$defs/campos"
+        },
+        "situacao_confirmacao": {
+          "enum": [
+            "rascunho",
+            "parcial",
+            "confirmada"
+          ]
+        },
+        "alertas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fonte_publica": {
+          "type": "string",
+          "description": "So no perfil da biblioteca: o endereco publico da folha"
+        }
+      }
+    },
+    "veiculador": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "folhas",
+        "campos",
+        "tetos_por_tamanho"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "folhas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "campos": {
+          "$ref": "#/$defs/campos"
+        },
+        "tetos_por_tamanho": {
+          "type": "array",
+          "description": "Regra do veiculador por tamanho (tabela de peso por tag, carga inicial e posterior)",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "campos"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "campos": {
+                "$ref": "#/$defs/campos"
+              }
+            }
+          }
+        },
+        "alertas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "circuito": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "veiculador",
+        "texto_original",
+        "campos",
+        "restricoes",
+        "trechos"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "veiculador": {
+          "type": "string"
+        },
+        "texto_original": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "PDF: o texto da pagina fora da tabela de rotulos (ambiente e praca, para o DA mapear)"
+        },
+        "campos": {
+          "$ref": "#/$defs/campos"
+        },
+        "restricoes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/valor"
+          }
+        },
+        "trechos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "alertas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "formato": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "chave",
+        "veiculador",
+        "circuito",
+        "entrada",
+        "campos"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "chave": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "veiculador|circuito|LxA; null sem dimensao"
+        },
+        "veiculador": {
+          "type": "string"
+        },
+        "circuito": {
+          "type": "string"
+        },
+        "entrada": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "folha",
+            "pagina",
+            "ordem"
+          ],
+          "properties": {
+            "folha": {
+              "type": "string"
+            },
+            "pagina": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "ordem": {
+              "type": "integer"
+            }
+          }
+        },
+        "campos": {
+          "$ref": "#/$defs/campos"
+        },
+        "alertas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "proposta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "folha",
+        "campo"
+      ],
+      "properties": {
+        "folha": {
+          "type": "string",
+          "pattern": "^f[0-9a-f]{8}$"
+        },
+        "trecho": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^p[0-9]{2,}-t[0-9]{3,}$"
+        },
+        "pagina": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "texto": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Texto exato do trecho (a curadoria localiza o trecho pela pagina e pelo texto)"
+        },
+        "campo": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "alvo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recorte_texto": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "adicionais": {
+          "type": "array",
+          "description": "Trechos da mesma pagina que continuam o campo (o texto e juntado com espaco)",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "trecho": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "texto": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

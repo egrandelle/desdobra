@@ -225,7 +225,10 @@ def padroes_da_fase(fase, por_id):
 
 
 def hashes_da_fase(pasta, fase, por_id):
-    return {p: hash_padrao(pasta, p) for p in padroes_da_fase(fase, por_id)}
+    hashes = {p: hash_padrao(pasta, p) for p in padroes_da_fase(fase, por_id)}
+    for nome, funcao in fase.externas:
+        hashes[nome] = funcao()
+    return hashes
 
 
 def hashes_das_saidas(pasta, fase):

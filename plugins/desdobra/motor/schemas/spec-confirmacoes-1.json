@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:spec-confirmacoes:1",
+  "title": "Acoes do DA sobre o rascunho de spec (spec-confirmacoes/1)",
+  "description": "specs/confirmacoes.json, gravado so pelo \"desdobra spec confirmar\" num terminal interativo. Cada acao e do DA: confirmar um valor (pela impressao do conteudo, que deixa de valer se a folha mudar), escolher uma das leituras de um campo com fontes divergentes, ou digitar um valor ao lado do recorte de uma pagina sem texto.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "acoes"],
+  "properties": {
+    "esquema": {"const": "spec-confirmacoes/1"},
+    "acoes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["n", "acao", "por", "meio", "em"],
+        "properties": {
+          "n": {"type": "integer", "minimum": 1},
+          "acao": {"enum": ["confirmar", "escolher_leitura", "digitar"]},
+          "valor_id": {"type": "string"},
+          "impressao": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "leitura": {"type": "integer", "minimum": 0},
+          "folha": {"type": "string"},
+          "recorte": {"type": "string"},
+          "campo": {"type": "string"},
+          "texto": {"type": "string", "minLength": 1},
+          "entrada": {"type": "integer", "minimum": 1},
+          "por": {"const": "da"},
+          "meio": {"const": "terminal"},
+          "em": {"type": "string"}
+        },
+        "allOf": [
+          {"if": {"properties": {"acao": {"const": "confirmar"}}}, "then": {"required": ["valor_id", "impressao"]}},
+          {"if": {"properties": {"acao": {"const": "escolher_leitura"}}}, "then": {"required": ["valor_id", "impressao", "leitura"]}},
+          {"if": {"properties": {"acao": {"const": "digitar"}}}, "then": {"required": ["folha", "recorte", "campo", "texto", "entrada"]}}
+        ]
+      }
+    }
+  }
+}

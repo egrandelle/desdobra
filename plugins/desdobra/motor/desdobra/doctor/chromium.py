@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Verificacoes do doctor para a conferencia de fontes (arquitetura-v1.md, 4.15 e 9.3).
 
-  - versao fixada do fontTools e do Playwright (so pelos metadados instalados: o processo principal nunca importa o
-    fontTools);
+  - versao fixada do fontTools, do Playwright e do pypdfium2 (so pelos metadados instalados: o processo principal
+    nunca importa o fontTools nem o pypdfium2);
   - o Chromium fixado: o headless shell da revisao que o Playwright instalado pede, na pasta de navegadores que o
     motor usa (no ambiente do plugin, <pasta de dados>/ms-playwright, baixado pelo gancho de preparo);
   - um carregamento de verdade de uma fonte sintetica pelo @font-face, servida pela rota propria no loopback, com a

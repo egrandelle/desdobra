@@ -1,5 +1,5 @@
 ---
-description: Confere o ambiente do desdobra (Python, versões fixadas, psd-tools com o compositor, fontTools e Playwright, o Chromium fixado com um teste de fonte, isolador de memória e teto do modo de dados) e diz o que fazer quando algo falha. Use quando o DA pedir para conferir a instalação, quando outra skill do desdobra mandar rodar o doctor ou quando o motor não responder.
+description: Confere o ambiente do desdobra (Python, versões fixadas, psd-tools com o compositor, fontTools, Playwright e pypdfium2, o Chromium fixado com um teste de fonte, isolador de memória e teto do modo de dados) e diz o que fazer quando algo falha. Use quando o DA pedir para conferir a instalação, quando outra skill do desdobra mandar rodar o doctor ou quando o motor não responder.
 ---
 
 # Doctor do desdobra

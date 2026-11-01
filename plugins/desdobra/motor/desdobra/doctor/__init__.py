@@ -2,7 +2,7 @@
 """desdobra doctor: confere o ambiente do motor e grava doctor.json (doctor/1).
 
 Doctor do M1 com o que o M2 pede (arquitetura-v1.md, 4.15, 9.2 e 9.3): versao do Python, versoes fixadas do lock,
-psd-tools com o extra composite, versao fixada do fontTools e do Playwright, o Chromium fixado na pasta de
+psd-tools com o extra composite, versao fixada do fontTools, do Playwright e do pypdfium2 (M3), o Chromium fixado na pasta de
 navegadores do motor, o carregamento de uma fonte sintetica pelo @font-face com conferencia por CDP, o isolador
 (um filho dentro do teto e outro que estoura) e o teto do modo de dados.
 
@@ -46,6 +46,8 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
               ('versoes_do_lock', lambda: v.verificar_lock(dados)), ('psd_tools_composite', v.verificar_psd_tools),
               ('fonttools', lambda: vc.verificar_versao('fonttools', 'fonttools', 'Versão fixada do fontTools')),
               ('playwright', lambda: vc.verificar_versao('playwright', 'playwright', 'Versão fixada do Playwright')),
+              # M3: o PDFium que le as folhas de spec no filho isolado (arquitetura-v1.md, 4.8)
+              ('pypdfium2', lambda: vc.verificar_versao('pypdfium2', 'pypdfium2', 'Versão fixada do pypdfium2')),
               ('chromium_fixado', vc.verificar_chromium)]
     for ident, passo in passos:
         try:

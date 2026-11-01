@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:validacao-arquivo:1",
+  "title": "Validacao de um arquivo contra um formato (validacao-arquivo/1)",
+  "description": "Gravado por \"desdobra validar --saida\". Dimensao, peso nas duas leituras de KB e MB, tipo (MIME pela assinatura) e o que ainda nao e conferido neste marco, cada item com o valor do formato e a fonte.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "arquivo", "formato", "contra", "resultado", "verificacoes"],
+  "properties": {
+    "esquema": {"const": "validacao-arquivo/1"},
+    "arquivo": {
+      "type": "object", "additionalProperties": false, "required": ["sha256", "bytes", "mime", "largura", "altura"],
+      "properties": {"sha256": {"type": "string"}, "bytes": {"type": "integer"}, "mime": {"type": ["string", "null"]},
+                     "largura": {"type": ["integer", "null"]}, "altura": {"type": ["integer", "null"]}}
+    },
+    "formato": {"type": "object", "additionalProperties": false, "required": ["id", "chave"],
+                "properties": {"id": {"type": "string"}, "chave": {"type": ["string", "null"]}}},
+    "contra": {"enum": ["formatos_do_job", "perfil", "rascunho"], "description": "formatos_do_job: so valores confirmados; perfil e rascunho: valores ainda nao confirmados pelo DA, so para diagnostico"},
+    "condicao": {"type": ["string", "null"], "description": "Condicao de entrega escolhida (hospedado, por_tag), quando o formato tem peso condicional"},
+    "resultado": {"enum": ["aprovado", "aviso", "reprovado"]},
+    "verificacoes": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["campo", "situacao", "medida", "esperado", "motivo", "valor_id", "valor_situacao", "fonte", "limite"],
+        "properties": {
+          "campo": {"type": "string"},
+          "situacao": {"enum": ["ok", "aviso", "reprova", "nao_verificado", "sem_regra"]},
+          "medida": {},
+          "esperado": {},
+          "motivo": {"type": ["string", "null"]},
+          "valor_id": {"type": ["string", "null"]},
+          "valor_situacao": {"type": ["string", "null"]},
+          "fonte": {},
+          "limite": {}
+        }
+      }
+    }
+  }
+}

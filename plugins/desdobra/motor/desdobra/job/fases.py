@@ -8,6 +8,8 @@ Uma Fase e um passo que o motor roda sozinho (tipo "fase") ou um portao humano (
   - comando: devolve o argv que roda a fase num subprocesso. Codigo de retorno diferente de zero interrompe.
   - o_que_fazer: no portao, o que o humano precisa fazer; na fase, o que fazer quando ela falha.
   - cumprido: no portao, devolve True quando o humano ja fez a parte dele (por exemplo, gravou o briefing).
+  - externas: entradas que ficam fora da pasta do job (a biblioteca de specs, os limites que a fase usa), cada uma com
+    uma funcao que devolve o sha256; mudou, a fase fica invalidada como por uma entrada do job.
   - bloqueio_persiste: a fase que termina com bloqueio (envelope ok_com_bloqueio) grava o bloqueio no estado, e ele
     continua no job estado e em todo job proxima seguinte ate a fase rodar de novo sem bloqueio (o DA troca ou
     remove a entrada, ou libera pela entrada propria). Enquanto houver bloqueio, o job nao fica concluido.
@@ -30,6 +32,9 @@ class Fase:
     o_que_fazer: str = ''
     cumprido: Callable[[Path], bool] | None = None
     bloqueio_persiste: bool = False
+    # entradas de fora da pasta do job (a biblioteca de specs do plugin, os limites): (nome, funcao sem argumento
+    # que devolve o sha256). Entram no hash da fase como as outras entradas
+    externas: tuple = ()
 
     def __post_init__(self):
         if self.tipo not in ('fase', 'portao'):
@@ -96,14 +101,39 @@ FASE_LAUDO_FONTES = Fase(
 
 _FASES_FONTES = FASES_M1 + (FASE_FONTES, FASE_LAUDO_FONTES)
 FASES_M2 = _FASES_FONTES + (_fase_ds(_FASES_FONTES),)
+
+def _specs_importar():
+    from desdobra.specs import importar
+    return importar
+
+
+# M3, specs (arquitetura-v1.md, 4.8): as folhas de entrada/specs/ viram o rascunho em 4 niveis. Nao depende do PSD:
+# trocar a folha invalida so esta fase. As acoes do DA (specs/confirmacoes.json, gravado so pelo "spec confirmar"
+# no terminal) e as propostas de mapeamento do Claude (sugestoes/mapeamento-specs.json) tambem sao entradas: a fase
+# refaz o rascunho e os formatos do job com elas. A confirmacao em si nao e portao da esteira: ela e do DA, no
+# terminal, e quem precisa dos formatos confirmados (derivacao e entrega) confere specs/formatos-do-job.json.
+FASE_SPECS = Fase(
+    id='specs', tipo='fase', descricao='Rascunho das specs do veiculador a partir das folhas',
+    entradas=('entrada/specs', 'specs/confirmacoes.json', 'sugestoes/mapeamento-specs.json'),
+    saidas=('specs/rascunho.json', 'specs/formatos-do-job.json', 'sugestoes/pacote-specs.json'),
+    comando=comando_motor('spec', 'importar'),
+    externas=(('externa:biblioteca-specs', lambda: _specs_importar().hash_da_biblioteca()),
+              ('externa:limites-specs', lambda: _specs_importar().hash_dos_limites())),
+    o_que_fazer='A importação das specs falhou. Rode "desdobra spec importar --job <pasta>" para ver o motivo no '
+                'terminal e "desdobra doctor" para conferir o ambiente.')
+FASES_M3 = FASES_M2 + (FASE_SPECS,)
 # a esteira que job criar e job proxima usam
-ESTEIRA = FASES_M2
+ESTEIRA = FASES_M3
 
 FIM_M1 = ('O laudo está pronto em laudo/laudo.json. As próximas fases (fontes, specs, design system e briefing) '
           'entram nos marcos seguintes.')
 FIM_M2 = ('O laudo, a conferência de fontes (fontes/conferencia.json e laudo/laudo-fontes.json) e o design system '
           'da peça estão prontos. As próximas fases (specs e briefing) entram nos marcos seguintes.')
-FIM = FIM_M2
+FIM_M3 = ('O laudo, a conferência de fontes, o design system e o rascunho das specs (specs/rascunho.json) estão '
+          'prontos. Os valores das specs só valem depois que o DA confirma, no terminal, com "desdobra spec '
+          'confirmar --job <pasta>"; os confirmados ficam em specs/formatos-do-job.json. As próximas fases (render e '
+          'briefing) entram nos marcos seguintes.')
+FIM = FIM_M3
 
 
 def validar_esteira(fases):

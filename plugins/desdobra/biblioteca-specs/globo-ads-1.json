@@ -1,0 +1,1771 @@
+{
+ "esquema": "spec/1",
+ "tipo": "perfil",
+ "gerado_em": "2026-10-31",
+ "motor_versao": "0.3.0",
+ "job_id": null,
+ "perfis": [
+  {
+   "id": "globo-ads",
+   "versao": 1,
+   "folhas_sha256": [
+    "0dc64ff48572bb587ebef9e4d964fc5a6a9646bb96c7e7eb5b5ce25078b94721",
+    "12b0e5bd821fa497e3503273219c79d1178fa13682cc3d402bfe36b7c29f9ea8",
+    "62126ccd273c72bd41eb56a9c2e51d186ba35c34f2632f50fd972f53881259ad",
+    "836b560f4bcd42a69ff3c2dab82011ac755a0483a57d157e936f349493e8ddeb"
+   ],
+   "historico": [],
+   "biblioteca": null,
+   "nota": "Perfil inicial da Globo Ads (display estatico). O peso por tag do Half-Page diverge entre a ficha (550 KB) e a tabela por tamanho (500 KB na carga posterior): o perfil guarda as duas leituras, e o DA decide no job.",
+   "fontes_publicas": [
+    "https://negocios.globo.com/half-page/",
+    "https://negocios.globo.com/publicidade-vertical-display/",
+    "https://negocios.globo.com/home-super-premium/",
+    "https://negocios.globo.com/orientacoes-gerais/",
+    "Páginas públicas salvas pelo DA, lidas sem login (pesquisa/specs-globo-ads.md)"
+   ]
+  }
+ ],
+ "folhas": [
+  {
+   "id": "f45a97a77",
+   "campos": {},
+   "arquivo": "publicidade-vertical-display.html",
+   "sha256": "12b0e5bd821fa497e3503273219c79d1178fa13682cc3d402bfe36b7c29f9ea8",
+   "bytes": 20515,
+   "formato": "html",
+   "n_paginas": 1,
+   "camada_texto": true,
+   "titulo": "Mídia Kit - Publicidade Vertical Display",
+   "veiculador": "globo-ads",
+   "recortes": [],
+   "trechos": [
+    {
+     "id": "p01-t014",
+     "pagina": 1,
+     "texto": "Considere deixar cerca de 14% (aprox. 250 pixels) das partes superior e inferior dos vídeos sem texto ou logotipos, para evitar cobrir esses elementos importantes como a chamada para ação.",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": null,
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t018",
+     "pagina": 1,
+     "texto": "Dimensão 1080x1920",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Criativo",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t020",
+     "pagina": 1,
+     "texto": "Peso do arquivo até 500 KB",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Criativo",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t021",
+     "pagina": 1,
+     "texto": "arquivos permitidos JPG , PNG",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Criativo",
+     "papel": "texto"
+    }
+   ],
+   "alertas": [],
+   "situacao_confirmacao": "rascunho"
+  },
+  {
+   "id": "f7fe58045",
+   "campos": {},
+   "arquivo": "half-page.html",
+   "sha256": "62126ccd273c72bd41eb56a9c2e51d186ba35c34f2632f50fd972f53881259ad",
+   "bytes": 20010,
+   "formato": "html",
+   "n_paginas": 1,
+   "camada_texto": true,
+   "titulo": "MEDIA KIT",
+   "veiculador": "globo-ads",
+   "recortes": [],
+   "trechos": [
+    {
+     "id": "p01-t017",
+     "pagina": 1,
+     "texto": "dimensão 300x600",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Half-Page",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t018",
+     "pagina": 1,
+     "texto": "peso (hosted) até 250KB",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Half-Page",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t019",
+     "pagina": 1,
+     "texto": "peso (tag) até 550KB",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Half-Page",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t022",
+     "pagina": 1,
+     "texto": "arquivos permitidos JPG , PNG , HTML5 , GIF ANIMADO",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Half-Page",
+     "papel": "texto"
+    }
+   ],
+   "alertas": [],
+   "situacao_confirmacao": "rascunho"
+  },
+  {
+   "id": "f8cc91544",
+   "campos": {},
+   "arquivo": "home-super-premium.html",
+   "sha256": "836b560f4bcd42a69ff3c2dab82011ac755a0483a57d157e936f349493e8ddeb",
+   "bytes": 20035,
+   "formato": "html",
+   "n_paginas": 1,
+   "camada_texto": true,
+   "titulo": "MEDIA KIT | Home Super Premium",
+   "veiculador": "globo-ads",
+   "recortes": [],
+   "trechos": [
+    {
+     "id": "p01-t013",
+     "pagina": 1,
+     "texto": "Formato de anúncio padrão Globo sem expansão.",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": null,
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t015",
+     "pagina": 1,
+     "texto": "dimensão 1248x250",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Super Premium",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t016",
+     "pagina": 1,
+     "texto": "peso (hosted) até 250KB",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Super Premium",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t017",
+     "pagina": 1,
+     "texto": "peso (tag) até 550KB",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Super Premium",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t020",
+     "pagina": 1,
+     "texto": "arquivos permitidos JPG , PNG , HTML5 , GIF ANIMADO",
+     "caixa": null,
+     "linha": 91,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Super Premium",
+     "papel": "texto"
+    }
+   ],
+   "alertas": [],
+   "situacao_confirmacao": "rascunho"
+  },
+  {
+   "id": "fbc072ce9",
+   "campos": {},
+   "arquivo": "orientacoes-gerais.html",
+   "sha256": "0dc64ff48572bb587ebef9e4d964fc5a6a9646bb96c7e7eb5b5ce25078b94721",
+   "bytes": 47664,
+   "formato": "html",
+   "n_paginas": 1,
+   "camada_texto": true,
+   "titulo": "Mídia Kit - Orientações Gerais",
+   "veiculador": "globo-ads",
+   "recortes": [],
+   "trechos": [
+    {
+     "id": "p01-t058",
+     "pagina": 1,
+     "texto": "320x50",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 2,
+     "tabela": 2,
+     "linha_tabela": 2,
+     "rotulo": "sizes (pixels)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t059",
+     "pagina": 1,
+     "texto": "100",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 3,
+     "tabela": 2,
+     "linha_tabela": 2,
+     "rotulo": "peso máximo initial load (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t060",
+     "pagina": 1,
+     "texto": "100",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 4,
+     "tabela": 2,
+     "linha_tabela": 2,
+     "rotulo": "peso máximo subload (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t062",
+     "pagina": 1,
+     "texto": "320x100",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 2,
+     "tabela": 2,
+     "linha_tabela": 3,
+     "rotulo": "sizes (pixels)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t063",
+     "pagina": 1,
+     "texto": "100",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 3,
+     "tabela": 2,
+     "linha_tabela": 3,
+     "rotulo": "peso máximo initial load (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t064",
+     "pagina": 1,
+     "texto": "150",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 4,
+     "tabela": 2,
+     "linha_tabela": 3,
+     "rotulo": "peso máximo subload (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t066",
+     "pagina": 1,
+     "texto": "970x90/300x250",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 2,
+     "tabela": 2,
+     "linha_tabela": 4,
+     "rotulo": "sizes (pixels)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t067",
+     "pagina": 1,
+     "texto": "150",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 3,
+     "tabela": 2,
+     "linha_tabela": 4,
+     "rotulo": "peso máximo initial load (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t068",
+     "pagina": 1,
+     "texto": "300",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 4,
+     "tabela": 2,
+     "linha_tabela": 4,
+     "rotulo": "peso máximo subload (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t070",
+     "pagina": 1,
+     "texto": "970x150",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 2,
+     "tabela": 2,
+     "linha_tabela": 5,
+     "rotulo": "sizes (pixels)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t071",
+     "pagina": 1,
+     "texto": "200",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 3,
+     "tabela": 2,
+     "linha_tabela": 5,
+     "rotulo": "peso máximo initial load (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t072",
+     "pagina": 1,
+     "texto": "400",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 4,
+     "tabela": 2,
+     "linha_tabela": 5,
+     "rotulo": "peso máximo subload (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t074",
+     "pagina": 1,
+     "texto": "970x250/300x600",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 2,
+     "tabela": 2,
+     "linha_tabela": 6,
+     "rotulo": "sizes (pixels)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t075",
+     "pagina": 1,
+     "texto": "250",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 3,
+     "tabela": 2,
+     "linha_tabela": 6,
+     "rotulo": "peso máximo initial load (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t076",
+     "pagina": 1,
+     "texto": "500",
+     "caixa": null,
+     "linha": 57,
+     "coluna": 4,
+     "tabela": 2,
+     "linha_tabela": 6,
+     "rotulo": "peso máximo subload (kb)",
+     "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+     "papel": "celula"
+    },
+    {
+     "id": "p01-t133",
+     "pagina": 1,
+     "texto": "Neste caso até 40% é aceitável, mas o recomendável seria usar 60%. Lembrando que isso pode variar de acordo com o tipo de imagem e quantidade de cores usadas.",
+     "caixa": null,
+     "linha": 57,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Imagem JPG",
+     "papel": "texto"
+    },
+    {
+     "id": "p01-t175",
+     "pagina": 1,
+     "texto": "Todos os banners que tenham sua cor de fundo igual a cor de fundo da página (branca ou cinza) deverão ter uma borda na cor preta com 1 px de espessura.",
+     "caixa": null,
+     "linha": 57,
+     "coluna": null,
+     "tabela": null,
+     "linha_tabela": null,
+     "rotulo": null,
+     "secao": "Borda",
+     "papel": "texto"
+    }
+   ],
+   "alertas": [],
+   "situacao_confirmacao": "rascunho"
+  }
+ ],
+ "veiculadores": [
+  {
+   "id": "globo-ads",
+   "campos": {
+    "borda_1px": {
+     "id": "globo-ads/borda_1px",
+     "campo": "borda_1px",
+     "forma": "condicional",
+     "valor": {
+      "espessura_px": 1,
+      "cor": "preta"
+     },
+     "texto_original": "Todos os banners que tenham sua cor de fundo igual a cor de fundo da página (branca ou cinza) deverão ter uma borda na cor preta com 1 px de espessura.",
+     "numeros_literais": [
+      "1"
+     ],
+     "unidade": "px",
+     "unidade_original": "px",
+     "base_unidade": null,
+     "condicao": "Todos os banners que tenham sua cor de fundo igual a cor de fundo da página (branca ou cinza) deverão ter uma borda na cor preta com 1 px de espessura.",
+     "fonte": {
+      "folha": "fbc072ce9",
+      "pagina": 1,
+      "trecho": "p01-t175",
+      "rotulo_trecho": null,
+      "recorte": null,
+      "secao": "Borda",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "biblioteca",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "qualidade_jpg_recomendada": {
+     "id": "globo-ads/qualidade_jpg_recomendada",
+     "campo": "qualidade_jpg_recomendada",
+     "forma": "exato",
+     "valor": 60,
+     "texto_original": "usar 60%",
+     "numeros_literais": [
+      "60"
+     ],
+     "unidade": "pct",
+     "unidade_original": "%",
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "fbc072ce9",
+      "pagina": 1,
+      "trecho": "p01-t133",
+      "rotulo_trecho": null,
+      "recorte": null,
+      "secao": "Imagem JPG",
+      "recorte_texto": "usar 60%"
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "biblioteca",
+     "situacao": "registro",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "nome": {
+     "id": "globo-ads/nome",
+     "campo": "nome",
+     "forma": "exato",
+     "valor": "Globo",
+     "texto_original": "Globo",
+     "numeros_literais": [],
+     "unidade": null,
+     "unidade_original": null,
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f8cc91544",
+      "pagina": 1,
+      "trecho": "p01-t013",
+      "rotulo_trecho": null,
+      "recorte": null,
+      "secao": null,
+      "recorte_texto": "Globo"
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "biblioteca",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    }
+   },
+   "folhas": [
+    "f7fe58045",
+    "f8cc91544",
+    "fbc072ce9",
+    "f45a97a77"
+   ],
+   "tetos_por_tamanho": [
+    {
+     "id": "fbc072ce9-tab02-l002",
+     "campos": {
+      "dimensao": {
+       "id": "fbc072ce9-tab02-l002/dimensao",
+       "campo": "dimensao",
+       "forma": "exato",
+       "valor": {
+        "largura": 320,
+        "altura": 50
+       },
+       "texto_original": "320x50",
+       "numeros_literais": [
+        "320",
+        "50"
+       ],
+       "unidade": "px",
+       "unidade_original": "px",
+       "base_unidade": null,
+       "condicao": null,
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t058",
+        "rotulo_trecho": "p01-t058",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_nao_declarada"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_inicial": {
+       "id": "fbc072ce9-tab02-l002/peso_max_tag_carga_inicial",
+       "campo": "peso_max_tag_carga_inicial",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 100000,
+        "reprova_acima_bytes": 102400
+       },
+       "texto_original": "100",
+       "numeros_literais": [
+        "100"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_inicial",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t059",
+        "rotulo_trecho": "p01-t059",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_posterior": {
+       "id": "fbc072ce9-tab02-l002/peso_max_tag_carga_posterior",
+       "campo": "peso_max_tag_carga_posterior",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 100000,
+        "reprova_acima_bytes": 102400
+       },
+       "texto_original": "100",
+       "numeros_literais": [
+        "100"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_posterior",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t060",
+        "rotulo_trecho": "p01-t060",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      }
+     }
+    },
+    {
+     "id": "fbc072ce9-tab02-l003",
+     "campos": {
+      "dimensao": {
+       "id": "fbc072ce9-tab02-l003/dimensao",
+       "campo": "dimensao",
+       "forma": "exato",
+       "valor": {
+        "largura": 320,
+        "altura": 100
+       },
+       "texto_original": "320x100",
+       "numeros_literais": [
+        "320",
+        "100"
+       ],
+       "unidade": "px",
+       "unidade_original": "px",
+       "base_unidade": null,
+       "condicao": null,
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t062",
+        "rotulo_trecho": "p01-t062",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_nao_declarada"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_inicial": {
+       "id": "fbc072ce9-tab02-l003/peso_max_tag_carga_inicial",
+       "campo": "peso_max_tag_carga_inicial",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 100000,
+        "reprova_acima_bytes": 102400
+       },
+       "texto_original": "100",
+       "numeros_literais": [
+        "100"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_inicial",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t063",
+        "rotulo_trecho": "p01-t063",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_posterior": {
+       "id": "fbc072ce9-tab02-l003/peso_max_tag_carga_posterior",
+       "campo": "peso_max_tag_carga_posterior",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 150000,
+        "reprova_acima_bytes": 153600
+       },
+       "texto_original": "150",
+       "numeros_literais": [
+        "150"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_posterior",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t064",
+        "rotulo_trecho": "p01-t064",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      }
+     }
+    },
+    {
+     "id": "fbc072ce9-tab02-l004",
+     "campos": {
+      "dimensao": {
+       "id": "fbc072ce9-tab02-l004/dimensao",
+       "campo": "dimensao",
+       "forma": "conjunto",
+       "valor": [
+        {
+         "largura": 970,
+         "altura": 90
+        },
+        {
+         "largura": 300,
+         "altura": 250
+        }
+       ],
+       "texto_original": "970x90/300x250",
+       "numeros_literais": [
+        "970",
+        "90",
+        "300",
+        "250"
+       ],
+       "unidade": "px",
+       "unidade_original": "px",
+       "base_unidade": null,
+       "condicao": null,
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t066",
+        "rotulo_trecho": "p01-t066",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "mais_de_uma_dimensao",
+        "unidade_nao_declarada"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_inicial": {
+       "id": "fbc072ce9-tab02-l004/peso_max_tag_carga_inicial",
+       "campo": "peso_max_tag_carga_inicial",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 150000,
+        "reprova_acima_bytes": 153600
+       },
+       "texto_original": "150",
+       "numeros_literais": [
+        "150"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_inicial",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t067",
+        "rotulo_trecho": "p01-t067",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_posterior": {
+       "id": "fbc072ce9-tab02-l004/peso_max_tag_carga_posterior",
+       "campo": "peso_max_tag_carga_posterior",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 300000,
+        "reprova_acima_bytes": 307200
+       },
+       "texto_original": "300",
+       "numeros_literais": [
+        "300"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_posterior",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t068",
+        "rotulo_trecho": "p01-t068",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      }
+     }
+    },
+    {
+     "id": "fbc072ce9-tab02-l005",
+     "campos": {
+      "dimensao": {
+       "id": "fbc072ce9-tab02-l005/dimensao",
+       "campo": "dimensao",
+       "forma": "exato",
+       "valor": {
+        "largura": 970,
+        "altura": 150
+       },
+       "texto_original": "970x150",
+       "numeros_literais": [
+        "970",
+        "150"
+       ],
+       "unidade": "px",
+       "unidade_original": "px",
+       "base_unidade": null,
+       "condicao": null,
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t070",
+        "rotulo_trecho": "p01-t070",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_nao_declarada"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_inicial": {
+       "id": "fbc072ce9-tab02-l005/peso_max_tag_carga_inicial",
+       "campo": "peso_max_tag_carga_inicial",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 200000,
+        "reprova_acima_bytes": 204800
+       },
+       "texto_original": "200",
+       "numeros_literais": [
+        "200"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_inicial",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t071",
+        "rotulo_trecho": "p01-t071",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_posterior": {
+       "id": "fbc072ce9-tab02-l005/peso_max_tag_carga_posterior",
+       "campo": "peso_max_tag_carga_posterior",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 400000,
+        "reprova_acima_bytes": 409600
+       },
+       "texto_original": "400",
+       "numeros_literais": [
+        "400"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_posterior",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t072",
+        "rotulo_trecho": "p01-t072",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      }
+     }
+    },
+    {
+     "id": "fbc072ce9-tab02-l006",
+     "campos": {
+      "dimensao": {
+       "id": "fbc072ce9-tab02-l006/dimensao",
+       "campo": "dimensao",
+       "forma": "conjunto",
+       "valor": [
+        {
+         "largura": 970,
+         "altura": 250
+        },
+        {
+         "largura": 300,
+         "altura": 600
+        }
+       ],
+       "texto_original": "970x250/300x600",
+       "numeros_literais": [
+        "970",
+        "250",
+        "300",
+        "600"
+       ],
+       "unidade": "px",
+       "unidade_original": "px",
+       "base_unidade": null,
+       "condicao": null,
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t074",
+        "rotulo_trecho": "p01-t074",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "mais_de_uma_dimensao",
+        "unidade_nao_declarada"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_inicial": {
+       "id": "fbc072ce9-tab02-l006/peso_max_tag_carga_inicial",
+       "campo": "peso_max_tag_carga_inicial",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 250000,
+        "reprova_acima_bytes": 256000
+       },
+       "texto_original": "250",
+       "numeros_literais": [
+        "250"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_inicial",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t075",
+        "rotulo_trecho": "p01-t075",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      },
+      "peso_max_tag_carga_posterior": {
+       "id": "fbc072ce9-tab02-l006/peso_max_tag_carga_posterior",
+       "campo": "peso_max_tag_carga_posterior",
+       "forma": "condicional",
+       "valor": {
+        "alvo_bytes": 500000,
+        "reprova_acima_bytes": 512000
+       },
+       "texto_original": "500",
+       "numeros_literais": [
+        "500"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "tag_carga_posterior",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t076",
+        "rotulo_trecho": "p01-t076",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       },
+       "origem": "extraido_do_trecho",
+       "mapeamento": "rotulo_da_folha",
+       "situacao": "rascunho",
+       "alertas": [
+        "unidade_bit_ou_byte",
+        "unidade_do_rotulo"
+       ],
+       "confirmacao": null
+      }
+     }
+    }
+   ],
+   "alertas": []
+  }
+ ],
+ "circuitos": [
+  {
+   "id": "globo-ads:half-page",
+   "campos": {},
+   "veiculador": "globo-ads",
+   "texto_original": null,
+   "restricoes": [],
+   "alertas": [],
+   "trechos": []
+  },
+  {
+   "id": "globo-ads:home-super-premium",
+   "campos": {},
+   "veiculador": "globo-ads",
+   "texto_original": null,
+   "restricoes": [],
+   "alertas": [],
+   "trechos": []
+  },
+  {
+   "id": "globo-ads:publicidade-vertical-display",
+   "campos": {},
+   "veiculador": "globo-ads",
+   "texto_original": null,
+   "restricoes": [],
+   "alertas": [],
+   "trechos": []
+  }
+ ],
+ "formatos": [
+  {
+   "id": "f45a97a77-e01",
+   "campos": {
+    "dimensao": {
+     "id": "f45a97a77-e01/dimensao",
+     "campo": "dimensao",
+     "forma": "exato",
+     "valor": {
+      "largura": 1080,
+      "altura": 1920
+     },
+     "texto_original": "1080x1920",
+     "numeros_literais": [
+      "1080",
+      "1920"
+     ],
+     "unidade": "px",
+     "unidade_original": "px",
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f45a97a77",
+      "pagina": 1,
+      "trecho": "p01-t018",
+      "rotulo_trecho": "p01-t018",
+      "recorte": null,
+      "secao": "Criativo",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [
+      "unidade_nao_declarada"
+     ],
+     "confirmacao": null
+    },
+    "peso_max": {
+     "id": "f45a97a77-e01/peso_max",
+     "campo": "peso_max",
+     "forma": "maximo",
+     "valor": {
+      "alvo_bytes": 500000,
+      "reprova_acima_bytes": 512000
+     },
+     "texto_original": "até 500 KB",
+     "numeros_literais": [
+      "500"
+     ],
+     "unidade": "bytes",
+     "unidade_original": "KB",
+     "base_unidade": "nao_declarada",
+     "condicao": null,
+     "fonte": {
+      "folha": "f45a97a77",
+      "pagina": 1,
+      "trecho": "p01-t020",
+      "rotulo_trecho": "p01-t020",
+      "recorte": null,
+      "secao": "Criativo",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "tipos_aceitos": {
+     "id": "f45a97a77-e01/tipos_aceitos",
+     "campo": "tipos_aceitos",
+     "forma": "conjunto",
+     "valor": [
+      "image/jpeg",
+      "image/png"
+     ],
+     "texto_original": "JPG , PNG",
+     "numeros_literais": [],
+     "unidade": "mime",
+     "unidade_original": null,
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f45a97a77",
+      "pagina": 1,
+      "trecho": "p01-t021",
+      "rotulo_trecho": "p01-t021",
+      "recorte": null,
+      "secao": "Criativo",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "area_segura": {
+     "id": "f45a97a77-e01/area_segura",
+     "campo": "area_segura",
+     "forma": "exato",
+     "valor": {
+      "pct": 14,
+      "px": 250,
+      "lados": [
+       "inferior",
+       "superior"
+      ]
+     },
+     "texto_original": "Considere deixar cerca de 14% (aprox. 250 pixels) das partes superior e inferior dos vídeos sem texto ou logotipos, para evitar cobrir esses elementos importantes como a chamada para ação.",
+     "numeros_literais": [
+      "14",
+      "250"
+     ],
+     "unidade": "pct",
+     "unidade_original": null,
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f45a97a77",
+      "pagina": 1,
+      "trecho": "p01-t014",
+      "rotulo_trecho": null,
+      "recorte": null,
+      "secao": null,
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "biblioteca",
+     "situacao": "rascunho",
+     "alertas": [
+      "aproximado"
+     ],
+     "confirmacao": null
+    }
+   },
+   "veiculador": "globo-ads",
+   "circuito": "globo-ads:publicidade-vertical-display",
+   "entrada": {
+    "folha": "f45a97a77",
+    "pagina": null,
+    "ordem": 1
+   },
+   "chave": "globo-ads|publicidade-vertical-display|1080x1920",
+   "alertas": []
+  },
+  {
+   "id": "f7fe58045-e01",
+   "campos": {
+    "dimensao": {
+     "id": "f7fe58045-e01/dimensao",
+     "campo": "dimensao",
+     "forma": "exato",
+     "valor": {
+      "largura": 300,
+      "altura": 600
+     },
+     "texto_original": "300x600",
+     "numeros_literais": [
+      "300",
+      "600"
+     ],
+     "unidade": "px",
+     "unidade_original": "px",
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f7fe58045",
+      "pagina": 1,
+      "trecho": "p01-t017",
+      "rotulo_trecho": "p01-t017",
+      "recorte": null,
+      "secao": "Half-Page",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [
+      "unidade_nao_declarada"
+     ],
+     "confirmacao": null
+    },
+    "peso_max_hospedado": {
+     "id": "f7fe58045-e01/peso_max_hospedado",
+     "campo": "peso_max_hospedado",
+     "forma": "condicional",
+     "valor": {
+      "alvo_bytes": 250000,
+      "reprova_acima_bytes": 256000
+     },
+     "texto_original": "até 250KB",
+     "numeros_literais": [
+      "250"
+     ],
+     "unidade": "bytes",
+     "unidade_original": "KB",
+     "base_unidade": "nao_declarada",
+     "condicao": "hospedado",
+     "fonte": {
+      "folha": "f7fe58045",
+      "pagina": 1,
+      "trecho": "p01-t018",
+      "rotulo_trecho": "p01-t018",
+      "recorte": null,
+      "secao": "Half-Page",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "peso_max_tag": {
+     "id": "f7fe58045-e01/peso_max_tag",
+     "campo": "peso_max_tag",
+     "forma": "condicional",
+     "valor": null,
+     "texto_original": "até 550KB",
+     "numeros_literais": [
+      "550"
+     ],
+     "unidade": "bytes",
+     "unidade_original": "KB",
+     "base_unidade": "nao_declarada",
+     "condicao": "por_tag",
+     "fonte": {
+      "folha": "f7fe58045",
+      "pagina": 1,
+      "trecho": "p01-t019",
+      "rotulo_trecho": "p01-t019",
+      "recorte": null,
+      "secao": "Half-Page",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [
+      "fontes_divergentes",
+      "unidade_bit_ou_byte",
+      "unidade_do_rotulo"
+     ],
+     "confirmacao": null,
+     "leituras": [
+      {
+       "valor": {
+        "alvo_bytes": 550000,
+        "reprova_acima_bytes": 563200
+       },
+       "forma": "condicional",
+       "texto_original": "até 550KB",
+       "numeros_literais": [
+        "550"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "KB",
+       "base_unidade": "nao_declarada",
+       "condicao": "por_tag",
+       "fonte": {
+        "folha": "f7fe58045",
+        "pagina": 1,
+        "trecho": "p01-t019",
+        "rotulo_trecho": "p01-t019",
+        "recorte": null,
+        "secao": "Half-Page",
+        "recorte_texto": null
+       }
+      },
+      {
+       "valor": {
+        "alvo_bytes": 500000,
+        "reprova_acima_bytes": 512000
+       },
+       "forma": "condicional",
+       "texto_original": "500",
+       "numeros_literais": [
+        "500"
+       ],
+       "unidade": "bytes",
+       "unidade_original": "kb",
+       "base_unidade": "nao_declarada",
+       "condicao": "por_tag",
+       "fonte": {
+        "folha": "fbc072ce9",
+        "pagina": 1,
+        "trecho": "p01-t076",
+        "rotulo_trecho": "p01-t076",
+        "recorte": null,
+        "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+        "recorte_texto": null
+       }
+      }
+     ]
+    },
+    "tipos_aceitos": {
+     "id": "f7fe58045-e01/tipos_aceitos",
+     "campo": "tipos_aceitos",
+     "forma": "conjunto",
+     "valor": [
+      "image/jpeg",
+      "image/png",
+      "text/html",
+      "image/gif"
+     ],
+     "texto_original": "JPG , PNG , HTML5 , GIF ANIMADO",
+     "numeros_literais": [],
+     "unidade": "mime",
+     "unidade_original": null,
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f7fe58045",
+      "pagina": 1,
+      "trecho": "p01-t022",
+      "rotulo_trecho": "p01-t022",
+      "recorte": null,
+      "secao": "Half-Page",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "peso_max_tag_carga_inicial": {
+     "id": "f7fe58045-e01/peso_max_tag_carga_inicial",
+     "campo": "peso_max_tag_carga_inicial",
+     "forma": "condicional",
+     "valor": {
+      "alvo_bytes": 250000,
+      "reprova_acima_bytes": 256000
+     },
+     "texto_original": "250",
+     "numeros_literais": [
+      "250"
+     ],
+     "unidade": "bytes",
+     "unidade_original": "kb",
+     "base_unidade": "nao_declarada",
+     "condicao": "tag_carga_inicial",
+     "fonte": {
+      "folha": "fbc072ce9",
+      "pagina": 1,
+      "trecho": "p01-t075",
+      "rotulo_trecho": "p01-t075",
+      "recorte": null,
+      "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [
+      "aplicado_pela_tabela_por_tamanho",
+      "unidade_bit_ou_byte",
+      "unidade_do_rotulo"
+     ],
+     "confirmacao": null
+    },
+    "peso_max_tag_carga_posterior": {
+     "id": "f7fe58045-e01/peso_max_tag_carga_posterior",
+     "campo": "peso_max_tag_carga_posterior",
+     "forma": "condicional",
+     "valor": {
+      "alvo_bytes": 500000,
+      "reprova_acima_bytes": 512000
+     },
+     "texto_original": "500",
+     "numeros_literais": [
+      "500"
+     ],
+     "unidade": "bytes",
+     "unidade_original": "kb",
+     "base_unidade": "nao_declarada",
+     "condicao": "tag_carga_posterior",
+     "fonte": {
+      "folha": "fbc072ce9",
+      "pagina": 1,
+      "trecho": "p01-t076",
+      "rotulo_trecho": "p01-t076",
+      "recorte": null,
+      "secao": "Peso do criativo servido por TAG / 2 etapas (Polite)",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [
+      "aplicado_pela_tabela_por_tamanho",
+      "unidade_bit_ou_byte",
+      "unidade_do_rotulo"
+     ],
+     "confirmacao": null
+    }
+   },
+   "veiculador": "globo-ads",
+   "circuito": "globo-ads:half-page",
+   "entrada": {
+    "folha": "f7fe58045",
+    "pagina": null,
+    "ordem": 1
+   },
+   "chave": "globo-ads|half-page|300x600",
+   "alertas": []
+  },
+  {
+   "id": "f8cc91544-e01",
+   "campos": {
+    "dimensao": {
+     "id": "f8cc91544-e01/dimensao",
+     "campo": "dimensao",
+     "forma": "exato",
+     "valor": {
+      "largura": 1248,
+      "altura": 250
+     },
+     "texto_original": "1248x250",
+     "numeros_literais": [
+      "1248",
+      "250"
+     ],
+     "unidade": "px",
+     "unidade_original": "px",
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f8cc91544",
+      "pagina": 1,
+      "trecho": "p01-t015",
+      "rotulo_trecho": "p01-t015",
+      "recorte": null,
+      "secao": "Super Premium",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [
+      "unidade_nao_declarada"
+     ],
+     "confirmacao": null
+    },
+    "peso_max_hospedado": {
+     "id": "f8cc91544-e01/peso_max_hospedado",
+     "campo": "peso_max_hospedado",
+     "forma": "condicional",
+     "valor": {
+      "alvo_bytes": 250000,
+      "reprova_acima_bytes": 256000
+     },
+     "texto_original": "até 250KB",
+     "numeros_literais": [
+      "250"
+     ],
+     "unidade": "bytes",
+     "unidade_original": "KB",
+     "base_unidade": "nao_declarada",
+     "condicao": "hospedado",
+     "fonte": {
+      "folha": "f8cc91544",
+      "pagina": 1,
+      "trecho": "p01-t016",
+      "rotulo_trecho": "p01-t016",
+      "recorte": null,
+      "secao": "Super Premium",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "peso_max_tag": {
+     "id": "f8cc91544-e01/peso_max_tag",
+     "campo": "peso_max_tag",
+     "forma": "condicional",
+     "valor": {
+      "alvo_bytes": 550000,
+      "reprova_acima_bytes": 563200
+     },
+     "texto_original": "até 550KB",
+     "numeros_literais": [
+      "550"
+     ],
+     "unidade": "bytes",
+     "unidade_original": "KB",
+     "base_unidade": "nao_declarada",
+     "condicao": "por_tag",
+     "fonte": {
+      "folha": "f8cc91544",
+      "pagina": 1,
+      "trecho": "p01-t017",
+      "rotulo_trecho": "p01-t017",
+      "recorte": null,
+      "secao": "Super Premium",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    },
+    "tipos_aceitos": {
+     "id": "f8cc91544-e01/tipos_aceitos",
+     "campo": "tipos_aceitos",
+     "forma": "conjunto",
+     "valor": [
+      "image/jpeg",
+      "image/png",
+      "text/html",
+      "image/gif"
+     ],
+     "texto_original": "JPG , PNG , HTML5 , GIF ANIMADO",
+     "numeros_literais": [],
+     "unidade": "mime",
+     "unidade_original": null,
+     "base_unidade": null,
+     "condicao": null,
+     "fonte": {
+      "folha": "f8cc91544",
+      "pagina": 1,
+      "trecho": "p01-t020",
+      "rotulo_trecho": "p01-t020",
+      "recorte": null,
+      "secao": "Super Premium",
+      "recorte_texto": null
+     },
+     "origem": "extraido_do_trecho",
+     "mapeamento": "rotulo_da_folha",
+     "situacao": "rascunho",
+     "alertas": [],
+     "confirmacao": null
+    }
+   },
+   "veiculador": "globo-ads",
+   "circuito": "globo-ads:home-super-premium",
+   "entrada": {
+    "folha": "f8cc91544",
+    "pagina": null,
+    "ordem": 1
+   },
+   "chave": "globo-ads|home-super-premium|1248x250",
+   "alertas": []
+  }
+ ],
+ "resumo": {
+  "folhas": 4,
+  "trechos": 30,
+  "recortes": 0,
+  "veiculadores": 1,
+  "circuitos": 3,
+  "formatos": 3,
+  "formatos_em_px": 3,
+  "tamanhos_em_px": 3,
+  "valores": 102,
+  "valores_rascunho": 31,
+  "valores_confirmados": 0,
+  "registros": 71,
+  "sem_valor": 71,
+  "com_alerta": 22,
+  "divergencias": 1,
+  "digitados": 0
+ },
+ "mapeamento": [
+  {
+   "folha": "fbc072ce9",
+   "pagina": 1,
+   "texto": "Todos os banners que tenham sua cor de fundo igual a cor de fundo da página (branca ou cinza) deverão ter uma borda na cor preta com 1 px de espessura.",
+   "campo": "borda_1px",
+   "recorte_texto": null
+  },
+  {
+   "folha": "fbc072ce9",
+   "pagina": 1,
+   "texto": "Neste caso até 40% é aceitável, mas o recomendável seria usar 60%. Lembrando que isso pode variar de acordo com o tipo de imagem e quantidade de cores usadas.",
+   "campo": "qualidade_jpg_recomendada",
+   "recorte_texto": "usar 60%"
+  },
+  {
+   "folha": "f8cc91544",
+   "pagina": 1,
+   "texto": "Formato de anúncio padrão Globo sem expansão.",
+   "campo": "nome",
+   "recorte_texto": "Globo"
+  },
+  {
+   "folha": "f45a97a77",
+   "pagina": 1,
+   "texto": "Considere deixar cerca de 14% (aprox. 250 pixels) das partes superior e inferior dos vídeos sem texto ou logotipos, para evitar cobrir esses elementos importantes como a chamada para ação.",
+   "campo": "area_segura",
+   "recorte_texto": null
+  }
+ ]
+}

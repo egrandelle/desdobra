@@ -16,7 +16,7 @@ Cada agente só edita o que é dele. Para mudar um arquivo compartilhado, o agen
 | saida-regressao | `motor/desdobra/sugestao/`, `motor/desdobra/regressao/`, `motor/schemas/pacote-modelo-1.json`, `motor/schemas/regressao-1.json`, `motor/schemas/segredos-bloqueados-1.json`, `testes/test_sugestao*` (inclusive `test_sugestao_apoio.py`, material sintético compartilhado pelos testes de sugestão e regressão), `testes/test_regressao*`, `testes/test_pacote*` |
 | plugin | `plugins/desdobra/skills/`, `plugins/desdobra/hooks/`, `motor/desdobra/doctor/`, `motor/schemas/doctor-1.json` (se criar), scripts de preparo do ambiente do plugin, `docs/` (menos este arquivo), `testes/test_doctor*` |
 
-`plugins/desdobra/tela/` e `plugins/desdobra/biblioteca-specs/` ficam vazios no M1.
+`plugins/desdobra/tela/` e `plugins/desdobra/biblioteca-specs/` ficam vazios no M1. A biblioteca recebe os perfis da Eletromidia PME e da Globo Ads no M3 (seção "M3: specs em 4 níveis e validador").
 
 ## 2. Regras que valem para todos
 
@@ -83,6 +83,7 @@ Códigos (`Codigo`, um `IntEnum`):
 | `desdobra.regressao` | `regressao` | saida-regressao |
 | `desdobra.doctor` | `doctor` | plugin |
 | `desdobra.limites` | `limites` | fundação |
+| `desdobra.specs` | `spec importar`, `spec confirmar`, `validar` (M3) | frente de specs |
 
   Enquanto o módulo não existe, o subcomando responde código 9 (`nao_disponivel`). Basta criar o módulo com `registrar` para ele entrar; não é preciso mexer no `cli.py`.
 - Opções globais, **antes** do subcomando: `--envelope` e `--teto-modo-dados {a,b,c}`. Exemplo: `desdobra --envelope --teto-modo-dados b job proxima <pasta>`.
@@ -501,3 +502,76 @@ Função pura do laudo da primeira passada e da conferência. Grava `laudo/laudo
 
 - O OTS do Chromium sanitiza a fonte carregada pela página antes de usar (arquitetura 7.1, a confirmar): o teste mostra que fonte malformada é recusada no filho antes de chegar ao Chromium, mas não testa o OTS.
 - Faux bold, escala de trecho e caixa de parágrafo ficam sem comparação de largura (motivo registrado).
+
+## M3: specs em 4 níveis e validador (`desdobra/specs`, `desdobra/sugestao/specs.py`)
+
+Dono: frente de specs do M3. Arquivos: `motor/desdobra/specs/`, `motor/desdobra/sugestao/specs.py`, os esquemas `spec-1.json`, `leitura-folha-1.json`, `pacote-specs-1.json`, `mapeamento-specs-1.json`, `spec-confirmacoes-1.json` e `validacao-arquivo-1.json`, as entradas `specs.*` de `motor/fontes-de-limites.json`, a biblioteca `plugins/desdobra/biblioteca-specs/`, o gerador `dev/gerar_biblioteca_specs.py` e os testes `testes/test_specs*` (`test_specs_apoio.py` escreve à mão o PDF com texto, o PDF escaneado, o HTML, o CSV e o e-mail sintéticos).
+
+### Entrada e esteira
+
+- As folhas entram em `entrada/specs/` (`job criar --specs <pasta>` ou `job trocar-entrada <pasta> entrada/specs/<veiculador>/<arquivo> <arquivo>`). Cada subpasta é um veiculador (as folhas dela juntas, como as quatro páginas salvas da Globo); folha solta direto em `entrada/specs/` é um veiculador sozinha. O id do veiculador é o nome da subpasta (ou do arquivo), sem acento.
+- Formatos aceitos, reconhecidos pela extensão e, no PDF, pela assinatura `%PDF-`: PDF (com ou sem camada de texto), HTML salvo (`.html`, `.htm`), CSV exportado pelo DA e texto (`.txt`, `.eml`). `.xlsx`, imagem solta e Word ficam fora (folha recusada, com a contagem `folhas_recusadas`). Sem OCR e sem raspar site.
+- Fase `specs`, a última da esteira (`nucleo.ESTEIRA = FASES_M3`), sem dependência: entradas `entrada/specs`, `specs/confirmacoes.json` e `sugestoes/mapeamento-specs.json`; saídas `specs/rascunho.json`, `specs/formatos-do-job.json` e `sugestoes/pacote-specs.json`; comando `desdobra --envelope spec importar --job <pasta>`. Trocar uma folha invalida só esta fase. A confirmação não é portão da esteira: ela é do DA, no terminal, e quem precisa de formato confirmado lê `specs/formatos-do-job.json`.
+
+### Processo filho das folhas (`desdobra.specs.filho`)
+
+```
+python -I -B -m desdobra.specs.filho <arquivo> <pasta_saida> --formato {pdf,html,csv,texto} --orcamento-bytes N --escala-recorte S
+```
+
+Toda folha, e não só o PDF, é lida no filho isolado, com o mesmo isolador, a mesma linha `iniciar` e o mesmo gancho de auditoria do leitor de PSD: o PDFium é código nativo diante de um arquivo de fora da agência (arquitetura 7.1), e o processo principal nunca parseia a folha. Orçamento `(isolador.base_python_bytes + specs.fator_abertura_max x bytes) x isolador.margem_orcamento`, tempo `specs.tempo_max_s`. Grava `specs/bruto/<sha256>-<formato>/leitura.json` (`leitura-folha/1`), reaproveitado só com o mesmo sha256, o mesmo formato, a mesma escala de recorte e a mesma versão do motor. Folha com mais de `specs.trechos_max` trechos, trecho com mais de `specs.trecho_caracteres_max` caracteres ou página de PDF com mais de `specs.pdf_trechos_por_pagina_max` pedaços é recusada inteira (`trechos_demais`, `trecho_longo`):
+- PDF: um trecho por retângulo de texto do PDFium, com página e caixa em pontos. Página sem texto vira recorte: `p<NN>.png`, a página inteira na escala `specs.recorte_escala`. Nunca extrai fonte, imagem ou anexo;
+- HTML: um trecho por bloco de texto, com a linha do HTML e a seção (o título mais próximo acima); tabela (`table`/`tr`/`td` ou `div` com as classes `table`, `row` e `col`) dá um trecho por célula, com o cabeçalho da coluna como rótulo e o número da linha da tabela (`linha_tabela`). Script, style e svg ficam de fora; nada é baixado;
+- CSV: um trecho por célula, com linha, coluna e o cabeçalho como rótulo (separador `,`, `;` ou tabulação);
+- texto e `.eml` (só o corpo em texto puro): um trecho por linha.
+
+Códigos: 0 lida; 3 recusada (`formato`, `malformado`, `trechos_demais`, `trecho_longo`); 4 memória; 5 auditoria; 1 bug. O pai (`desdobra.specs.leitura.ler`) transforma queda, memória, tempo e bug em recusa tipada.
+
+### Número só do trecho (`desdobra.specs.extrair`)
+
+O número nasce só aqui, por expressão regular sobre o texto literal do trecho, com fronteira (nunca começa nem termina no meio de outro número) e tamanho limitado (a expressão fica linear num texto hostil), e cada valor guarda `numeros_literais` como aparecem na folha. `modelo.conferir_literais(doc)` lista todo número que não existe no trecho citado com a mesma fronteira ("5" não vale dentro de "15" nem de "1,5"), e o `recorte_texto` que parte palavra ou número; a importação para com erro interno se a lista não for vazia, e os testes conferem 100% dos números. Armadilhas viram alerta, nunca valor confirmado: `virgula_decimal` ("1,17m" sai 1.17), `separador_ambiguo` ("1.920", sem valor), `unidade_nao_declarada` ("300x600"), `unidade_incoerente` (área total maior que a útil pelo fator `specs.fator_incoerencia_unidade`, o "120m x 175m"), `area_util_maior_que_total`, `rotulo_separado_do_valor` (o rótulo e o valor em trechos diferentes, como no PDF da PME), `fora_do_escopo_v1` (medida em m, cm ou mm), `mais_de_um_numero` e `fontes_divergentes` (o motor não escolhe), `aproximado` ("cerca de", "aprox."), `praca_mista`, `praca_ambigua` e `uf_nao_declarada`.
+- Peso em bytes inteiros: `{alvo_bytes, reprova_acima_bytes}`. Sem base declarada, o alvo é a leitura decimal (5 MB = 5.000.000) e a reprovação só vale acima da binária (5.242.880), com `base_unidade: nao_declarada`; KiB e MiB declarados dão as duas iguais (`binaria`). A unidade pode vir do cabeçalho da coluna (`unidade_do_rotulo`). "Kb" e "Mb" com b minúsculo saem lidos como byte, com o alerta `unidade_bit_ou_byte`, para o DA conferir.
+- Dimensão `{largura, altura}` com a unidade; tipos como conjunto de MIME; faixa `[{lado, px}]` ("-" é lista vazia); área segura `{pct, px, lados}`; borda `{espessura_px, cor}`, condicional quando o texto diz "que tenham", "quando" ou "se", com o texto como condição; praça `[{uf, municipio, texto_original, ambiguidade}]`, sem completar a UF de uma cidade (São Paulo e Rio de Janeiro ficam `uf_ou_municipio`).
+- Sufixo de nome de arquivo fica texto literal e nunca vira geometria.
+
+### Modelo `spec/1` (`desdobra.specs.modelo`)
+
+Um documento com `tipo` `rascunho`, `formatos_do_job` ou `perfil`, e as listas `folhas`, `veiculadores`, `circuitos` e `formatos`, cada registro com `campos` (campo para valor). Todo valor tem `id`, `campo`, `forma` (exato, maximo, faixa, conjunto, condicional), `valor`, `texto_original`, `numeros_literais`, `unidade`, `unidade_original`, `base_unidade`, `condicao`, `fonte` (`folha`, `pagina`, `trecho`, `rotulo_trecho`, `recorte`, `secao`, `recorte_texto`, `trechos_adicionais`), `origem` (`extraido_do_trecho`, `digitado_pelo_da_a_partir_do_recorte` ou `ausente`), `mapeamento` (`rotulo_da_folha`, `proposta_do_modelo`, `biblioteca`, `da`), `situacao` (`rascunho`, `confirmado`, `registro`), `alertas`, `confirmacao` e, na divergência, `leituras` (cada uma com o valor e a fonte, e `valor` nulo). O esquema obriga: `ausente` tem valor nulo e é `registro`; `digitado_pelo_da_a_partir_do_recorte` tem `fonte.recorte` e `texto_digitado`; no `formatos_do_job`, todo valor é `confirmado`.
+- Campos por nível: folha (`versao_impressa`, `data_impressa`); veiculador (`nome`, `apelidos`, `concessionaria`, `peso_max`, `peso_max_hospedado`, `peso_max_tag`, `tipos_aceitos`, `borda_1px`, `qualidade_jpg_recomendada` e `prazo_envio`, os dois últimos só registro, mais `tetos_por_tamanho`); circuito (`ambiente`, `praca`, `modelo_tela`, `area_util`, `faixas_reservadas`, `restricoes`, `texto_original`); formato (`dimensao`, `orientacao_painel`, `rotacao` só registro, `area_util`, `faixas`, `area_segura`, `borda_1px`, os pesos, `tipos_aceitos`, `qualidade_jpg_recomendada`, `area_visivel`, `sangria`, `margem_seguranca`, `sufixo_nome_arquivo`). Campo que a folha não traz vira registro sem valor (teste de propriedade).
+- Chave do formato: `veiculador|circuito|LxA` (com a unidade depois quando não é px). No PDF, o circuito é o texto da página que fica todo à esquerda da coluna dos rótulos (ambiente e praça, para mapear), e o que começa com `*` é restrição; no HTML, o nome da página salva; no CSV e no e-mail, as colunas e linhas de ambiente e praça da entrada. Chave repetida: todas as entradas com a mesma chave ganham `#<id do formato>` e o alerta `chave_repetida`, sem depender da ordem das folhas. O circuito sem texto tem id por folha (`<veiculador>:<folha>-p<NN>` ou `<folha>-geral`). Id que viria de texto com segredo (circuito, veiculador pela pasta) é neutro: `oculto-<sha256 curto>`.
+- Herança: o formato sem o campo usa o do circuito (`area_util`, `faixas_reservadas`) ou o do veiculador (pesos, tipos, borda, qualidade), em `modelo.resolver`, com `herdado_de` no `formatos-do-job.json`.
+- Tabela por tamanho do veiculador (o peso por tag da Globo, carga inicial e posterior): vale para o formato do mesmo tamanho (`aplicado_pela_tabela_por_tamanho`), pelo mesmo caminho dos outros valores: a ficha e a tabela (ou duas linhas da tabela) com valores diferentes viram divergência com as leituras. Se a ficha do formato dá outro peso por tag que a carga posterior da tabela, `peso_max_tag` fica com as duas leituras e valor nulo: o Half-Page, 550 KB na ficha contra 500 KB na tabela.
+- Perfil por veiculador, versionado: outro conjunto de folhas (sha256) gera a versão seguinte, e a anterior vai para `historico`. O id da folha sai do sha256 e do caminho (a mesma folha em duas subpastas são duas folhas); como os ids dos valores levam o id da folha, a folha nova pede a confirmação do DA de novo.
+
+### Propostas do Claude (`sugestoes/pacote-specs.json` e `sugestoes/mapeamento-specs.json`)
+
+- `pacote-specs/1`: nos modos a e b, os trechos (folha, id, página, texto, rótulo, seção, se já foram mapeados) depois do detector de segredos (texto e rótulo com achado: o trecho sai; seção com achado: só a seção sai; alvo, chave ou veiculador com achado: sai; tudo conta em `segredos_bloqueados`, origem `trecho_spec` em `segredos-bloqueados.json`) e os alvos (ids e chaves); no modo c, só contagens.
+- `mapeamento-specs/1`, escrito pelo Claude: cada proposta tem `folha`, `trecho`, `campo` (lista fechada), `alvo` opcional, `adicionais` (outros trechos da mesma página) e `recorte_texto` (pedaço literal do trecho). Não há lugar para valor nem número. O motor extrai o número do texto do trecho; o valor sai `rascunho` com `mapeamento: proposta_do_modelo`. Proposta com trecho inexistente ou com `recorte_texto` que não está no trecho, ou que parte palavra ou número ("5 MB" dentro de "15 MB"), é ignorada (`propostas_ignoradas`); no modo c, todas (`propostas_ignoradas_modo_c`).
+
+### `desdobra spec confirmar --job <pasta> [--formato <chave>] [--campo <campo>]`
+
+Só num terminal interativo: recusa com código 3 com `--envelope` ou sem terminal (stdin ou stdout que não é um terminal). Pega a trava do job, refaz o rascunho e pergunta, sem resposta padrão (Enter vazio repete): nas fontes divergentes, qual leitura vale; em cada rascunho com valor, confirmar ou pular, vendo o trecho, o pedaço de onde o número saiu e quem ligou o campo ao trecho (rótulo da folha, proposta do Claude ou curadoria); em cada página sem texto, o campo (só os que valem: rotação, prazo e qualidade, que são registro, ficam fora; restrição vai para a lista do circuito) e o valor que o DA lê no recorte. Ctrl+C ou fim da entrada param a sessão e gravam as respostas dadas até ali. Grava as ações em `specs/confirmacoes.json` (`spec-confirmacoes/1`, com `por: da`, `meio: terminal` e a hora) e refaz o rascunho e os formatos do job. A confirmação guarda a impressão (sha256) do conteúdo do valor: valor mudado deixa a ação de lado (`acoes_ignoradas`), e o DA confirma de novo.
+
+### `desdobra validar <arquivo> --formato <chave> (--job <pasta> | --perfil <spec.json>) [--condicao X] [--saida <relatorio.json>]`
+
+Confere qualquer arquivo, inclusive export humano. Lê só o cabeçalho (PNG IHDR, os segmentos do JPEG até o SOF, pulando metadados de qualquer tamanho, tela lógica do GIF) e os primeiros bytes (MIME); nunca decodifica. A tag Orientation do Exif diferente de 1 vira aviso (`imagem_com_giro_no_exif`). Verificações (`validacao-arquivo/1`): dimensão (girado reprova, motivo `girado`), cada peso nas duas leituras (acima da binária reprova pelo limite `specs.peso_reprova_acima_da_leitura_binaria`; entre as duas avisa pelo `specs.peso_avisa_acima_da_leitura_decimal`; peso condicional reprova só com `--condicao` igual à dele, e sem ela avisa; peso divergente avisa com `fontes_divergentes_o_da_decide`), tipo contra os tipos aceitos, extensão que não bate com o tipo (aviso). Sem regra confirmada de dimensão, peso ou tipo (`sem_regra`), o resultado é no mínimo `aviso`, com o o que fazer de validação incompleta: o arquivo nunca sai aprovado sem regra. Área útil, faixas, área segura e borda ficam `nao_verificado` (pixel, na entrega do M6). Com `--job`, só valem valores confirmados (`specs/formatos-do-job.json`); com `--perfil`, a validação é diagnóstico (`contra_valor_nao_confirmado` 1). Códigos: 0 aprovado ou com aviso (`situacao` `ok`), 3 reprovado (`recusado`), 2 formato inexistente ou job sem as specs. O envelope leva só contagens (`ok`, `aviso`, `reprova`, `nao_verificado`, `sem_regra`), o sha256 e os números do arquivo.
+
+### Biblioteca inicial (`plugins/desdobra/biblioteca-specs/`)
+
+`eletromidia-pme-1.json` e `globo-ads-1.json` (`spec/1`, tipo `perfil`, versão 1; o registro sem valor fica implícito no arquivo, e `importar.perfil_da_biblioteca` o completa ao ler): os valores que o motor extrai das folhas públicas, com a citação (arquivo, sha256, página, seção e só os trechos citados, nunca a folha), mais a curadoria em `mapeamento` (qual trecho é ambiente, praça, área segura, borda, nome), na mesma regra das propostas: sem número. Os valores do perfil ficam em rascunho. Quando a mesma folha (mesmo sha256) entra num job, a importação usa o veiculador do perfil e aplica a curadoria (`mapeamento: biblioteca`). `dev/gerar_biblioteca_specs.py --pme <pdf> --globo <pasta>` refaz os perfis a partir das folhas, que ficam fora do repositório; o teste das folhas reais roda com `DESDOBRA_FOLHAS_SPECS` apontando para a pasta com `eletromidia-pme/` e `globo-ads/`.
+
+### Limites novos
+
+`specs.fator_abertura_max` (64), `specs.tempo_max_s` (120) e `specs.recorte_escala` (2), a calibrar, com fonte na arquitetura 7.1 e 4.8; `specs.fator_incoerencia_unidade` (10, a calibrar, só alerta); `specs.peso_reprova_acima_da_leitura_binaria` e `specs.peso_avisa_acima_da_leitura_decimal`, medidos (`pesquisa/v1-estatico-sintese.md` §5); `specs.trechos_max` (20000), `specs.trecho_caracteres_max` (4000) e `specs.pdf_trechos_por_pagina_max` (1000), a calibrar, tetos do filho.
+
+A fase `specs` tem entradas de fora do job (`Fase.externas`): o sha256 de `biblioteca-specs/` e o dos limites `specs.*` e `isolador.*`. Perfil novo na biblioteca ou limite mudado invalida a fase como uma folha trocada.
+
+### Doctor
+
+Mais uma verificação: `pypdfium2`, a versão fixada do lock, só pelos metadados (o processo principal nunca importa o pypdfium2).
+
+### Pendências da frente de specs
+
+- Frase solta (a área segura, a borda, a qualidade de JPG) só vira valor por proposta de mapeamento (do Claude ou da curadoria da biblioteca); sozinho, o motor reconhece só rótulo seguido de valor.
+- A borda condicional guarda a condição como o texto da folha: a validação no pixel (M6) ainda precisa decidir como ler "fundo da cor da página".
+- Área útil, faixas, área segura e borda não são conferidas no `validar` deste marco (pixel, M6).

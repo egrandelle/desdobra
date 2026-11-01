@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:mapeamento-specs:1",
+  "title": "Propostas de mapeamento trecho para campo (mapeamento-specs/1)",
+  "description": "sugestoes/mapeamento-specs.json, escrito pelo Claude a partir de sugestoes/pacote-specs.json, nos modos a e b. Cada proposta diz so qual trecho vai para qual campo: nao ha lugar para valor nem para numero. O motor extrai o numero do texto literal do trecho (ou do pedaco literal recorte_texto, que tem de existir no trecho), e o valor continua rascunho ate o DA confirmar.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "propostas"
+  ],
+  "properties": {
+    "esquema": {
+      "const": "mapeamento-specs/1"
+    },
+    "propostas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "folha",
+          "trecho",
+          "campo"
+        ],
+        "properties": {
+          "folha": {
+            "type": "string",
+            "pattern": "^f[0-9a-f]{8}$"
+          },
+          "trecho": {
+            "type": "string",
+            "pattern": "^p[0-9]{2,}-t[0-9]{3,}$"
+          },
+          "campo": {
+            "enum": [
+              "versao_impressa",
+              "data_impressa",
+              "nome",
+              "apelidos",
+              "concessionaria",
+              "prazo_envio",
+              "ambiente",
+              "praca",
+              "modelo_tela",
+              "faixas_reservadas",
+              "restricao",
+              "dimensao",
+              "orientacao_painel",
+              "area_util",
+              "faixas",
+              "area_segura",
+              "borda_1px",
+              "peso_max",
+              "peso_max_hospedado",
+              "peso_max_tag",
+              "peso_max_tag_carga_inicial",
+              "peso_max_tag_carga_posterior",
+              "tipos_aceitos",
+              "qualidade_jpg_recomendada",
+              "area_visivel",
+              "sangria",
+              "margem_seguranca",
+              "sufixo_nome_arquivo"
+            ]
+          },
+          "alvo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "id de formato, circuito ou veiculador do pacote; sem alvo, o motor usa o formato da pagina do trecho"
+          },
+          "recorte_texto": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pedaco literal do trecho, quando so parte dele e do campo"
+          },
+          "adicionais": {
+            "type": "array",
+            "description": "Outros trechos da mesma pagina que continuam o campo",
+            "items": {
+              "type": "string",
+              "pattern": "^p[0-9]{2,}-t[0-9]{3,}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

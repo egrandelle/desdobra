@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:pacote-specs:1",
+  "title": "Pacote das specs para o modelo (pacote-specs/1)",
+  "description": "sugestoes/pacote-specs.json: o que o Claude pode ler para propor qual trecho da folha vai para qual campo (arquitetura-v1.md, 4.8, 4.9 e 6). Nos modos a e b, os trechos depois do detector de segredos e os alvos; no modo c, so contagens. O Claude nunca da numero: o motor extrai do trecho.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "modo_dados", "job_id", "exposto", "campos", "contagens", "folhas", "alvos", "trechos"],
+  "properties": {
+    "esquema": {"const": "pacote-specs/1"},
+    "modo_dados": {"enum": ["a", "b", "c"]},
+    "job_id": {"type": ["string", "null"]},
+    "exposto": {"type": "object", "additionalProperties": false, "required": ["textos"], "properties": {"textos": {"type": "boolean"}}},
+    "campos": {"type": "array", "items": {"type": "string"}},
+    "contagens": {"type": "object", "additionalProperties": {"type": "integer"}},
+    "folhas": {
+      "type": "array",
+      "items": {"type": "object", "additionalProperties": false, "required": ["id", "formato", "n_paginas", "camada_texto", "veiculador"],
+                "properties": {"id": {"type": "string"}, "formato": {"type": "string"}, "n_paginas": {"type": "integer"},
+                               "camada_texto": {"type": "boolean"}, "veiculador": {"type": "string"}}}
+    },
+    "alvos": {
+      "type": "array",
+      "items": {"type": "object", "additionalProperties": false, "required": ["id", "nivel", "chave", "pagina", "folha"],
+                "properties": {"id": {"type": "string"}, "nivel": {"enum": ["formato", "circuito", "veiculador"]},
+                               "chave": {"type": ["string", "null"]}, "pagina": {"type": ["integer", "null"]},
+                               "folha": {"type": ["string", "null"]}}}
+    },
+    "trechos": {
+      "type": "array",
+      "items": {"type": "object", "additionalProperties": false, "required": ["folha", "trecho", "pagina", "texto", "rotulo", "secao", "mapeado"],
+                "properties": {"folha": {"type": "string"}, "trecho": {"type": "string"}, "pagina": {"type": "integer"},
+                               "texto": {"type": "string"}, "rotulo": {"type": ["string", "null"]},
+                               "secao": {"type": ["string", "null"]}, "mapeado": {"type": "boolean"}}}
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"modo_dados": {"const": "c"}}},
+     "then": {"properties": {"trechos": {"maxItems": 0}, "alvos": {"maxItems": 0}, "folhas": {"maxItems": 0}}}}
+  ]
+}

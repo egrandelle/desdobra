@@ -18,7 +18,7 @@
         "additionalProperties": false,
         "required": ["origem", "layer_id", "campos", "padroes"],
         "properties": {
-          "origem": {"enum": ["camada", "fonte", "quadro", "o_que_fazer", "miniatura"]},
+          "origem": {"enum": ["camada", "fonte", "quadro", "o_que_fazer", "miniatura", "trecho_spec"]},
           "layer_id": {"type": ["integer", "null"]},
           "campos": {"type": "array", "items": {"enum": ["nome", "textos", "fonte_ps", "arquivo", "o_que_fazer"]}},
           "padroes": {"type": "array", "items": {"type": "string"}, "minItems": 1},

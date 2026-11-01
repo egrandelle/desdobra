@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:leitura-folha:1",
+  "title": "Leitura de uma folha de spec pelo processo filho (leitura-folha/1)",
+  "description": "Gravado por desdobra.specs.filho em specs/bruto/<sha256>/leitura.json. O texto da folha dividido em trechos, cada um com a pagina e o recorte (caixa no PDF, linha e coluna no HTML, no CSV e no texto). Pagina de PDF sem camada de texto vira um PNG da pagina (recorte) para o DA digitar o valor ao lado. Nunca fonte, imagem nem anexo extraido da folha.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "leitor",
+    "origem",
+    "formato",
+    "escala_recorte",
+    "situacao",
+    "recusa",
+    "titulo",
+    "paginas",
+    "trechos",
+    "auditoria"
+  ],
+  "properties": {
+    "esquema": {
+      "const": "leitura-folha/1"
+    },
+    "leitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "motor",
+        "pypdfium2",
+        "pdfium"
+      ],
+      "properties": {
+        "motor": {
+          "type": "string"
+        },
+        "pypdfium2": {
+          "type": "string"
+        },
+        "pdfium": {
+          "type": "string"
+        }
+      }
+    },
+    "origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "formato": {
+      "enum": [
+        "pdf",
+        "html",
+        "csv",
+        "texto"
+      ]
+    },
+    "situacao": {
+      "enum": [
+        "lida",
+        "recusada"
+      ]
+    },
+    "recusa": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tipo",
+            "motivo",
+            "codigo"
+          ],
+          "properties": {
+            "tipo": {
+              "enum": [
+                "formato",
+                "malformado",
+                "memoria",
+                "auditoria",
+                "trechos_demais",
+                "trecho_longo"
+              ]
+            },
+            "motivo": {
+              "type": "string"
+            },
+            "codigo": {
+              "type": "integer"
+            }
+          }
+        }
+      ]
+    },
+    "titulo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "So no HTML: o texto de <title>"
+    },
+    "paginas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "numero",
+          "largura_pt",
+          "altura_pt",
+          "tem_texto",
+          "recorte",
+          "recorte_sha256"
+        ],
+        "properties": {
+          "numero": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "largura_pt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "altura_pt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "tem_texto": {
+            "type": "boolean"
+          },
+          "recorte": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^p[0-9]{2,}\\.png$",
+            "description": "PNG da pagina sem texto, na pasta da leitura"
+          },
+          "recorte_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "trechos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pagina",
+          "texto",
+          "caixa",
+          "linha",
+          "coluna",
+          "tabela",
+          "linha_tabela",
+          "rotulo",
+          "secao",
+          "papel"
+        ],
+        "properties": {
+          "pagina": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "texto": {
+            "type": "string"
+          },
+          "caixa": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "PDF: x0, y0, x1, y1 em pontos, origem embaixo a esquerda"
+          },
+          "linha": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "coluna": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tabela": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rotulo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cabecalho da coluna da celula"
+          },
+          "secao": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTML: o titulo mais proximo acima do trecho"
+          },
+          "papel": {
+            "enum": [
+              "texto",
+              "cabecalho",
+              "celula"
+            ]
+          },
+          "linha_tabela": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Numero da linha dentro da tabela (o HTML salvo costuma ter a tabela inteira numa linha so)"
+          }
+        }
+      }
+    },
+    "auditoria": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instalado",
+        "bloqueios"
+      ],
+      "properties": {
+        "instalado": {
+          "type": "boolean"
+        },
+        "bloqueios": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "escala_recorte": {
+      "type": "number",
+      "description": "Escala do recorte da pagina sem texto (specs.recorte_escala) com que a folha foi lida"
+    }
+  }
+}

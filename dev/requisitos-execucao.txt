@@ -8,3 +8,4 @@ attrs==26.1.0
 jsonschema==4.26.0
 fonttools[woff]==4.68.0
 playwright==1.59.0
+pypdfium2==5.14.0

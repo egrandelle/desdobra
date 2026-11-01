@@ -1,18 +1,19 @@
 ---
-description: Cria um job do desdobra a partir do PSD ou PSB do KV e das fontes da peça e roda a esteira do marco M2 (leitura isolada do arquivo, conferência das fontes, segunda passada do laudo e design system), explicando cada fase. Use quando o DA quiser começar um desdobramento novo de OOH, DOOH ou banner estático.
+description: Cria um job do desdobra a partir do PSD ou PSB do KV, das fontes da peça e das folhas de spec do veiculador e roda a esteira do marco M3 (leitura isolada do arquivo, conferência das fontes, segunda passada do laudo, design system e rascunho das specs), explicando cada fase. Use quando o DA quiser começar um desdobramento novo de OOH, DOOH ou banner estático.
 argument-hint: "[caminho do PSD ou PSB] [pasta nova do job]"
 disable-model-invocation: true
 ---
 
 # Novo job do desdobra
 
-Neste marco, a skill cria o job com o KV e as fontes e roda a esteira do M2, que tem quatro fases, nesta ordem: `ler` (a leitura do PSD e o laudo camada por camada), `fontes` (a conferência das fontes contra os arquivos enviados), `laudo-fontes` (a segunda passada do laudo, com a conferência) e `ds` (o design system da peça e os limites do job). As fases seguintes (specs, render, tela de briefing) entram nos próximos marcos.
+Neste marco, a skill cria o job com o KV, as fontes e as folhas de spec e roda a esteira do M3, que tem cinco fases, nesta ordem: `ler` (a leitura do PSD e o laudo camada por camada), `fontes` (a conferência das fontes contra os arquivos enviados), `laudo-fontes` (a segunda passada do laudo, com a conferência), `ds` (o design system da peça e os limites do job) e `specs` (o rascunho das specs do veiculador, a partir das folhas). As fases seguintes (render, tela de briefing) entram nos próximos marcos.
 
 Regras desta skill:
 - Nunca calcule geometria, posição, escala, corpo ou limite. Quem mede é o motor.
 - Nunca dispare render nem aprovação.
 - Nunca leia, abra ou copie o PSD, o PSB, arquivo de fonte ou imagem do job. Você só passa os caminhos para o motor.
-- Nunca leia `laudo/laudo.json`, `laudo/laudo-fontes.json`, `fontes/conferencia.json`, `ds/design-system.json` nem outro arquivo da pasta do job. Tudo o que você sabe do job vem do envelope que o motor imprime.
+- Nunca leia `laudo/laudo.json`, `laudo/laudo-fontes.json`, `fontes/conferencia.json`, `ds/design-system.json`, `specs/rascunho.json`, as folhas de `entrada/specs/` nem outro arquivo da pasta do job. Tudo o que você sabe do job vem do envelope que o motor imprime. A única exceção é `sugestoes/pacote-specs.json`, nos modos a e b (passo 7, fase `specs`).
+- Nunca escreva, calcule nem digite número de spec (dimensão, peso, faixa, área segura). O número sai do texto da folha pelo motor, e quem confirma é o DA, no terminal dele. Nunca rode `spec confirmar`.
 - Nunca escolha o modo de dados pelo DA, nem valor de teto ou parâmetro de cor.
 - Nunca mande o DA instalar fonte no sistema. A fonte entra no job só pelo arquivo enviado, e o motor confere a fonte contra esse arquivo.
 
@@ -31,6 +32,10 @@ Regras desta skill:
      - numa pasta, dois arquivos com o mesmo nome dão erro, porque o job guarda as fontes lado a lado. Os arquivos que o sistema grava sozinho (`.DS_Store`, `Thumbs.db`, `desktop.ini` e os `._*` do Mac) ficam de fora sem erro;
      - se o DA não tiver as fontes agora, o job pode ser criado sem elas, mas a conferência vai marcar as camadas de texto como fonte faltando, e o DA acrescenta os arquivos depois;
      - o desdobra trata toda fonte enviada como fonte com direito de uso, e a responsabilidade pela licença é da agência ou do usuário. O motor não pede arquivo de licenças e não bloqueia nem avisa por licença. Não pergunte ao DA sobre licença;
+   - as folhas de spec do veiculador, chamadas de SPECS: uma pasta com uma subpasta por veiculador (as folhas de um veiculador ficam juntas, como as páginas salvas da Globo Ads). Explique ao DA:
+     - entram PDF (com ou sem camada de texto), página salva em HTML, planilha exportada em CSV e o texto do e-mail salvo em `.txt` ou `.eml`. Planilha `.xlsx`, imagem solta e Word ficam de fora: o DA exporta a planilha em CSV. O motor não lê site: a página entra salva pelo DA;
+     - de PDF escaneado (sem camada de texto) o motor não tira número nenhum: ele grava a imagem de cada página, e o DA digita os valores ao lado dela no `spec confirmar`;
+     - sem folhas agora, o job pode ser criado sem elas, e o DA acrescenta depois;
    - o modo de dados deste job, chamado de MODO. Mostre só os modos permitidos pelo TETO: com teto `a`, os modos a, b e c; com teto `b`, os modos b e c; com teto `c`, só o c. Explique cada um:
      - a: você vê nomes e textos das camadas e as miniaturas das camadas sem texto;
      - b: você vê nomes e textos das camadas, sem nenhuma imagem;
@@ -39,8 +44,10 @@ Regras desta skill:
 5. Crie o job, numa linha só, pela ferramenta Bash (na ferramenta PowerShell, ponha `& ` antes do caminho entre aspas). Ponha cada caminho de FONTES entre aspas, um depois do outro, logo após `--fontes`. Sem fontes, tire `--fontes`. Como cada fonte é conferida num processo isolado antes de entrar, use timeout de 600000 ms:
 
    ```
-   "PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job criar "PASTA" --kv "PSD" --modo-dados MODO --fontes "FONTE1" "FONTE2"
+   "PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job criar "PASTA" --kv "PSD" --modo-dados MODO --fontes "FONTE1" "FONTE2" --specs "SPECS"
    ```
+
+   Sem folhas de spec, tire `--specs`.
 
    Se o `codigo` do envelope não for `0`, diga ao DA o `o_que_fazer` e pare. Na recusa de fonte, o `o_que_fazer` diz quais formatos entram.
 6. Rode a esteira uma fase por vez, com timeout de 600000 ms em cada chamada, porque um PSB grande pode levar minutos e a conferência de fontes abre um navegador:
@@ -50,7 +57,7 @@ Regras desta skill:
    ```
 
    Cada chamada roda a primeira fase que falta e diz qual foi no campo `fase`. Depois de cada uma, explique a fase pelo envelope, como no passo 7, e chame de novo. Pare quando:
-   - a `situacao` for `concluido` (as quatro fases estão em dia; nada rodou nesta chamada);
+   - a `situacao` for `concluido` (as cinco fases estão em dia; nada rodou nesta chamada);
    - a `situacao` for `portao` (`codigo` 10): diga ao DA o `o_que_fazer` do portão;
    - o `codigo` não for `0`: siga o passo 7 para esse código;
    - a `situacao` for `ok_com_bloqueio` e `contagens.fases_rodadas_agora` for `0`: a esteira chegou ao fim, mas o job não está concluído, porque uma fase (o campo `fase`, em geral `fontes`) terminou com bloqueio que continua pendente. Explique o bloqueio pelo `o_que_fazer` e pelas contagens e pare. Não chame `job proxima` de novo esperando outro resultado: o bloqueio só sai quando o DA resolver (passo 8), e aparece também em `job estado`;
@@ -98,10 +105,19 @@ Regras desta skill:
    - `contagens.sujeito_alfa` e `contagens.sujeito_pedir_ao_da`: em quantas camadas o motor achou a caixa do sujeito pelo recorte, e em quantas o sujeito está fundido à foto e o DA marca a caixa no briefing.
    - `contagens.assets_perfil_convertido`: imagens com outro perfil de cor, que são convertidas para o perfil do documento, como o Photoshop faz no próprio KV.
    - Os parâmetros de cor da saída (intent, compensação de ponto preto e perfil embutido) são decisão do DA. Sem decisão dele, vale o padrão do registro, que ainda é um valor a calibrar. Diga isso ao DA e, se ele quiser mudar, explique as opções sem recomendar nenhuma: intent `perceptual`, `relativo_colorimetrico`, `saturacao` ou `absoluto_colorimetrico`; compensação de ponto preto `sim` ou `nao`; perfil sRGB embutido na saída `sim` ou `nao`. Só com os valores dados por ele, rode `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO ds parametros-cor --job "PASTA"` com as opções que ele escolheu (`--intent X`, `--compensacao-ponto-preto sim|nao`, `--perfil-embutido sim|nao`) e depois `job proxima` de novo, que monta o design system com os parâmetros novos.
+   Fase `specs` (o rascunho das specs, gravado em `specs/rascunho.json`; os valores confirmados pelo DA ficam em `specs/formatos-do-job.json`):
+   - `contagens.folhas`, `contagens.formatos`, `contagens.circuitos` e `contagens.veiculadores`: o que o motor achou nas folhas. `contagens.folhas_recusadas`: folhas fora dos formatos aceitos.
+   - `contagens.valores_rascunho`: valores tirados da folha que esperam o DA; `contagens.valores_confirmados`: os que o DA já confirmou; `contagens.registros`: campos que a folha não traz (ficam sem valor, só como registro); `contagens.com_alerta`: valores com armadilha da folha (vírgula decimal, unidade estranha, rótulo longe do valor, praça que mistura estado e cidade).
+   - `contagens.divergencias`: campos em que duas fontes dizem valores diferentes (por exemplo o peso por tag do Half-Page da Globo, 550 KB na ficha e 500 KB na tabela por tamanho). O motor não escolhe, e o DA escolhe no `spec confirmar`. Você não recomenda nenhuma das leituras.
+   - `contagens.recortes`: páginas sem camada de texto. O DA digita os valores ao lado da imagem da página no `spec confirmar`.
+   - `contagens.formatos_do_job`: formatos com a dimensão confirmada pelo DA.
+   - Nos modos a e b, você pode ajudar a dizer que trecho da folha vai para que campo (por exemplo, qual frase é a área segura ou a praça). Leia `sugestoes/pacote-specs.json`: ele traz os trechos, os campos e os alvos (ids dos formatos, circuitos e veiculadores). Se o DA quiser, escreva `sugestoes/mapeamento-specs.json` no contrato `mapeamento-specs/1`: `{"esquema": "mapeamento-specs/1", "propostas": [{"folha": "...", "trecho": "...", "campo": "...", "alvo": null}]}`, só com ids e nomes de campo do pacote. Nunca ponha número nem valor na proposta: o motor extrai o número do trecho. Para usar só parte de um trecho, `recorte_texto` leva o pedaço copiado letra por letra do trecho; para um campo que ocupa duas linhas, `adicionais` leva os ids dos outros trechos da mesma página. Depois rode `job proxima` de novo: a fase `specs` refaz o rascunho com as propostas, que continuam esperando o DA. No modo c, o pacote não traz trecho, e você não propõe nada.
+   - A confirmação é sempre do DA: diga a ele para abrir um terminal próprio, fora do Claude, e rodar `"PY" -I -B -m desdobra spec confirmar --job "PASTA"`. O comando recusa rodar sem terminal interativo. Depois, rode `job proxima` de novo para a fase `specs` ler as confirmações.
+   - Para conferir um arquivo pronto (por exemplo um export humano) contra um formato confirmado, rode `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO validar "ARQUIVO" --formato "CHAVE" --job "PASTA"`, com a chave do formato dita pelo DA. `codigo` 0: passou (com `contagens.aviso` maior que zero, passou com aviso, por exemplo peso entre as duas leituras de MB); 3: reprovou (`contagens.reprova`); 2: o formato não está confirmado no job. `contagens.nao_verificado` conta o que só é conferido no pixel, na entrega.
 8. Quando o DA quiser resolver um bloqueio de fonte, peça a ele o caminho do arquivo novo e rode, com timeout de 600000 ms:
    - para acrescentar ou trocar uma fonte: `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job trocar-entrada "PASTA" "entrada/fontes/NOME" "ARQUIVO"`, em que NOME é o nome do arquivo de fonte;
    - para tirar uma fonte do job (por exemplo, quando dois arquivos têm o mesmo nome PostScript e o DA escolhe qual vale), sem arquivo novo: `"PY" -I -B -m desdobra --envelope --teto-modo-dados TETO job remover-entrada "PASTA" "entrada/fontes/NOME"`. Quem escolhe o arquivo é o DA.
-   Para trocar uma fonte, NOME tem de ser o nome do arquivo que já está no job, com as mesmas maiúsculas e minúsculas: um nome que só difere na caixa é recusado. Se o `codigo` não for `0`, diga ao DA o `o_que_fazer`. Senão, volte ao passo 6: a troca ou a remoção invalida só as fases `fontes`, `laudo-fontes` e `ds`, e a leitura do PSD fica como está.
-9. Pare quando a esteira estiver concluída ou o DA quiser parar. Diga ao DA o que foi gravado na pasta do job: o laudo da leitura em `laudo/laudo.json`, a conferência de fontes em `fontes/conferencia.json`, o laudo com a conferência em `laudo/laudo-fontes.json` e o design system e os limites em `ds/design-system.json` e `ds/limites.json` (só os das fases que rodaram). Diga também que as próximas fases (specs, render e tela de briefing) entram nos próximos marcos.
+   Para trocar uma fonte, NOME tem de ser o nome do arquivo que já está no job, com as mesmas maiúsculas e minúsculas: um nome que só difere na caixa é recusado. Se o `codigo` não for `0`, diga ao DA o `o_que_fazer`. Senão, volte ao passo 6: a troca ou a remoção invalida só as fases `fontes`, `laudo-fontes` e `ds`, e a leitura do PSD fica como está. Para acrescentar ou trocar uma folha de spec, use o mesmo `job trocar-entrada` com `entrada/specs/VEICULADOR/NOME`: ele invalida só a fase `specs`.
+9. Pare quando a esteira estiver concluída ou o DA quiser parar. Diga ao DA o que foi gravado na pasta do job: o laudo da leitura em `laudo/laudo.json`, a conferência de fontes em `fontes/conferencia.json`, o laudo com a conferência em `laudo/laudo-fontes.json`, o design system e os limites em `ds/design-system.json` e `ds/limites.json` e o rascunho das specs em `specs/rascunho.json`, com os valores confirmados pelo DA em `specs/formatos-do-job.json` (só os das fases que rodaram). Diga também que as próximas fases (render e tela de briefing) entram nos próximos marcos.
 
 Lembre o DA de não usar `/feedback`, `/bug` nem `/share` numa sessão com job de cliente, porque esses comandos enviam a conversa.
