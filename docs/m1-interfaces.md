@@ -340,8 +340,9 @@ Contratos da saída e da regressão: `segredos-bloqueados/1` (`sugestoes/segredo
 from desdobra import plataforma
 p = plataforma.obter()          # PlataformaWindows no win32, PlataformaMac no darwin, PlataformaSemSuporte no resto
 r = p.executar_isolado(comando: list[str], orcamento_bytes: int, tempo_s: float, pasta_trabalho: Path,
-                       *, ambiente: dict[str, str] | None = None) -> ResultadoFilho
+                       *, ambiente: dict[str, str] | None = None, entrada: bytes = b'') -> ResultadoFilho
 p.fontes_instaladas() -> list[FaceInstalada]     # só diagnóstico, sem papel no portão; sem implementação (o diagnóstico do M2 é feito pelo Chromium na conferência)
+p.console_interativo() -> (bool, str | None)    # M4: terminal interativo; no Windows, GetFileType e GetConsoleMode da entrada e da saida e janela de console
 p.porta_livre() -> int                           # porta livre em 127.0.0.1
 p.interpretador() -> Path                        # o Python do ambiente
 ```
@@ -361,7 +362,7 @@ p.interpretador() -> Path                        # o Python do ambiente
 Obrigações da implementação Windows (`windows.py`, a partir de `p04_isolamento.py`):
 - Job Object com `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (teto = `orcamento_bytes`), `JOB_OBJECT_LIMIT_ACTIVE_PROCESS` com 1 processo, `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` e `JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION`;
 - inicia o filho sem shell, com cwd = `pasta_trabalho`, stdin, stdout e stderr em pipe, e um ambiente mínimo por lista de permissão (`VARIAVEIS_PERMITIDAS` de `plataforma/windows.py`: pastas do sistema, TEMP, TMP, número de processadores) com um PATH só com a pasta do Python e as do sistema, mais `OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONIOENCODING=utf-8` e `ambiente`. O ambiente do pai (com os tokens da sessão) nunca vai inteiro para o filho;
-- atribui o processo ao job e só então escreve `LINHA_LIBERAR` (`b'iniciar\n'`) na entrada padrão e fecha a entrada. Se a atribuição falhar, mata o filho e devolve `recusado`;
+- atribui o processo ao job e só então escreve `LINHA_LIBERAR` (`b'iniciar\n'`) na entrada padrão, depois os bytes de `entrada` (M4: o render manda assim os PDFs do texto, que nunca vão para disco), e fecha a entrada. Se a atribuição falhar, mata o filho e devolve `recusado`;
 - timeout de relógio no pai; ao estourar, `TerminateJobObject` e situação `tempo`;
 - nunca levanta exceção por causa do filho.
 
@@ -550,7 +551,7 @@ Um documento com `tipo` `rascunho`, `formatos_do_job` ou `perfil`, e as listas `
 
 ### `desdobra spec confirmar --job <pasta> [--formato <chave>] [--campo <campo>]`
 
-Só num terminal interativo: recusa com código 3 com `--envelope` ou sem terminal (stdin ou stdout que não é um terminal). Pega a trava do job, refaz o rascunho e pergunta, sem resposta padrão (Enter vazio repete): nas fontes divergentes, qual leitura vale; em cada rascunho com valor, confirmar ou pular, vendo o trecho, o pedaço de onde o número saiu e quem ligou o campo ao trecho (rótulo da folha, proposta do Claude ou curadoria); em cada página sem texto, o campo (só os que valem: rotação, prazo e qualidade, que são registro, ficam fora; restrição vai para a lista do circuito) e o valor que o DA lê no recorte. Ctrl+C ou fim da entrada param a sessão e gravam as respostas dadas até ali. Grava as ações em `specs/confirmacoes.json` (`spec-confirmacoes/1`, com `por: da`, `meio: terminal` e a hora) e refaz o rascunho e os formatos do job. A confirmação guarda a impressão (sha256) do conteúdo do valor: valor mudado deixa a ação de lado (`acoes_ignoradas`), e o DA confirma de novo.
+Só num terminal interativo, conferido por `desdobra.humano` (veja M4, disparo humano): recusa com código 3 com `--envelope`, sem console interativo ou em processo aberto pelo Claude. `confirmar.sessao` só grava com o `Disparo` que essa conferência emite. Pega a trava do job, refaz o rascunho e pergunta, sem resposta padrão (Enter vazio repete): nas fontes divergentes, qual leitura vale; em cada rascunho com valor, confirmar ou pular, vendo o trecho, o pedaço de onde o número saiu e quem ligou o campo ao trecho (rótulo da folha, proposta do Claude ou curadoria); em cada página sem texto, o campo (só os que valem: rotação, prazo e qualidade, que são registro, ficam fora; restrição vai para a lista do circuito) e o valor que o DA lê no recorte. Ctrl+C ou fim da entrada param a sessão e gravam as respostas dadas até ali. Grava as ações em `specs/confirmacoes.json` (`spec-confirmacoes/1`, com `por: da`, `meio: terminal` e a hora) e refaz o rascunho e os formatos do job. A confirmação guarda a impressão (sha256) do conteúdo do valor: valor mudado deixa a ação de lado (`acoes_ignoradas`), e o DA confirma de novo.
 
 ### `desdobra validar <arquivo> --formato <chave> (--job <pasta> | --perfil <spec.json>) [--condicao X] [--saida <relatorio.json>]`
 
@@ -575,3 +576,84 @@ Mais uma verificação: `pypdfium2`, a versão fixada do lock, só pelos metadad
 - Frase solta (a área segura, a borda, a qualidade de JPG) só vira valor por proposta de mapeamento (do Claude ou da curadoria da biblioteca); sozinho, o motor reconhece só rótulo seguido de valor.
 - A borda condicional guarda a condição como o texto da folha: a validação no pixel (M6) ainda precisa decidir como ler "fundo da cor da página".
 - Área útil, faixas, área segura e borda não são conferidas no `validar` deste marco (pixel, M6).
+
+## M4: render da origem (`desdobra/render`)
+
+Dono: frente de render do M4. Arquivos: `motor/desdobra/render/` (`contrato.py`, `texto.py`, `execucao.py`, `filho.py`, `filho_pilhas.py`, `gama.py`, `icc.py`, `linkados.py`, `autoteste.py`), a rota de várias páginas em `desdobra/chromium/servidor.py`, `navegador.imprimir` em `desdobra/chromium/navegador.py`, o parâmetro `entrada` da interface de plataforma, os esquemas `composicao-1.json`, `render-1.json` e `linkados-confirmados-1.json`, a imagem `motor/referencias/autoteste-render.png`, as entradas `render.*` de `motor/fontes-de-limites.json` e os testes `testes/test_render*`.
+
+### Contrato `composicao/1` (`render/<formato>/contrato.json`)
+
+O que o render desenha num formato, de baixo para cima. No M4 é o contrato da origem, na identidade (`origem.funcoes: identidade`), montado só de arquivos do job: a estrutura bruta do leitor (`laudo/bruto/<sha256>/estrutura.json`), a conferência de fontes (`fontes/conferencia.json` e as leituras de `fontes/bruto/`) e os linkados confirmados (`briefing/linkados-confirmados.json`). O M5 grava o mesmo formato para os outros formatos: muda `formato` (chave, largura, altura, escala) e a caixa de cada entrada, nunca a forma das entradas. `montar(pasta, funcoes=None)` aceita `{layer_id: funcao}`; camada `fora_da_peca` não entra em entrada nenhuma e vai para `fora_da_peca`.
+
+Entradas (`entradas`, na ordem de desenho do PSD):
+- `pilha`: as camadas sem texto entre duas camadas de texto (`indices` na ordem de `descendants()` e `layer_ids`), compostas juntas pelo compositor do psd-tools no filho das pilhas, com máscaras, mesclagens, ajustes e os efeitos que ele desenha, no espaço de cor do documento. A `chave` (sha256 do KV e dos índices) indexa o asset em `render/pilhas.json`; o asset fica em `render/assets/<sha256>.png`, recortado na caixa de tinta. Cache por hash: com a mesma chave e a mesma versão do psd-tools e do motor, o PSD não é aberto de novo;
+- `texto`: uma camada de texto com a matriz, os trechos (texto, fonte, corpo, tracking, entrelinha, caixa, kerning, ligaduras), os parágrafos, a região da página (caixa e caixa de tinta com a margem `render.margem_regiao_px`, dentro do canvas), a opacidade (camada x preenchimento x grupos), as cores no espaço do documento (`cores`, `valores_cor`, `cores_por_trecho`), as faces (`{fonte_ps: face_id}`), o antialiasing e `sharp_pequeno` (Sharp até `render.corpo_sharp_pequeno_px` no dispositivo);
+- `linkado`: smart object linkado com o arquivo de `entrada/campanha/` confirmado pelo DA (`arquivo`, `sha256`), colocado no quadrilátero da camada (`colocacao`) ou na caixa.
+
+`faces`: as faces do job usadas (id, sha256, nomes PostScript, formato, peso declarado, coleção, métricas), nunca bytes nem caminho. `registros`: o que o render não desenha ou desenha aproximado, por código e camada (efeito de texto, faux bold, escala de trecho, caixa de parágrafo quebrada pelo motor na largura da caixa, warp, mesclagem de texto diferente da normal, texto em grupo com máscara, máscara e efeito de linkado, ColorOverlay normal e opaco usado como cor do texto).
+
+Bloqueios (o render recusa): `composicao_acima_do_orcamento` (recusa da composição no laudo), `modo_de_cor_fora_da_v1` (só RGB de 8 bits), `sem_estrutura`, `fontes_nao_conferidas`, `conferencia_desatualizada`, `fonte_bloqueante` (motivo técnico da conferência numa camada de texto visível), `arquivo_de_fonte_fora_do_job`, `linkado_sem_confirmacao`, `linkado_confirmado_mudou`. Decisão do DA (pede confirmação no terminal): `largura_divergente`.
+
+### `desdobra render --job <pasta> [--formato origem]`
+
+Render protegido (decisões, arquitetura nº 2): recusa com código 3 sem console interativo (veja disparo humano, abaixo), e pergunta ao DA sem resposta padrão (Enter vazio repete; `nao` cancela). Quando o contrato pede decisão (`largura_divergente`, `efeito_sobre_texto_sem_aplicar`, `clipping_dividido_por_texto`), pergunta também se o DA aceita, e o aceite vai para o `render.json`. As perguntas rodam sem a trava; o render pega a trava e monta o contrato de novo. A tela (M7) vai disparar o render pelo clique do DA. Passos (`desdobra.render.execucao.renderizar`):
+1. monta e grava o contrato;
+2. resolve as pilhas pelo cache ou roda o filho das pilhas;
+3. o servidor local serve uma página por camada de texto e cor (`/pagina/<id>`) e as faces (`/fonte/<id>`, `Cache-Control: no-store`), com o controle positivo do cache na primeira página; o Chromium fixado (escala 1, `--disable-lcd-text`, `--disable-gpu`, `--force-color-profile=srgb`, perfil temporário curto) carrega cada página, o CDP confere a face de cada trecho com tinta e `Page.printToPDF` com `transferMode: ReturnAsBase64` devolve os bytes do PDF na resposta (o `page.pdf()` do Playwright pede stream, e o Chromium grava o stream em `<guid>.tmp` na pasta temporária). Camada visível sem trecho conferido para o render (`texto_sem_trecho_conferido`). Caixa de parágrafo: uma página mede as linhas, `texto.quebras_da_caixa` quebra na última posição de espaço antes da largura da caixa do PSD, e a camada volta para a fila com essas quebras. Posições de caractere em unidades UTF-16 (caractere fora do plano básico conta duas); erro de layout vira `ErroRender` (`texto_layout`);
+4. o perfil é varrido (cópia de fonte, assinatura `%PDF-`, controle) e apagado. CDP sem 100% de confirmação, face que não carregou, cópia de fonte ou PDF no perfil param o render;
+5. o filho do render recebe os PDFs pela entrada padrão e grava `master.png`; o motor copia para `render/<formato>/master.png`, apaga `render/.trabalho`, varre a pasta do job (arquivo de fonte fora de `entrada/fontes/` e PDF fora de `entrada/`) e grava `render/<formato>/render.json` (`render/1`): disparo (usuário, máquina, meio, quando), versões (Chromium, Playwright, pypdfium2, PDFium, psd-tools, numpy, Pillow, LittleCMS, Python), parâmetros citados (G, supersample, corpo Sharp pequeno, margem, cor), sha256 do contrato e do master, faces (id, sha256, nome PostScript, formato), CDP, cache, varredura, assets (pilhas e linkados com o sha256), aceites, registros, curva do perfil, conversão de cor, tempos.
+
+Códigos: 0 master gravado; 3 recusado (sem terminal, cancelado, bloqueio ou decisão pendente, com a situação `bloqueado`); 4 teto de memória ou tempo do filho (a calibrar: não reprova); 5 auditoria; 1 erro interno; 21 job ocupado. O envelope leva só contagens (textos, Sharp pequeno, páginas de PDF, trechos do CDP, assets, registros, cópias no cache, fontes fora da entrada, PDFs no job), o sha256 do master e o tempo.
+
+### Processo filho das pilhas (`desdobra.render.filho_pilhas`)
+
+```
+python -I -B -m desdobra.render.filho_pilhas <kv> <pasta_saida> --orcamento-bytes N
+```
+
+Mesmo isolador, linha `iniciar` e gancho de auditoria do leitor; abre o documento do mesmo jeito (cabeçalho contra o orçamento, vista sem os blocos dos smart objects, limites de alocação e de parse) e nunca abre smart object. Lê `pedido.json` da pasta de saída (sha256 do KV e as pilhas), confere o sha256, compõe cada pilha em faixas com `layer_filter` (as camadas da pilha e os grupos acima delas), `apply_icc=False`, e grava `<sha256>.png` e `pilhas.json`. Orçamento: o do leitor (`desdobra.leitor.orcamento_bytes`); tempo `isolador.tempo_max_s`.
+
+### Processo filho do render (`desdobra.render.filho`)
+
+```
+python -I -B -m desdobra.render.filho <contrato.json> <pasta_saida> --orcamento-bytes N
+entrada padrão: iniciar + uma linha JSON de cabeçalho + os bytes dos PDFs
+```
+
+O cabeçalho traz a pasta do job, G (`cor.gama_mistura_texto`), o supersample (`render.supersample`), os parâmetros de cor do job, as pilhas (arquivo e caixa), o tamanho de cada PDF e as pastas que o filho pode ler (assets, `entrada/campanha`, a pasta do perfil do documento). O gancho de auditoria só deixa ler essas pastas e o contrato, e só gravar na pasta de saída. O PDFium abre os bytes na memória, rasteriza em escala 96/72 x S com `FPDF_NO_NATIVETEXT`, em tons de cinza sobre branco, em faixas (`PIXELS_BANDA`, sem efeito no resultado), e a cobertura é a média de blocos S x S. Composição em float64 pré-multiplicado, de baixo para cima: pilha e linkado em mesclagem normal; texto pela fórmula do Photoshop com G sobre a curva do perfil do documento (`desdobra.render.icc` lê `curv` e `para`; sem perfil, sRGB), com uma cobertura por cor somada. No fim, 8 bits no espaço do documento e conversão para sRGB pelo LittleCMS com o intent e a compensação do job; sem perfil, o documento já é sRGB. Grava `master.png` (RGB, ou RGBA quando o canvas tem transparência) e `saida.json`. Orçamento `(isolador.base_python_bytes + render.bytes_por_px_canvas x pixels + render.bytes_banda_pdfium + bytes dos PDFs) x isolador.margem_orcamento`; tempo `render.tempo_max_s`.
+
+### `desdobra linkado confirmar --job <pasta>`
+
+Só no terminal interativo (código 3 sem ele). Para cada smart object linkado do laudo, mostra o registro do PSD (nome, tamanho, data) e os candidatos de `entrada/campanha/` da proposta do leitor, e o DA escolhe o número do arquivo ou pula. Grava `briefing/linkados-confirmados.json` (`linkados-confirmados/1`) com o arquivo, o sha256 congelado em `estado.json`, quem confirmou, o meio e quando. No M7 a confirmação passa para o briefing confirmado.
+
+### Autoteste do render no doctor (`desdobra.render.autoteste`)
+
+Decisão nº 36: a fonte é gerada pelo motor num processo filho (fontBuilder, com retas, diagonais e curvas, datas fixas, a mesma byte a byte), nunca baixada nem posta pelo DA. A página de referência (quatro linhas: corpo pequeno, duas cores numa linha, corpo grande e uma linha girada, sobre fundo creme) passa pelo mesmo caminho do job (`texto_no_chromium` e `compor`) e é comparada com `motor/referencias/autoteste-render.png`, gravada na máquina de desenvolvimento com `python -m desdobra.render.autoteste --gravar-referencia`. Verificação `autoteste_render` do doctor: falha se o filho não gera a fonte, se o CDP não confirma a face ou se o perfil guarda cópia da fonte ou PDF; aviso se a diferença passa de `render.autoteste_media_max` ou `render.autoteste_max_abs` (a calibrar). O autoteste Arial de captura de tela da pesquisa não existe no motor: o render não usa captura de tela.
+
+### Correção na conferência de fontes (M2)
+
+A feature `cpsp` da caixa alta ia no atributo `style` entre aspas duplas e fechava o atributo: o Chromium perdia o `cpsp` (e, no render, o `fill`). A página de medição (`desdobra.fontes.medicao`) e a do render usam agora aspas simples. A largura medida das camadas em caixa alta muda; a conferência roda de novo no próximo `fontes conferir`.
+
+### Limites novos
+
+`render.supersample` (8, medido na pesquisa §8), `render.corpo_sharp_pequeno_px` (256, decidido), e a calibrar: `render.margem_regiao_px` (16), `render.pagina_multiplo_px` (32), `render.bytes_por_px_canvas` (192), `render.bytes_banda_pdfium` (256 MiB), `render.tempo_max_s` (600), `render.autoteste_media_max` (0,5), `render.autoteste_max_abs` (8), `render.tolerancia_borda_smooth` e `render.tolerancia_borda_sharp_pequeno` (sem valor até o Duda fixar). O G vem de `cor.gama_mistura_texto` (1,45, decidido), que já existia.
+
+### Pendências da frente de render
+
+- A tolerância de borda fica sem valor até o Duda fixar (pergunta 6); o M4 entregou a medição por camada e a proposta no relatório do marco.
+- Caixa de parágrafo: a quebra é do motor, pela largura da caixa e pela palavra; hifenização e justificação completa do Photoshop não são refeitas.
+- Faux bold, faux itálico, sublinhado, tachado, traço de texto, escala de trecho, deslocamento de linha de base, warp de texto e efeitos de texto (exceto ColorOverlay normal e opaco) não são desenhados (registro).
+- Pilha acima de texto é composta isolada: ajuste ou mesclagem diferente da normal que cruza o texto de baixo vira decisão do DA (`efeito_sobre_texto_sem_aplicar`). Aplicar o ajuste global no formato inteiro com o texto é do M5.
+- Smart object linkado: a máscara e os efeitos da camada não entram (registro).
+
+### Revisão do M4: disparo humano, entradas e temporários
+
+**Disparo humano (`desdobra.humano`).** `console_interativo()` recusa: modo envelope; processo com variável de ambiente que o Claude Code põe nos processos dele (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, `AI_AGENT`); pela interface de plataforma (`Plataforma.console_interativo`), no Windows, entrada ou saída que não é console (`GetFileType` de caractere e `GetConsoleMode` que responde: o `NUL` tem `isatty()` verdadeiro e é recusado aqui) e processo sem janela de console; fora do Windows, `isatty` nos dois. `exigir(comando)` emite o `Disparo` (comando, meio, usuário, máquina, hora e um selo aleatório guardado no processo) só depois dessa conferência; `conferir(disparo, comando)` recusa qualquer outro objeto. `render`, `linkado confirmar` e `spec confirmar` não têm parâmetro que pule a conferência, e `execucao.renderizar`, `linkados.confirmar` e `confirmar.sessao` só gravam com o `Disparo` (o do render vale uma vez). Testes e a medição do corpus simulam só o console (`humano.console_interativo`). Risco residual: um processo do mesmo usuário, fora do Claude, que abre um console e escreve teclas nele (`WriteConsoleInputW`), passa pela conferência.
+
+**Gancho PreToolUse** (`hooks/hooks.json`, `scripts/gancho_confirmacoes.py`, só biblioteca padrão, forma exec): nas ferramentas Bash e PowerShell, nega comando que chama `desdobra render`, `linkado confirmar`, `spec confirmar` ou `briefing confirmar` (com opções globais no meio), código Python do motor que chama `renderizar`, `linkados.confirmar`, `confirmar.sessao` ou mexe em `desdobra.humano`, e escrita em arquivo que só o DA grava; nas ferramentas Write, Edit, MultiEdit e NotebookEdit, nega `briefing/`, `specs/confirmacoes.json` e `render/<formato>/master.png`, `render.json` e `contrato.json`. A negação diz ao Claude que quem roda é o DA, num terminal próprio.
+
+**Entradas trocadas.** O contrato bloqueia com `fases_desatualizadas` (ler, fontes, laudo-fontes ou ds inválida contra as entradas atuais), `entrada_alterada_fora_do_motor`, `laudo_de_outro_kv` (o sha256 do KV em `entrada/` difere do do laudo), `trecho_sem_face` e `linkados_de_outro_laudo` (a confirmação guarda `laudo_sha256` e `kv_sha256`). A chave da pilha usa o sha256 do KV em `entrada/`. `job trocar-entrada` e `job remover-entrada` apagam `render/<formato>/master.png` e `render.json` (`nucleo.invalidar_render`). O cache das pilhas confere o sha256 do asset no disco.
+
+**Linkado.** Só PNG e JPEG (`linkado_formato_sem_suporte` pelo cabeçalho, sem decodificar no processo principal); no filho, `Image.open` só com esses formatos, CMYK e cinza convertidos (com perfil do asset, para o perfil do documento ou sRGB; CMYK sem perfil, conversão simples com registro `linkado_cmyk_sem_perfil`); os pixels do linkado contam no orçamento do filho.
+
+**Temporários.** `render/.trabalho/` sai em qualquer falha. O master e o `render.json` são gravados como `.tmp-*` e só trocam de nome depois da varredura; render que falha não deixa master novo. Na plataforma Windows, a entrada do filho é escrita numa thread, e o relógio de `tempo_s` conta durante a escrita. Perfil ICC com curva ilegível (truncado, gama zero, parâmetro que divide por zero) vira `ErroCurva`, e o filho cai para a curva sRGB com registro.

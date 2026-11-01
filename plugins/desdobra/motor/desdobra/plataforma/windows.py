@@ -448,7 +448,10 @@ class PlataformaWindows(Plataforma):
     def __init__(self):
         self._k32 = _kernel32()
 
-    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None):
+    def console_interativo(self):
+        return console_do_windows()
+
+    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None, entrada=b''):
         inicio = time.perf_counter()
         try:
             problema = _conferir_pedido(comando, orcamento_bytes, tempo_s, pasta_trabalho)
@@ -494,16 +497,10 @@ class PlataformaWindows(Plataforma):
             leitores = [_Leitor(proc.stdout, teto_stdout), _Leitor(proc.stderr, teto_stderr, cauda=True)]
             for leitor in leitores:
                 leitor.start()
-            try:
-                proc.stdin.write(LINHA_LIBERAR)
-                proc.stdin.flush()
-            except OSError:
-                pass  # o filho ja terminou; a situacao sai do codigo de saida
-            finally:
-                try:
-                    proc.stdin.close()
-                except OSError:
-                    pass
+            # a entrada vai numa thread: um filho que nao le a entrada padrao nao segura o pai, e o relogio
+            # (tempo_s) conta desde aqui; ao estourar, o job mata o filho e a escrita termina com erro de pipe
+            escritor = threading.Thread(target=_escrever_entrada, args=(proc.stdin, entrada), daemon=True)
+            escritor.start()
 
             estourou = False
             restante = max(float(tempo_s) - (time.perf_counter() - inicio), 0.0)
@@ -514,6 +511,7 @@ class PlataformaWindows(Plataforma):
                 job.terminar(Constante.ENCERRADO_POR_TEMPO)
                 proc.wait()
             decorrido = time.perf_counter() - inicio
+            escritor.join()
             for leitor in leitores:
                 leitor.join()
             pico = job.pico_bytes()
@@ -535,6 +533,50 @@ class PlataformaWindows(Plataforma):
                             fluxo.close()
                     except OSError:
                         pass
+
+
+STD_INPUT_HANDLE = -10  # numero-neutro: constante da API do Windows
+STD_OUTPUT_HANDLE = -11  # numero-neutro: constante da API do Windows
+FILE_TYPE_CHAR = 2  # numero-neutro: constante da API do Windows
+
+
+def console_do_windows(k32=None):
+    """(ok, motivo): entrada e saida padrao de caractere com modo de console (GetFileType e GetConsoleMode: o NUL e
+    um arquivo de caractere sem modo de console) e processo com janela de console."""
+    k32 = k32 or ctypes.WinDLL('kernel32', use_last_error=True)
+    k32.GetStdHandle.restype = wintypes.HANDLE
+    k32.GetStdHandle.argtypes = (wintypes.DWORD,)
+    k32.GetFileType.argtypes = (wintypes.HANDLE,)
+    k32.GetConsoleMode.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    k32.GetConsoleWindow.restype = wintypes.HWND
+    for nome, ident in (('entrada', STD_INPUT_HANDLE), ('saida', STD_OUTPUT_HANDLE)):
+        h = k32.GetStdHandle(wintypes.DWORD(ident & 0xFFFFFFFF))  # numero-neutro: DWORD do identificador
+        if not h:
+            return False, 'sem_%s_padrao' % nome
+        if k32.GetFileType(h) != FILE_TYPE_CHAR:
+            return False, '%s_redirecionada' % nome
+        modo = wintypes.DWORD()
+        if not k32.GetConsoleMode(h, ctypes.byref(modo)):
+            return False, '%s_sem_console' % nome
+    if not k32.GetConsoleWindow():
+        return False, 'console_sem_janela'
+    return True, None
+
+
+def _escrever_entrada(fluxo, entrada):
+    """Escreve a linha de liberacao e a entrada na entrada padrao do filho e fecha. Nunca levanta excecao."""
+    try:
+        fluxo.write(LINHA_LIBERAR)
+        if entrada:
+            fluxo.write(entrada)
+        fluxo.flush()
+    except (OSError, ValueError):
+        pass  # o filho ja terminou ou foi morto; a situacao sai do codigo de saida
+    finally:
+        try:
+            fluxo.close()
+        except (OSError, ValueError):
+            pass
 
 
 def _classificar(codigo, estourou, pico, mensagens, teto, fracao_pico, stdout, stderr, decorrido, tempo_s):

@@ -26,9 +26,13 @@ desdobra fontes laudo --job <pasta>
 desdobra spec importar --job <pasta>
 desdobra spec confirmar --job <pasta>          (só num terminal interativo, pelo DA)
 desdobra validar <arquivo> --formato <chave> --job <pasta>
+desdobra linkado confirmar --job <pasta>        (só num terminal interativo, pelo DA)
+desdobra render --job <pasta>                  (só num terminal interativo, pelo DA, com confirmação)
 desdobra regressao --corpus <pasta> --linha-de-base <pasta> --saida <pasta>
 desdobra doctor
 ```
+
+O render e as confirmações (`render`, `linkado confirmar`, `spec confirmar`) recusam rodar sem console interativo ou em processo aberto pelo Claude, e o gancho PreToolUse do plugin nega esses comandos nas ferramentas do Claude.
 
 Com `--envelope` antes do subcomando, o motor imprime só uma linha JSON (contrato `envelope/1`), filtrada pelo modo de dados do job e pelo detector de segredos. É assim que as skills chamam o motor.
 

@@ -3,8 +3,9 @@
 
 Regras:
   - escuta so em 127.0.0.1, numa porta livre escolhida pelo sistema;
-  - rotas explicitas, sem listar diretorio: /entrar/<token>, /pagina, /fonte/<id> e /controle. Qualquer outro
-    caminho, inclusive outra fonte, outro id ou caminho de arquivo, responde 404;
+  - rotas explicitas, sem listar diretorio: /entrar/<token>, /pagina (ou /pagina/<id>, quando o servidor recebe
+    varias paginas, como no render), /fonte/<id> e /controle. Qualquer outro caminho, inclusive outra fonte, outro id
+    ou caminho de arquivo, responde 404;
   - o token de sessao vai so na primeira URL e vira um cookie HttpOnly (SameSite=Strict); as outras rotas
     exigem o cookie, o Host 127.0.0.1:<porta> e, quando vem, o Origin da propria pagina (contra pagina de
     outro site e DNS rebinding);
@@ -47,7 +48,14 @@ class ServidorFontes:
     """
 
     def __init__(self, pagina_html, fontes, *, cache_control='no-store'):
-        self.pagina = pagina_html.encode('utf-8')
+        # uma pagina (str, servida em /pagina) ou varias ({id: str}, servidas em /pagina/<id>; o render usa uma por
+        # camada de texto e cor)
+        if isinstance(pagina_html, dict):
+            self.paginas = {k: v.encode('utf-8') for k, v in pagina_html.items()}
+            self.pagina = None
+        else:
+            self.paginas = {}
+            self.pagina = pagina_html.encode('utf-8')
         self.fontes = dict(fontes)
         self.token = secrets.token_hex(16)  # numero-neutro: bytes de entropia do token
         self.sessao = secrets.token_hex(16)  # numero-neutro: idem
@@ -69,6 +77,13 @@ class ServidorFontes:
     @property
     def url_entrada(self):
         return '%s/entrar/%s' % (self.origem, self.token)
+
+    def url_pagina(self, ident):
+        return '%s/pagina/%s' % (self.origem, ident)
+
+    @property
+    def primeira_pagina(self):
+        return '/pagina' if self.pagina is not None else '/pagina/%s' % next(iter(self.paginas))
 
     def iniciar(self):
         dono = self
@@ -127,13 +142,15 @@ class ServidorFontes:
                         return self._negar(404)  # numero-neutro: codigo HTTP
                     dono.contagem['entrar'] += 1
                     return self._responder(303, extra=(  # numero-neutro: codigo HTTP
-                        ('Location', '/pagina'),
+                        ('Location', dono.primeira_pagina),
                         ('Set-Cookie', '%s=%s; HttpOnly; SameSite=Strict; Path=/' % (COOKIE, dono.sessao))))
-                if caminho == '/pagina':
+                if (caminho == '/pagina' and dono.pagina is not None) or (
+                        len(partes) == 3 and partes[1] == 'pagina' and partes[2] in dono.paginas):  # numero-neutro: /pagina/<id>
                     if not self._cookie_ok():
                         return self._negar(403)  # numero-neutro: codigo HTTP
                     dono.contagem['pagina'] += 1
-                    return self._responder(200, dono.pagina, 'text/html; charset=utf-8', extra=(  # numero-neutro: codigo HTTP
+                    corpo = dono.pagina if caminho == '/pagina' else dono.paginas[partes[2]]
+                    return self._responder(200, corpo, 'text/html; charset=utf-8', extra=(  # numero-neutro: codigo HTTP
                         ('Content-Security-Policy', "default-src 'none'; font-src 'self'; style-src 'self' "
                                                     "'unsafe-inline'; script-src 'none'"),))
                 if caminho == ROTA_CONTROLE:

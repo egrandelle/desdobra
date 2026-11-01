@@ -3,8 +3,9 @@
 
 Doctor do M1 com o que o M2 pede (arquitetura-v1.md, 4.15, 9.2 e 9.3): versao do Python, versoes fixadas do lock,
 psd-tools com o extra composite, versao fixada do fontTools, do Playwright e do pypdfium2 (M3), o Chromium fixado na pasta de
-navegadores do motor, o carregamento de uma fonte sintetica pelo @font-face com conferencia por CDP, o isolador
-(um filho dentro do teto e outro que estoura) e o teto do modo de dados.
+navegadores do motor, o carregamento de uma fonte sintetica pelo @font-face com conferencia por CDP, o autoteste do
+caminho PDF + PDFium do render com a fonte gerada pelo motor (M4), o isolador (um filho dentro do teto e outro que
+estoura) e o teto do modo de dados.
 
     desdobra [--envelope] [--teto-modo-dados {a,b,c}] doctor [--saida <pasta>] [--sem-isolador] [--sem-chromium]
 
@@ -57,14 +58,27 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
     if not com_chromium:
         lista.append(v.Verificacao('fonte_no_chromium', 'Fonte no Chromium', situacao='pulado',
                                    detalhe='Pulado com --sem-chromium.'))
+        lista.append(v.Verificacao('autoteste_render', 'Autoteste do render', situacao='pulado',
+                                   detalhe='Pulado com --sem-chromium.'))
     elif any(x.id == 'chromium_fixado' and x.situacao != 'ok' for x in lista):
         lista.append(v.Verificacao('fonte_no_chromium', 'Fonte no Chromium', situacao='pulado',
+                                   detalhe='Pulado: o Chromium fixado não está instalado.'))
+        lista.append(v.Verificacao('autoteste_render', 'Autoteste do render', situacao='pulado',
                                    detalhe='Pulado: o Chromium fixado não está instalado.'))
     else:
         try:
             lista.append(vc.verificar_fonte_no_chromium())
         except Exception as e:  # noqa: BLE001
             lista.append(_quebrou('fonte_no_chromium', e))
+        # M4: o autoteste do caminho PDF + PDFium roda o filho do render, entao precisa do isolador
+        if plat.nome in ('sem-suporte', 'mac'):
+            lista.append(v.Verificacao('autoteste_render', 'Autoteste do render', situacao='pulado',
+                                       detalhe='Pulado: o isolador do processo do render não existe neste sistema.'))
+        else:
+            try:
+                lista.append(vc.verificar_autoteste_render(plat))
+            except Exception as e:  # noqa: BLE001
+                lista.append(_quebrou('autoteste_render', e))
     if com_isolador:
         try:
             feitas, sem_suporte = v.verificar_isolador(plat)

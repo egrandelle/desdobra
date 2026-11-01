@@ -22,7 +22,7 @@ class MacNaoSuportado(RuntimeError):
 class PlataformaMac(Plataforma):
     nome = 'mac'
 
-    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None):
+    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None, entrada=b''):
         return ResultadoFilho(situacao='recusado', codigo=None, pico_bytes=None, stdout_bytes=b'', stderr_resumo='',
                               motivo=MENSAGEM)
 

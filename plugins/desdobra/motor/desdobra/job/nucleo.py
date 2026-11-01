@@ -451,11 +451,13 @@ def trocar_entrada(pasta, rel, novo, fases=ESTEIRA):
             raise ErroJob('O KV novo tem de ser do mesmo tipo do anterior (%s).' % Path(rel).suffix,
                           o_que_fazer='Salve o KV no mesmo formato ou crie um job novo.')
         estado['entradas'][rel] = _copiar_congelado(novo, pasta / rel)
+        n_render = invalidar_render(pasta)
         avaliacao, diretas = avaliar(pasta, estado, fases)
         _marcar_invalidadas(estado, diretas)
         estado['proxima'] = calcular_proxima(estado, avaliacao, fases)
         gravar_estado(pasta, estado)
-        registrar_evento(pasta, 'entrada_trocada', invalidadas=sorted(k for k, (v, _m) in avaliacao.items() if not v))
+        registrar_evento(pasta, 'entrada_trocada', invalidadas=sorted(k for k, (v, _m) in avaliacao.items() if not v),
+                         masters_invalidados=n_render)
         return estado, avaliacao
 
 
@@ -481,12 +483,36 @@ def remover_entrada(pasta, rel, fases=ESTEIRA):
             tornar_gravavel(arq)
             arq.unlink()
         del estado['entradas'][rel]
+        n_render = invalidar_render(pasta)
         avaliacao, diretas = avaliar(pasta, estado, fases)
         _marcar_invalidadas(estado, diretas)
         estado['proxima'] = calcular_proxima(estado, avaliacao, fases)
         gravar_estado(pasta, estado)
-        registrar_evento(pasta, 'entrada_removida', invalidadas=sorted(k for k, (v, _m) in avaliacao.items() if not v))
+        registrar_evento(pasta, 'entrada_removida', invalidadas=sorted(k for k, (v, _m) in avaliacao.items() if not v),
+                         masters_invalidados=n_render)
         return estado, avaliacao
+
+
+def invalidar_render(pasta):
+    """Apaga o master e o render.json de cada formato (render/<formato>/): com uma entrada trocada ou removida, o
+    master velho deixa de valer e nunca fica no lugar como se fosse do job atual. Os assets das pilhas ficam (o cache
+    e por hash). Devolve quantos formatos perderam o master."""
+    n = 0
+    raiz = Path(pasta) / 'render'
+    if not raiz.is_dir():
+        return 0
+    for formato in raiz.iterdir():
+        if not formato.is_dir():
+            continue
+        apagou = False
+        for nome in ('master.png', 'render.json'):
+            arq = formato / nome
+            if arq.exists():
+                tornar_gravavel(arq)
+                arq.unlink()
+                apagou = True
+        n += int(apagou)
+    return n
 
 
 def _marcar_invalidadas(estado, diretas):

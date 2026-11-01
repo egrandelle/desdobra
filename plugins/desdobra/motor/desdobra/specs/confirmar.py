@@ -164,9 +164,16 @@ def gravar_acoes(pasta, novas):
     contratos.gravar(Path(pasta) / importar.ARQUIVO_CONFIRMACOES, atual, importar.ESQUEMA_CONFIRMACOES)
 
 
-def sessao(pasta, *, entrada=input, saida=print, filtro_formato=None, filtro_campo=None, com_recortes=True, plat=None):
-    """Roda a sessao do DA. Devolve (acoes novas, rascunho, formatos do job, info)."""
+def sessao(pasta, *, disparo, entrada=None, saida=print, filtro_formato=None, filtro_campo=None, com_recortes=True,
+           plat=None):
+    """Roda a sessao do DA. Devolve (acoes novas, rascunho, formatos do job, info).
+
+    disparo: o que desdobra.humano.exigir('spec confirmar') emitiu depois de conferir o console; sem ele, a sessao
+    recusa (humano.ErroHumano). As respostas vem do console (humano.ler)."""
+    from desdobra import humano
     from desdobra.job import nucleo
+    humano.conferir(disparo, 'spec confirmar')
+    entrada = entrada or humano.ler
     pasta = Path(pasta).resolve()
     with nucleo.Trava(pasta):
         rascunho, _formatos, _info = importar.importar(pasta, plat=plat)

@@ -41,7 +41,8 @@ EXTENSOES_BYTECODE = ('.pyc', '.pyo')
 EXTENSOES_IMAGEM = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.webp')
 ASSINATURAS_IMAGEM = (b'\x89PNG', b'\xff\xd8\xff', b'GIF8', b'II*\x00', b'MM\x00*')
 # nenhuma imagem e nenhuma saida do motor fazem parte do pacote hoje; a excecao, se um dia existir, entra aqui
-EXCECOES_IMAGEM = frozenset()
+# a imagem de referencia do autoteste do render, desenhada so com a fonte gerada pelo motor (decisoes-v1.md, n. 36)
+EXCECOES_IMAGEM = frozenset({'plugins/desdobra/motor/referencias/autoteste-render.png'})
 EXCECOES_SAIDA = frozenset()
 SAIDA_DO_MOTOR = re.compile(r'"esquema"\s*:\s*"(laudo|estrutura|recusa|estado|regressao|envelope|pacote-modelo)/1"')
 # relatorio da regressao (regressao-<data>.json e .md): leva os slugs do corpus no conteudo

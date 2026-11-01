@@ -253,6 +253,8 @@ __marimo__/
 *.idml
 *.ai
 *.eps
+# excecao: a imagem de referencia do autoteste do render, desenhada so com a fonte gerada pelo motor (decisao 36)
+!plugins/desdobra/motor/referencias/autoteste-render.png
 # saidas do leitor e da regressao gravadas fora de uma pasta de job
 laudo.json
 estrutura.json

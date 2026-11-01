@@ -15,6 +15,17 @@ from desdobra.job import nucleo
 from desdobra.specs import confirmar, extrair, importar, leitura, modelo, validar
 
 
+
+def _disparo_spec():
+    """Disparo da confirmacao de spec com o console simulado (a conferencia do console tem testes proprios)."""
+    from desdobra import humano
+    original = humano.console_interativo
+    humano.console_interativo = lambda: (True, None)
+    try:
+        return humano.exigir('spec confirmar')
+    finally:
+        humano.console_interativo = original
+
 def _job(base, arquivos, modo='b'):
     """Job com as folhas dadas em entrada/specs/ ({caminho relativo: bytes ou texto})."""
     origem = base / 'origem-specs'
@@ -161,7 +172,7 @@ def test_pdf_escaneado_so_tem_valor_digitado_ao_lado_do_recorte(tmp_path):
     assert all((job / r['arquivo']).is_file() for r in folha['recortes'])
     assert doc['formatos'] == [] and all(v['origem'] == 'ausente' for v in _valores(doc))
     respostas = iter(['dimensao', '1920 x 1080 px', 'peso_max', 'até 2 MB', '', ''])
-    novas, doc, formatos, _info = confirmar.sessao(job, entrada=lambda _p: next(respostas), saida=lambda *_a: None)
+    novas, doc, formatos, _info = confirmar.sessao(job, disparo=_disparo_spec(), entrada=lambda _p: next(respostas), saida=lambda *_a: None)
     assert len(novas) == 2
     digitados = [v for v in _valores(doc) if v['origem'] == 'digitado_pelo_da_a_partir_do_recorte']
     assert len(digitados) == 2
@@ -235,7 +246,7 @@ def test_da_escolhe_a_leitura_e_o_motor_nao(job_globo, tmp_path):
     tag = _formato(doc, 'meia|300x600')['campos']['peso_max_tag']
     escolha = next(i for i, x in enumerate(tag['leituras']) if x['valor']['alvo_bytes'] == 500000)
     respostas = iter([str(escolha + 1)] + ['p'] * 200)
-    confirmar.sessao(job, entrada=lambda _p: next(respostas), saida=lambda *_a: None, filtro_campo='peso_max_tag')
+    confirmar.sessao(job, disparo=_disparo_spec(), entrada=lambda _p: next(respostas), saida=lambda *_a: None, filtro_campo='peso_max_tag')
     doc = contratos.ler(job / 'specs' / 'rascunho.json', 'spec/1')
     tag = _formato(doc, 'meia|300x600')['campos']['peso_max_tag']
     assert tag['situacao'] == 'confirmado' and tag['valor']['alvo_bytes'] == 500000 and tag['confirmacao']['leitura'] == escolha
@@ -327,7 +338,7 @@ def test_confirmar_e_formatos_do_job_so_com_confirmados(job_pme, tmp_path):
     doc = importar.importar(job)[0]
     chave = _formato(doc, alvo)['chave']
     respostas = iter(['', 'x', 'c', 'c', 'p', 's'])
-    novas, doc, formatos, _ = confirmar.sessao(job, entrada=lambda _p: next(respostas), saida=lambda *_a: None,
+    novas, doc, formatos, _ = confirmar.sessao(job, disparo=_disparo_spec(), entrada=lambda _p: next(respostas), saida=lambda *_a: None,
                                                filtro_formato=chave, com_recortes=False)
     assert [a['acao'] for a in novas] == ['confirmar', 'confirmar']
     contratos.validar(formatos, 'spec/1')
@@ -362,7 +373,7 @@ def _formatos_confirmados(job, tmp_path):
     shutil.copytree(job, destino)
     doc = importar.importar(destino)[0]
     chave = _formato(doc, 'sao-paulo-shopping-exemplo|1080x1920')['chave']
-    confirmar.sessao(destino, entrada=lambda _p: 'c', saida=lambda *_a: None, filtro_formato=chave, com_recortes=False)
+    confirmar.sessao(destino, disparo=_disparo_spec(), entrada=lambda _p: 'c', saida=lambda *_a: None, filtro_formato=chave, com_recortes=False)
     return destino, chave
 
 
@@ -515,7 +526,7 @@ def test_recorte_texto_no_meio_de_um_numero_e_ignorado(tmp_path):
     assert modelo.conferir_literais(doc) == []
     # o DA ve o pedaco do trecho e quem ligou o campo ao trecho
     linhas = []
-    confirmar.sessao(job, entrada=lambda _p: 's', saida=lambda *a: linhas.append(' '.join(map(str, a))),
+    confirmar.sessao(job, disparo=_disparo_spec(), entrada=lambda _p: 's', saida=lambda *a: linhas.append(' '.join(map(str, a))),
                      filtro_campo='area_util')
     assert any('"1080x1920"' in l and 'pedaço' in l for l in linhas) and any('proposta do Claude' in l for l in linhas)
 
@@ -553,7 +564,7 @@ def test_validar_sem_regra_confirmada_nao_aprova(tmp_path):
     """M1: so a dimensao confirmada, um PNG de 50 MB nao sai aprovado."""
     job = _job(tmp_path, {'e/email.txt': 'Formato: 1080x1920\nPeso máximo: 5 MB\nTipos de arquivo: JPG\n'})
     respostas = iter(['c'] + ['p'] * 20)
-    confirmar.sessao(job, entrada=lambda _p: next(respostas), saida=lambda *_a: None, filtro_campo='dimensao')
+    confirmar.sessao(job, disparo=_disparo_spec(), entrada=lambda _p: next(respostas), saida=lambda *_a: None, filtro_campo='dimensao')
     fj = contratos.ler(job / 'specs' / 'formatos-do-job.json', 'spec/1')
     arq = tmp_path / 'g.png'
     arq.write_bytes(apoio.png_de_tamanho(1080, 1920, 50000000))
@@ -630,7 +641,7 @@ def test_confirmar_interrompido_grava_o_que_ja_foi_respondido(job_pme, tmp_path)
             return next(respostas)
         except StopIteration:
             raise KeyboardInterrupt from None
-    novas = confirmar.sessao(job, entrada=entrada, saida=lambda *_a: None, com_recortes=False)[0]
+    novas = confirmar.sessao(job, disparo=_disparo_spec(), entrada=entrada, saida=lambda *_a: None, com_recortes=False)[0]
     assert len(novas) == 2
     assert len(contratos.ler(job / 'specs' / 'confirmacoes.json', 'spec-confirmacoes/1')['acoes']) == 2
 
@@ -639,7 +650,7 @@ def test_digitar_no_recorte_so_campos_que_valem(tmp_path):
     """L2: rotacao, prazo e qualidade (so registro) nao se digitam; restricao vai para a lista do circuito."""
     job = _job(tmp_path, {'j/c.pdf': apoio.pdf_escaneado(1)})
     respostas = iter(['rotacao', 'prazo_envio', 'dimensao', '1080x1920', 'restricao', 'sem animação', ''])
-    novas, doc, _f, _i = confirmar.sessao(job, entrada=lambda _p: next(respostas), saida=lambda *_a: None)
+    novas, doc, _f, _i = confirmar.sessao(job, disparo=_disparo_spec(), entrada=lambda _p: next(respostas), saida=lambda *_a: None)
     assert [a['campo'] for a in novas] == ['dimensao', 'restricao']
     circ = next(c for c in doc['circuitos'] if c['restricoes'])
     assert circ['restricoes'][0]['valor'] == 'sem animação' and circ['restricoes'][0]['situacao'] == 'confirmado'

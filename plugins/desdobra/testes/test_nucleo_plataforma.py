@@ -17,7 +17,8 @@ def test_resultado_filho_so_aceita_as_situacoes_do_contrato():
 
 def test_assinatura_de_executar_isolado():
     parametros = list(inspect.signature(Plataforma.executar_isolado).parameters)
-    assert parametros == ['self', 'comando', 'orcamento_bytes', 'tempo_s', 'pasta_trabalho', 'ambiente']
+    assert parametros == ['self', 'comando', 'orcamento_bytes', 'tempo_s', 'pasta_trabalho', 'ambiente', 'entrada']
+    assert inspect.signature(Plataforma.executar_isolado).parameters['entrada'].kind == inspect.Parameter.KEYWORD_ONLY
     assert inspect.signature(Plataforma.executar_isolado).parameters['ambiente'].kind == inspect.Parameter.KEYWORD_ONLY
 
 

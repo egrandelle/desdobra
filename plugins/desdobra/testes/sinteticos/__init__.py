@@ -158,13 +158,14 @@ def embutido(pasta, nome='embutido.psd', dados=None):
     return _documento_com_smart(reg, 'uuid-embutido-sintetico', Path(pasta) / nome), dados
 
 
-def linkado(pasta, isca, nome='linkado.psd'):
-    """O fullPath aponta para `isca` (caminho absoluto) e o relPath tenta escapar com ../.."""
+def linkado(pasta, isca, nome='linkado.psd', tamanho=1234):
+    """O fullPath aponta para `isca` (caminho absoluto) e o relPath tenta escapar com ../..; o registro grava o nome
+    da isca e o tamanho dado."""
     lf = DescriptorBlock(name='', classID=b'ExtF', items=[
         (b'fullPath', String(value=str(isca))),
         (b'relPath', String(value='../../isca/' + Path(isca).name))])
     reg = LinkedLayer(kind=LinkedLayerType.EXTERNAL, version=7, uuid='uuid-linkado-sintetico', filename=Path(isca).name,
-                      filetype=b'TEXT', creator=b'????', filesize=1234, open_file=None, linked_file=lf,
+                      filetype=b'TEXT', creator=b'????', filesize=tamanho, open_file=None, linked_file=lf,
                       timestamp=(2026, 10, 29, 12, 30, 0.0), data=b'', child_id='', mod_time=0.0, lock_state=0)
     return _documento_com_smart(reg, 'uuid-linkado-sintetico', Path(pasta) / nome)
 

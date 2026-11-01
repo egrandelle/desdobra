@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Chromium fixado do Playwright para a conferencia de fontes, com perfil temporario num caminho curto.
+"""Chromium fixado do Playwright para a conferencia de fontes e o render, com perfil temporario num caminho curto.
 
   - abre o headless shell do Playwright com um perfil novo numa pasta temporaria curta que o motor cria na maquina
     (perfil_curto) e apaga no fim, sem rede fora do loopback (regra de resolucao de nome que so deixa 127.0.0.1).
@@ -12,8 +12,13 @@
     servidos) e do controle positivo (uma folha de estilo com marcador aleatorio servida com cache liberado) e apaga
     o perfil. O teste de cache so vale quando o controle aparece no perfil: isso prova que o perfil grava cache.
 
+O render (M4, arquitetura-v1.md, 4.11) usa o mesmo navegador com escala 1, --disable-lcd-text, --disable-gpu e o
+perfil de cor sRGB forcado (imprimir): cada pagina e gravada em PDF, e os bytes do PDF ficam so na memoria (o
+Playwright devolve os bytes do Page.printToPDF, nenhum caminho de arquivo e passado). A varredura do perfil procura
+tambem a assinatura de PDF.
+
 O perfil e o cache nunca saem da maquina, ficam numa pasta so do motor e sao apagados no fim; a varredura fica
-registrada na conferencia (arquitetura-v1.md, 3.4, 7.3 e 9.3, teste de cache).
+registrada na conferencia e no render.json (arquitetura-v1.md, 3.4, 7.3, 9.3 e 9.5, teste de cache).
 """
 import hashlib
 import shutil
@@ -26,6 +31,10 @@ from desdobra.chromium import apontar_playwright
 ARGUMENTOS = ('--disable-lcd-text', '--no-first-run', '--disable-background-networking', '--disable-component-update',
               '--disable-sync', '--disable-default-apps', '--disable-extensions',
               '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1')
+# render: sem GPU e com o perfil de cor sRGB forcado (arquitetura-v1.md, 4.11)
+ARGUMENTOS_RENDER = ARGUMENTOS + ('--disable-gpu', '--force-color-profile=srgb')
+ASSINATURA_PDF = b'%PDF-'
+PX_POR_POLEGADA = 96.0  # numero-neutro: px do CSS por polegada
 TAMANHO_TRECHO = 256  # numero-neutro: bytes de cada trecho procurado na varredura do perfil
 METODO_VARREDURA = ('sha256, assinatura de fonte e trechos de 256 bytes (inicio, meio e fim) de cada fonte servida, '
                     'em todo arquivo do perfil, com controle positivo (folha de estilo com cache liberado)')
@@ -36,6 +45,9 @@ JS_CARREGAR = """async (familias) => {
   await document.fonts.ready;
   return Array.from(document.fonts).map(f => [f.family.replace(/^"|"$/g, ''), f.status]);
 }"""
+JS_POSICOES = """() => { const o = {}; document.querySelectorAll('text[id]').forEach(t => { const a = [];
+  for (let i = 0; i < t.getNumberOfChars(); i++) { const s = t.getStartPositionOfChar(i), e = t.getEndPositionOfChar(i);
+  a.push([s.x, s.y, e.x]); } o[t.id] = a; }); return o; }"""
 JS_LARGURAS = """() => { const o = {}; document.querySelectorAll('.l').forEach(d => {
   const r = document.createRange(); r.selectNodeContents(d); o[d.id] = r.getBoundingClientRect().width; }); return o; }"""
 
@@ -99,6 +111,85 @@ def conferir(url_entrada, perfil, familias, ids_cdp):
             'status': {f: s for f, s in status}, 'larguras': larguras, 'cdp': fontes_por_id}
 
 
+def imprimir_pdf(cdp, largura, altura):
+    """Bytes do PDF da pagina aberta, pelo CDP com transferMode ReturnAsBase64: o PDF vem inteiro na resposta.
+    O page.pdf() do Playwright pede ReturnAsStream, e o Chromium grava o stream num arquivo temporario (<guid>.tmp na
+    pasta temporaria do sistema) antes de entregar; por base64 nada toca o disco."""
+    import base64
+    r = cdp.send('Page.printToPDF', {'paperWidth': largura / PX_POR_POLEGADA, 'paperHeight': altura / PX_POR_POLEGADA,
+                                     'marginTop': 0, 'marginBottom': 0, 'marginLeft': 0, 'marginRight': 0,
+                                     'printBackground': True, 'preferCSSPageSize': True, 'scale': 1,
+                                     'transferMode': 'ReturnAsBase64'})
+    return base64.b64decode(r['data'])
+
+
+def imprimir(url_entrada, url_pagina, perfil, familias, paginas, depois=None):
+    """Abre cada pagina do render, espera as faces, pergunta ao CDP que faces desenharam cada trecho e grava o PDF
+    na memoria. paginas: [{'id', 'largura', 'altura', 'spans': [{'id', 'cdp'}], 'pdf', 'posicoes'}]; url_pagina(id)
+    da a URL. Pagina com 'posicoes' devolve a posicao de cada caractere de cada linha <text id> (getStartPositionOfChar
+    e getEndPositionOfChar, no espaco do texto), e depois(pagina, posicoes) devolve as paginas que entram na fila em
+    seguida (o render usa isso para as passadas de cor). Pagina com 'pdf' falso nao e impressa.
+
+    Devolve {'chromium', 'playwright', 'paginas': {id: {'pdf': bytes ou None, 'status': {familia: status},
+    'cdp': {span_id: [faces] ou None}, 'posicoes': {linha: [[x inicio, y, x fim], ...]} ou None}}}."""
+    perfil = Path(perfil)
+    shutil.rmtree(perfil, ignore_errors=True)
+    perfil.mkdir(parents=True)
+    apontar_playwright()
+    tempo_ms = float(limites.valor('chromium.tempo_max_s')) * 1000  # numero-neutro: segundos para milissegundos
+    try:
+        from playwright.sync_api import Error as ErroPlaywright
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise ErroNavegador('O Playwright não está instalado no ambiente do motor.') from None
+    saida = {}
+    try:
+        with sync_playwright() as pw:
+            ctx = pw.chromium.launch_persistent_context(str(perfil), headless=True, args=list(ARGUMENTOS_RENDER),
+                                                        device_scale_factor=1, timeout=tempo_ms)
+            try:
+                ctx.set_default_timeout(tempo_ms)
+                pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+                pg.goto(url_entrada, wait_until='load')
+                cdp = ctx.new_cdp_session(pg)
+                cdp.send('DOM.enable')
+                cdp.send('CSS.enable')
+                cdp.send('Page.enable')
+                fila = list(paginas)
+                while fila:
+                    p = fila.pop(0)
+                    pg.set_viewport_size({'width': int(p['largura']), 'height': int(p['altura'])})
+                    pg.goto(url_pagina(p['id']), wait_until='load')
+                    status = pg.evaluate(JS_CARREGAR, list(familias))
+                    raiz = cdp.send('DOM.getDocument', {'depth': -1})['root']['nodeId']
+                    fontes_por_id = {}
+                    for s in p['spans']:
+                        if not s.get('cdp'):
+                            continue
+                        no = cdp.send('DOM.querySelector', {'nodeId': raiz, 'selector': '#' + s['id']})['nodeId']
+                        if not no:
+                            fontes_por_id[s['id']] = None
+                            continue
+                        fontes_por_id[s['id']] = [
+                            {'familia': f.get('familyName'), 'nome_ps': f.get('postScriptName'),
+                             'propria': bool(f.get('isCustomFont')), 'glifos': f.get('glyphCount')}
+                            for f in cdp.send('CSS.getPlatformFontsForNode', {'nodeId': no})['fonts']]
+                    posicoes = pg.evaluate(JS_POSICOES) if p.get('posicoes') else None
+                    pdf = None
+                    if p.get('pdf', True):
+                        pdf = imprimir_pdf(cdp, p['largura'], p['altura'])
+                    saida[p['id']] = {'pdf': pdf, 'status': {f: st for f, st in status}, 'cdp': fontes_por_id,
+                                      'posicoes': posicoes}
+                    if posicoes is not None and depois is not None:
+                        fila.extend(depois(p, posicoes))
+                versao = ctx.browser.version if ctx.browser else None
+            finally:
+                ctx.close()
+    except ErroPlaywright:
+        raise ErroNavegador('O Chromium do Playwright não abriu, não respondeu a tempo ou não gravou o PDF.') from None
+    return {'chromium': versao, 'playwright': versao_playwright(), 'paginas': saida}
+
+
 def trechos(dados):
     """Trechos dos bytes servidos que a varredura procura (inicio, meio e fim)."""
     n = len(dados)
@@ -122,9 +213,9 @@ def varrer_perfil(perfil, servidos, controle=None):
     perfil = Path(perfil)
     shas = {hashlib.sha256(d).hexdigest() for d in servidos}
     procura = [t for d in servidos for t in trechos(d)]
-    copias, varridos, controle_achado = 0, 0, False
+    copias, varridos, controle_achado, pdfs = 0, 0, False, 0
     if not perfil.is_dir():
-        return {'copias_encontradas': 0, 'arquivos_varridos': 0, 'controle_encontrado': False}
+        return {'copias_encontradas': 0, 'arquivos_varridos': 0, 'controle_encontrado': False, 'pdfs_encontrados': 0}
     for p in perfil.rglob('*'):
         if not p.is_file():
             continue
@@ -135,10 +226,13 @@ def varrer_perfil(perfil, servidos, controle=None):
             continue
         if controle and controle in dados:
             controle_achado = True
+        if ASSINATURA_PDF in dados:
+            pdfs += 1
         if hashlib.sha256(dados).hexdigest() in shas or arquivos.assinatura_de_fonte(dados[:arquivos.BYTES_ASSINATURA]) \
                 or any(t in dados for t in procura):
             copias += 1
-    return {'copias_encontradas': copias, 'arquivos_varridos': varridos, 'controle_encontrado': controle_achado}
+    return {'copias_encontradas': copias, 'arquivos_varridos': varridos, 'controle_encontrado': controle_achado,
+            'pdfs_encontrados': pdfs}
 
 
 def apagar_perfil(perfil):

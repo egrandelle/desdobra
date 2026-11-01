@@ -57,6 +57,7 @@
         "metodo": {"type": "string"},
         "cache_control": {"type": "string"},
         "perfil_apagado": {"type": ["boolean", "null"]},
+        "pdfs_encontrados": {"type": ["integer", "null"], "minimum": 0, "description": "Arquivos do perfil com assinatura de PDF (a varredura do M4 procura tambem PDF)"},
         "perfil": {"type": "string", "description": "Onde fica o perfil temporario (descricao fixa, sem caminho)"}
       }
     },

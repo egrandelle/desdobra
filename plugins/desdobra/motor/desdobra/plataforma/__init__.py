@@ -63,7 +63,7 @@ class Plataforma(abc.ABC):
     nome = 'abstrata'
 
     @abc.abstractmethod
-    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None):
+    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None, entrada=b''):
         """Roda `comando` (lista de argumentos, sem shell) num processo filho isolado e devolve ResultadoFilho.
 
         Obrigacoes da implementacao:
@@ -73,8 +73,9 @@ class Plataforma(abc.ABC):
           - cwd = pasta_trabalho (o chamador entrega uma pasta vazia);
           - ambiente = o do pai, mais OPENBLAS_NUM_THREADS=1, OMP_NUM_THREADS=1, MKL_NUM_THREADS=1,
             PYTHONDONTWRITEBYTECODE=1, PYTHONIOENCODING=utf-8, mais `ambiente` se vier;
-          - so depois de confinar o processo, escreve LINHA_LIBERAR na entrada padrao do filho e fecha a entrada.
-            O filho nao faz nada arriscado antes de ler essa linha;
+          - so depois de confinar o processo, escreve LINHA_LIBERAR na entrada padrao do filho, depois os bytes de
+            `entrada` (o render manda assim os PDFs do texto, que nunca vao para disco) e fecha a entrada. O filho
+            nao faz nada arriscado antes de ler essa linha;
           - nunca levanta excecao por causa do filho: tudo vira ResultadoFilho.
         """
 
@@ -84,6 +85,15 @@ class Plataforma(abc.ABC):
         na conferencia, pelo Chromium (desdobra.fontes.conferencia, campo instalada_mesmo_nome), sem abrir arquivo
         de fonte do sistema no processo principal. A lista completa fica sem implementacao."""
         raise NotImplementedError('fontes_instaladas fica só como diagnóstico, feito pela conferência de fontes')
+
+    def console_interativo(self):
+        """(ok, motivo): a entrada e a saida padrao do processo sao um terminal interativo. A base confere isatty; o
+        Windows confere o modo de console (desdobra.humano usa isto no disparo humano)."""
+        try:
+            ok = sys.stdin.isatty() and sys.stdout.isatty()
+        except (AttributeError, ValueError):
+            ok = False
+        return (True, None) if ok else (False, 'sem_terminal')
 
     def porta_livre(self):
         """Uma porta TCP livre em 127.0.0.1, escolhida pelo sistema."""
@@ -104,7 +114,7 @@ class PlataformaSemSuporte(Plataforma):
     def __init__(self, motivo):
         self.motivo = motivo
 
-    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None):
+    def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None, entrada=b''):
         return ResultadoFilho(situacao='recusado', codigo=None, pico_bytes=None, stdout_bytes=b'', stderr_resumo='',
                               motivo=self.motivo)
 

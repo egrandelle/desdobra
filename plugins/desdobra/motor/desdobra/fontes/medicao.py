@@ -69,7 +69,7 @@ def _estilo(face, prefixo, corpo, ls, run):
     return ("font-family:'%s';font-weight:%d;font-style:normal;font-size:%.4fpx;letter-spacing:%.4fpx;"
             "font-kerning:%s;font-variant-ligatures:%s;font-synthesis:none;%s" % (
                 familia_css(prefixo, face['id']), int(face['peso_declarado'] or 400), corpo, ls, kerning, lig,  # numero-neutro: peso normal do CSS
-                'font-feature-settings:"cpsp" 1;' if caps else ''))
+                "font-feature-settings:'cpsp' 1;" if caps else ''))
 
 
 def montar(camadas_texto, pares, faces, prefixo):

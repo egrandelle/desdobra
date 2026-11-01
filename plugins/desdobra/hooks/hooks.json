@@ -1,5 +1,5 @@
 {
-  "description": "Prepara o ambiente Python do motor do desdobra na pasta de dados do plugin",
+  "description": "Prepara o ambiente Python do motor do desdobra na pasta de dados do plugin e impede o Claude de disparar o que so o DA dispara (render e confirmacoes)",
   "hooks": {
     "SessionStart": [
       {
@@ -10,6 +10,19 @@
             "args": ["-I", "-B", "${CLAUDE_PLUGIN_ROOT}/scripts/preparar_ambiente.py"],
             "timeout": 600,
             "statusMessage": "Preparando o ambiente Python do desdobra"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["-I", "-B", "${CLAUDE_PLUGIN_ROOT}/scripts/gancho_confirmacoes.py"],
+            "timeout": 30
           }
         ]
       }

@@ -31,6 +31,7 @@ COMPONENTES = (
     ('desdobra.fontes', ('fontes',)),
     ('desdobra.ds', ('ds',)),
     ('desdobra.specs', ('spec', 'validar')),
+    ('desdobra.render', ('render', 'linkado')),
 )
 MODULO_ENVELOPE = 'desdobra.sugestao.envelope'
 

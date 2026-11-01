@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:linkados-confirmados:1",
+  "title": "Linkados confirmados pelo DA (linkados-confirmados/1)",
+  "description": "briefing/linkados-confirmados.json, gravado so pelo \"desdobra linkado confirmar\" num terminal interativo (arquitetura-v1.md, 7.2). Para cada smart object linkado, o arquivo de entrada/campanha/ que o DA confirmou e o sha256 congelado dele. O render usa so este arquivo; no M7 a confirmacao passa para o briefing confirmado.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "laudo_sha256", "kv_sha256", "linkados"],
+  "properties": {
+    "esquema": {"const": "linkados-confirmados/1"},
+    "laudo_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "kv_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "linkados": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["unique_id", "layer_ids", "arquivo", "sha256", "bytes", "confirmado_por"],
+        "properties": {
+          "unique_id": {"type": "string", "minLength": 1},
+          "layer_ids": {"type": "array", "items": {"type": "integer"}},
+          "arquivo": {"type": "string", "pattern": "^entrada/campanha/"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "bytes": {"type": "integer", "minimum": 0},
+          "registro_no_psd": {"type": ["object", "null"]},
+          "confirmado_por": {"type": "object", "required": ["meio", "quando"],
+                             "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                                            "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}}
+        }
+      }
+    }
+  }
+}

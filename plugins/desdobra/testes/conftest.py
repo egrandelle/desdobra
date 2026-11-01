@@ -31,3 +31,12 @@ def kv_psd(tmp_path):
 @pytest.fixture
 def python():
     return sys.executable
+
+
+@pytest.fixture
+def pessoa(monkeypatch):
+    """O DA num console interativo: so a conferencia do console fica simulada (o caminho do Disparo e o de verdade).
+    Uso: execucao.renderizar(job, disparo=pessoa.exigir('render'))."""
+    from desdobra import humano
+    monkeypatch.setattr(humano, 'console_interativo', lambda: (True, None))
+    return humano

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:composicao:1",
+  "title": "Contrato da composicao de um formato (composicao/1)",
+  "description": "render/<formato>/contrato.json: o que o render desenha num formato, de baixo para cima (arquitetura-v1.md, 4.11). No M4 e o contrato da origem (identidade), montado do laudo, da conferencia de fontes e dos linkados confirmados; o M5 grava o mesmo formato para os outros formatos, mudando o canvas, a escala e a caixa de cada entrada. Guarda texto da peca (como o laudo): fica so na pasta do job e nunca vai para o envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "formato", "documento", "origem", "faces", "entradas", "fora_da_peca", "registros"],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "caixa": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4},
+    "registro": {
+      "type": "object",
+      "required": ["codigo"],
+      "properties": {"codigo": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}, "layer_id": {"type": ["integer", "null"]},
+                     "medidas": {"type": "object"}}
+    }
+  },
+  "properties": {
+    "esquema": {"const": "composicao/1"},
+    "job_id": {"type": "string"},
+    "formato": {
+      "type": "object", "additionalProperties": false, "required": ["chave", "largura", "altura", "escala"],
+      "properties": {"chave": {"type": "string", "minLength": 1}, "largura": {"type": "integer", "minimum": 1},
+                     "altura": {"type": "integer", "minimum": 1}, "escala": {"type": "number", "exclusiveMinimum": 0}}
+    },
+    "documento": {
+      "type": "object", "required": ["largura", "altura", "modo", "bits", "perfil"],
+      "properties": {
+        "largura": {"type": "integer"}, "altura": {"type": "integer"}, "modo": {"type": ["string", "null"]},
+        "bits": {"type": ["integer", "null"]},
+        "perfil": {"type": ["object", "null"], "required": ["arquivo", "sha256"],
+                   "properties": {"arquivo": {"type": "string"}, "sha256": {"type": ["string", "null"]}, "nome": {"type": ["string", "null"]}}},
+        "fundo": {"type": ["array", "null"], "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 3, "maxItems": 3,
+                  "description": "Cor opaca inicial do canvas, no espaco do documento (so o autoteste do doctor usa); sem ela, o canvas comeca transparente"}
+      }
+    },
+    "origem": {
+      "type": "object", "required": ["kv_sha256", "laudo_sha256", "funcoes"],
+      "properties": {"kv_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+                     "laudo_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+                     "conferencia_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+                     "linkados_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+                     "funcoes": {"enum": ["identidade", "derivacao", "autoteste"]}}
+    },
+    "faces": {
+      "type": "array",
+      "description": "Faces do job usadas no texto, por id (f01...), com o sha256 do arquivo de entrada/fontes/. Nunca bytes nem caminho.",
+      "items": {"type": "object", "required": ["id", "sha256", "nome_ps", "nomes_ps", "formato", "peso_declarado"],
+                "properties": {"id": {"type": "string", "pattern": "^f[0-9]+$"}, "sha256": {"$ref": "#/$defs/sha256"},
+                               "nome_ps": {"type": ["string", "null"]}, "nomes_ps": {"type": "array", "items": {"type": "string"}},
+                               "formato": {"enum": ["otf", "ttf", "ttc", "woff", "woff2"]}, "indice": {"type": ["integer", "null"]},
+                               "peso_declarado": {"type": ["integer", "null"]}, "colecao": {"type": ["object", "null"]},
+                               "metricas": {"type": ["object", "null"]}}}
+    },
+    "entradas": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "tipo"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^e[0-9]+$"},
+          "tipo": {"enum": ["pilha", "texto", "linkado"]},
+          "indices": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+          "layer_ids": {"type": "array", "items": {"type": "integer"}},
+          "chave": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+          "layer_id": {"type": "integer"}, "indice": {"type": "integer"},
+          "regiao": {"$ref": "#/$defs/caixa"}, "opacidade": {"type": "number", "minimum": 0, "maximum": 1},
+          "blend": {"type": ["string", "null"]}, "texto": {"type": "object"}, "faces": {"type": "object"},
+          "cores": {"type": "array", "items": {"type": "string"}}, "valores_cor": {"type": "object"},
+          "cores_por_trecho": {"type": "object"}, "antialiasing": {"type": ["string", "null"]},
+          "corpo_dispositivo_px": {"type": "number"}, "sharp_pequeno": {"type": "boolean"},
+          "arquivo": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"},
+          "colocacao": {"type": ["array", "null"], "items": {"type": "number"}}, "caixa": {"type": ["array", "null"]}
+        },
+        "allOf": [
+          {"if": {"properties": {"tipo": {"const": "pilha"}}}, "then": {"required": ["indices", "layer_ids", "chave"]}},
+          {"if": {"properties": {"tipo": {"const": "texto"}}}, "then": {"required": ["layer_id", "regiao", "opacidade", "texto", "faces", "cores", "valores_cor", "cores_por_trecho", "sharp_pequeno"]}},
+          {"if": {"properties": {"tipo": {"const": "linkado"}}}, "then": {"required": ["layer_id", "arquivo", "sha256", "opacidade"]}}
+        ]
+      }
+    },
+    "fora_da_peca": {"type": "array", "items": {"type": "integer"}},
+    "registros": {"type": "array", "items": {"$ref": "#/$defs/registro"}}
+  }
+}

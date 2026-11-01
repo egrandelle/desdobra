@@ -15,7 +15,6 @@ Modulos: filho (o unico que parseia a folha), leitura (lado do processo principa
 texto literal do trecho), modelo (os 4 niveis), importar (o job), confirmar (o DA), validar (o arquivo).
 """
 import argparse
-import sys
 from pathlib import Path
 
 from desdobra import contratos
@@ -115,27 +114,21 @@ def _importar(args):
                      linhas_humanas=linhas)
 
 
-def _em_terminal():
-    from desdobra import cli
-    if getattr(cli._Analisador, 'modo_envelope', False):
-        return False
-    try:
-        return sys.stdin.isatty() and sys.stdout.isatty()
-    except (AttributeError, ValueError):
-        return False
-
-
-def _confirmar(args, entrada=None, saida=None):
+def _confirmar(args):
+    from desdobra import humano
     from desdobra.specs import confirmar
     pasta = Path(args.job).resolve()
-    if entrada is None and not _em_terminal():
+    try:
+        disparo = humano.exigir('spec confirmar')
+    except humano.ErroHumano as e:
         return Resultado(comando='spec confirmar', codigo=int(Codigo.RECUSADO), situacao='recusado',
-                         o_que_fazer=confirmar.O_QUE_FAZER_TERMINAL, pasta_job=pasta,
-                         linhas_humanas=['spec confirmar só roda num terminal interativo.'])
+                         o_que_fazer=confirmar.O_QUE_FAZER_TERMINAL + ' ' + humano.O_QUE_FAZER, pasta_job=pasta,
+                         contagens={'recusa_%s' % e: 1},
+                         linhas_humanas=['spec confirmar só roda num terminal interativo, pelo DA.'])
     if not (pasta / 'estado.json').is_file():
         return _uso('spec confirmar', 'Rode a confirmação numa pasta de job ("desdobra job criar").', pasta)
-    novas, rascunho, formatos, info = confirmar.sessao(pasta, entrada=entrada or input, saida=saida or print,
-                                                       filtro_formato=args.formato, filtro_campo=args.campo)
+    novas, rascunho, formatos, info = confirmar.sessao(pasta, disparo=disparo, filtro_formato=args.formato,
+                                                       filtro_campo=args.campo)
     cont = _contagens(rascunho, info)
     cont.update(acoes_novas=len(novas), formatos_do_job=len(formatos['formatos']))
     return Resultado(comando='spec confirmar', situacao='ok', fase='specs',

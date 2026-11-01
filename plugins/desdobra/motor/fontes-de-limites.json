@@ -653,6 +653,117 @@
    "situacao": "a_calibrar",
    "efeito": "avisa",
    "nota": "Teto de pedacos de texto por pagina de PDF (a folha PME tem ate 26). A colagem dos pedacos e a busca do valor ao lado do rotulo comparam os pedacos da pagina entre si; o teto mantem esse custo limitado."
+  },
+  {
+   "id": "render.supersample",
+   "valor": 8,
+   "unidade": "fator de supersample do PDFium por eixo (pixels do dispositivo por pixel do canvas)",
+   "fonte": {
+    "arquivo": "pesquisa/render-local-pesquisa.md",
+    "secao": "8"
+   },
+   "situacao": "medido",
+   "efeito": "registra",
+   "nota": "O PDFium rasteriza o PDF do texto em escala 96/72 x 8 e a cobertura e a media de blocos 8 x 8. Foi o valor do teste do caminho PDF + PDFium que deu a linha de base de erro de borda (arquitetura-v1.md, 4.11)."
+  },
+  {
+   "id": "render.corpo_sharp_pequeno_px",
+   "valor": 256,
+   "unidade": "pixels de corpo no dispositivo",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "29/10, respostas a pesquisa de render local, 3"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "Texto Sharp ate este corpo no dispositivo e o caso Sharp pequeno: mesmo caminho PDF + PDFium, com tolerancia de borda maior. O render.json e a medicao do corpus reportam esse caso a parte."
+  },
+  {
+   "id": "render.margem_regiao_px",
+   "valor": 16,
+   "unidade": "pixels do canvas em volta da caixa da camada de texto",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Folga da pagina do texto em volta da caixa gravada pelo Photoshop, para a letra do Chromium que passa da caixa. Valor herdado da pesquisa (gama/g_comum.py, MARGEM), sem medicao propria."
+  },
+  {
+   "id": "render.pagina_multiplo_px",
+   "valor": 32,
+   "unidade": "pixels",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A pagina do PDF de cada camada de texto tem largura e altura arredondadas para cima neste multiplo, como no teste da pesquisa (teste do caminho PDF da pesquisa, pagina em multiplo de 32). A pagina maior que a regiao nao muda o desenho; o valor fica registrado porque veio da pesquisa sem medicao."
+  },
+  {
+   "id": "render.bytes_por_px_canvas",
+   "valor": 192,
+   "unidade": "bytes por pixel do canvas",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Parcela do orcamento de memoria do filho do render que cresce com o canvas: canvas em float64 pre-multiplicado (32 bytes por pixel), saida e conversao de cor, e as matrizes da camada de texto, que no pior caso cobre o canvas inteiro. Estimativa do codigo, sem medicao. Parada por memoria nao reprova: o render para e diz o que fazer."
+  },
+  {
+   "id": "render.bytes_banda_pdfium",
+   "valor": 268435456,
+   "unidade": "bytes",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Parcela fixa do orcamento do filho do render para a faixa do PDFium (ate 8 milhoes de pixels do dispositivo por faixa, com as copias em float64 da media de blocos). Estimativa do codigo, sem medicao."
+  },
+  {
+   "id": "render.tempo_max_s",
+   "valor": 600,
+   "unidade": "segundos de relogio do filho do render",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Timeout de relogio no pai para o filho que rasteriza o texto e compoe o formato. Igual ao isolador.tempo_max_s, sem medicao propria. Parada por tempo nao reprova: o render para e diz o que fazer."
+  },
+  {
+   "id": "render.autoteste_media_max",
+   "valor": 0.5,
+   "unidade": "nivel de 0 a 255, media da diferenca absoluta por canal",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Limiar do autoteste do caminho PDF + PDFium no doctor (decisoes-v1.md, 01/11, 36): a pagina de referencia desenhada com a fonte gerada pelo motor contra a imagem gravada no pacote. Na maquina que gravou a imagem a diferenca e 0. O valor e da ordem do autoteste Arial da pesquisa (media ate 0,3), sem medicao em outra maquina; acima dele o doctor avisa."
+  },
+  {
+   "id": "render.autoteste_max_abs",
+   "valor": 8,
+   "unidade": "nivel de 0 a 255, maior diferenca absoluta num canal",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Limiar da maior diferenca do autoteste do caminho PDF + PDFium no doctor. Sem medicao em outra maquina ou em outro build; acima dele o doctor avisa."
+  },
+  {
+   "id": "render.tolerancia_borda_smooth",
+   "valor": 55,
+   "unidade": "nivel de 0 a 255, erro medio de borda por camada de texto",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "01/11, decisoes do M4, 62"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "Tolerancia de borda do texto Smooth (e Strong, Crisp e Sharp acima de render.corpo_sharp_pequeno_px) na comparacao automatica com a peca aprovada (decisoes-v1.md, render n. 3; arquitetura-v1.md, 10.2, pergunta 6). Fixada pelo Duda em 01/11 sobre a medicao do M4: a pior camada do corpus que passa no portao de fontes dava 51,7, e a media das 10 camadas, 19,4. Camada com faux bold fica fora da comparacao automatica e vai para o DA conferir no master."
+  },
+  {
+   "id": "render.tolerancia_borda_sharp_pequeno",
+   "valor": 60,
+   "unidade": "nivel de 0 a 255, erro medio de borda por camada de texto",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "01/11, decisoes do M4, 62"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "Tolerancia de borda do texto Sharp ate render.corpo_sharp_pequeno_px no dispositivo, maior que a do Smooth (decisoes-v1.md, render n. 3). Fixada pelo Duda em 01/11 sobre a medicao do M4: a pior das 8 camadas da SECOM dava 54,8, e a media, 43,2."
   }
  ]
 }

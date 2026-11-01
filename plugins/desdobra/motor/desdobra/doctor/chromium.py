@@ -6,7 +6,11 @@
   - o Chromium fixado: o headless shell da revisao que o Playwright instalado pede, na pasta de navegadores que o
     motor usa (no ambiente do plugin, <pasta de dados>/ms-playwright, baixado pelo gancho de preparo);
   - um carregamento de verdade de uma fonte sintetica pelo @font-face, servida pela rota propria no loopback, com a
-    conferencia por CDP de que a face usada e a do arquivo.
+    conferencia por CDP de que a face usada e a do arquivo;
+  - o autoteste do caminho PDF + PDFium do render (M4, decisoes-v1.md, 01/11, 36): a pagina de referencia desenhada
+    com a fonte gerada pelo motor, pelo mesmo caminho do job, contra a imagem gravada no pacote
+    (desdobra.render.autoteste). O autoteste Arial de captura de tela da pesquisa nao existe no motor: o render nao
+    usa captura de tela.
 
 A fonte sintetica nasce num processo filho com o fontBuilder (retangulos, sem desenho de letra), numa pasta
 temporaria do doctor apagada no fim. Ela nunca vai para o pacote, para log nem para o doctor.json: so os numeros.
@@ -49,6 +53,12 @@ FILHO_FONTE_SINTETICA = (
 O_QUE_FAZER_CHROMIUM = ('O Chromium fixado não está na pasta de navegadores do desdobra. Abra uma sessão nova do Claude '
                         'Code para o gancho baixar o Chromium. Se o problema voltar, veja o preparo.log na pasta de '
                         'dados do plugin e mande o doctor.json para a Trezion.')
+O_QUE_FAZER_AUTOTESTE = ('O autoteste do render não rodou ou o CDP não confirmou a face gerada pelo motor. Sem ele o '
+                         'render do job não tem prova de que o caminho do texto está certo nesta máquina. Mande o '
+                         'doctor.json para a Trezion.')
+O_QUE_FAZER_AUTOTESTE_AVISO = ('A página de referência do render saiu diferente da imagem gravada no pacote, acima do '
+                               'limiar a calibrar. O render roda, mas confira o master do job com atenção e mande o '
+                               'doctor.json para a Trezion.')
 O_QUE_FAZER_FONTE = ('O Chromium fixado não carregou a fonte de teste pelo @font-face, ou o CDP não confirmou a face. '
                      'Sem isso a conferência de fontes não roda. Mande o doctor.json para a Trezion.')
 
@@ -129,4 +139,33 @@ def verificar_fonte_no_chromium():
     if not carregada or not confere:
         v.situacao = 'falha'
         v.o_que_fazer = O_QUE_FAZER_FONTE
+    return v
+
+
+def verificar_autoteste_render(plat=None):
+    """Autoteste do caminho PDF + PDFium do render com a fonte gerada pelo motor (decisoes-v1.md, 01/11, 36)."""
+    from desdobra.render import autoteste, execucao
+    v = Verificacao('autoteste_render', 'Autoteste do render: texto pelo PDF e PDFium com a fonte gerada pelo motor')
+    v.limite = limites.obter('render.autoteste_media_max').citacao()
+    try:
+        r = autoteste.rodar(plat)
+    except (autoteste.ErroAutoteste, execucao.ErroRender) as e:
+        v.situacao = 'falha'
+        v.detalhe = str(e)
+        v.o_que_fazer = O_QUE_FAZER_AUTOTESTE
+        return v
+    cdp, cache = r['cdp'], r['cache']
+    v.numeros = {'media_x1000': int(round(r['media'] * 1000)), 'maximo': r['maximo'],  # numero-neutro: milesimos de nivel
+                 'cdp_trechos': cdp['trechos'], 'cdp_confere': cdp['confere'],
+                 'copias_no_cache': cache['copias_encontradas'] or 0, 'pdfs_no_cache': cache['pdfs_encontrados'] or 0}
+    v.detalhe = ('Chromium %s: diferença média %.4f e máxima %d contra a referência; CDP confere em %d de %d trechos; '
+                 '%d cópia(s) da fonte e %d PDF(s) no perfil.' % (r['chromium'], r['media'], r['maximo'], cdp['confere'],
+                                                                  cdp['trechos'], cache['copias_encontradas'] or 0,
+                                                                  cache['pdfs_encontrados'] or 0))
+    if cdp['confere'] != cdp['trechos'] or not cdp['trechos'] or cache['copias_encontradas'] or cache['pdfs_encontrados']:
+        v.situacao = 'falha'
+        v.o_que_fazer = O_QUE_FAZER_AUTOTESTE
+    elif not r['passou']:
+        v.situacao = 'aviso'
+        v.o_que_fazer = O_QUE_FAZER_AUTOTESTE_AVISO
     return v
