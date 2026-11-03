@@ -328,11 +328,21 @@ def varrer_pdfs_no_job(pasta_job):
 
 
 # ------------------------------------------------------------------ render do job
-def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guardar_coberturas=None):
-    """Renderiza a origem do job. disparo: o Disparo que desdobra.humano.exigir('render') emitiu depois de conferir o
-    console (nada mais vale, e o disparo so serve uma vez); aceites: decisoes do DA confirmadas no terminal (codigos de
-    pede_confirmacao). Devolve o render.json gravado. ErroRender quando para; nesse caso nao fica master nem
-    render.json novos, nem render/.trabalho.
+def montar_contrato(pasta, formato=mod_contrato.FORMATO_ORIGEM, funcoes=None):
+    """(contrato, bloqueios, pede_confirmacao) do formato: o da origem (M4) ou o de um formato derivado (M5)."""
+    if formato == mod_contrato.FORMATO_ORIGEM:
+        return mod_contrato.montar(pasta, funcoes=funcoes)
+    from desdobra.render import derivado
+    return derivado.montar(pasta, formato)
+
+
+def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guardar_coberturas=None,
+               formato=mod_contrato.FORMATO_ORIGEM):
+    """Renderiza um formato do job: a origem (M4) ou um formato derivado (M5, de derivacao/<formato>.json). disparo:
+    o Disparo que desdobra.humano.exigir('render') emitiu depois de conferir o console (nada mais vale, e o disparo so
+    serve uma vez); aceites: decisoes do DA confirmadas no terminal (codigos de pede_confirmacao). Devolve o
+    render.json gravado. ErroRender quando para; nesse caso nao fica master nem render.json novos, nem
+    render/.trabalho.
 
     guardar_coberturas: pasta fora do job para as coberturas do texto (so a medicao do corpus usa)."""
     from desdobra import humano
@@ -346,7 +356,7 @@ def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guard
     pasta = Path(pasta_job).resolve()
     plat = plat or plataforma.obter()
     estado = contratos.ler(pasta / 'estado.json', 'estado/1')
-    contrato, bloqueios, confirmar = mod_contrato.montar(pasta, funcoes=funcoes)
+    contrato, bloqueios, confirmar = montar_contrato(pasta, formato, funcoes)
     if bloqueios:
         raise ErroRender('O render tem bloqueio: %s.' % ', '.join(sorted({b['codigo'] for b in bloqueios})),
                          'bloqueio', o_que_fazer=' '.join(dict.fromkeys(b['descricao'] for b in bloqueios)),
@@ -405,6 +415,14 @@ def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guard
     finally:
         shutil.rmtree(trabalho, ignore_errors=True)
     tempos['composicao'] = round(time.perf_counter() - t3, 3)
+    if formato != mod_contrato.FORMATO_ORIGEM:
+        from desdobra.render import derivado as mod_derivado
+        fora_da_caixa = mod_derivado.tinta_fora_da_caixa(contrato['entradas'], saida.get('entradas') or [],
+                                                         contrato['formato']['largura'], contrato['formato']['altura'])
+        if fora_da_caixa:
+            raise ErroRender('A tinta de um texto passou da caixa que a derivação validou (ou foi cortada na página).',
+                             'tinta_fora_da_caixa_validada', medidas={'textos': fora_da_caixa},
+                             o_que_fazer='Rode o "desdobra derivar" de novo; se continuar, mande o render.json para a Trezion.')
     destino = pasta / 'render' / formato
 
     fora, varridos = conferencia.varrer_fontes_fora_da_entrada(pasta)
@@ -454,6 +472,13 @@ def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guard
         'recursos': {'pico_bytes_composicao': pico},
         'tempos': dict(tempos, filho=saida.get('tempos')), 'tempo_s': round(time.perf_counter() - t0, 3),
     }
+    if formato != mod_contrato.FORMATO_ORIGEM:
+        from desdobra.derivacao import nucleo as nd
+        d = contratos.ler(pasta / nd.PASTA / ('%s.json' % formato), nd.ESQUEMA)
+        rel['derivacao'] = {'arquivo': '%s/%s.json' % (nd.PASTA.as_posix(), formato),
+                            'sha256': contrato['origem'].get('derivacao_sha256'), 'caminho': d['caminho'],
+                            'briefing_sha256': d['briefing_sha256'], 'briefing_origem': d['briefing_origem'],
+                            'mestre': (d.get('mestre') or {}).get('id')}
     if fora or pdfs_job:
         raise ErroRender('A varredura achou arquivo de fonte ou PDF na pasta do job depois do render.', 'varredura',
                          medidas={'varredura': rel['varredura']})

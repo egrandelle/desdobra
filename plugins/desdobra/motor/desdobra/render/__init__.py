@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""desdobra render: renderiza a origem do job (M4, arquitetura-v1.md, 4.11 e 9.5).
+"""desdobra render: renderiza a origem do job (M4) ou um formato derivado (M5), arquitetura-v1.md, 4.11, 9.5 e 9.6.
 
-    desdobra render --job <pasta> [--formato origem]
+    desdobra render --job <pasta> [--formato origem|<id do formato derivado>]
     desdobra linkado confirmar --job <pasta>
 
 Render protegido (decisoes-v1.md, arquitetura n. 2): o render so parte de uma pessoa, pela tela (clique do DA, no M7)
@@ -32,8 +32,8 @@ SIM = ('sim',)
 def registrar(subparsers):
     p = subparsers.add_parser('render', help='Renderiza a origem do job (só no terminal interativo, com confirmação)')
     p.add_argument('--job', required=True, help='Pasta do job')
-    p.add_argument('--formato', default='origem', choices=('origem',),
-                   help='Formato a renderizar (no M4, só a origem)')
+    p.add_argument('--formato', default='origem', type=_id_formato,
+                   help='Formato a renderizar: origem (o KV) ou o id de um formato derivado (derivacao/<id>.json)')
     p.set_defaults(executar=_render, nome_comando='render')
 
     lk = subparsers.add_parser('linkado', help='Confirmação do DA do arquivo de cada smart object linkado')
@@ -41,6 +41,18 @@ def registrar(subparsers):
     c = sub.add_parser('confirmar', help='Confirma, no terminal interativo, o arquivo casado de cada linkado')
     c.add_argument('--job', required=True, help='Pasta do job')
     c.set_defaults(executar=_linkado_confirmar, nome_comando='linkado confirmar')
+
+
+def _id_formato(valor):
+    import argparse
+    import re
+    from desdobra.briefing import modelo
+    if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', valor or ''):
+        raise argparse.ArgumentTypeError('id de formato inválido')
+    # origem e o KV; devolucoes e os nomes de dispositivo do Windows nunca sao formato
+    if valor in ('devolucoes',) + modelo.IDS_DO_WINDOWS:
+        raise argparse.ArgumentTypeError('id de formato reservado')
+    return valor
 
 
 def perguntar(pergunta):
@@ -80,7 +92,7 @@ def _render(args):
                          o_que_fazer='Rode o render numa pasta de job ("desdobra job criar").',
                          linhas_humanas=['A pasta não é um job do desdobra.'])
     try:
-        _contrato, bloqueios, confirmar = mod_contrato.montar(pasta)
+        _contrato, bloqueios, confirmar = execucao.montar_contrato(pasta, args.formato)
         if bloqueios:
             return _parou(execucao.ErroRender('O render tem bloqueio.', 'bloqueio', medidas={'bloqueios': bloqueios},
                                               o_que_fazer=' '.join(dict.fromkeys(b['descricao'] for b in bloqueios))),
@@ -101,7 +113,7 @@ def _render(args):
                                  linhas_humanas=['Render cancelado.'])
             aceites.append(c['codigo'])
         with nucleo.Trava(pasta):
-            rel = execucao.renderizar(pasta, disparo=disparo, aceites=aceites)
+            rel = execucao.renderizar(pasta, disparo=disparo, aceites=aceites, formato=args.formato)
     except execucao.ErroRender as e:
         return _parou(e, pasta)
     except nucleo.ErroJob as e:
@@ -115,7 +127,8 @@ def _render(args):
             'copias_no_cache': rel['cache']['copias_encontradas'] or 0,
             'fontes_fora_da_entrada': rel['varredura']['arquivos_de_fonte_fora_da_entrada'],
             'pdfs_no_job': rel['varredura']['pdfs_no_job']}
-    return Resultado(comando='render', situacao='ok', fase='render', o_que_fazer=O_QUE_FAZER_OK, contagens=cont,
+    return Resultado(comando='render', situacao='ok', fase='render',
+                     o_que_fazer=O_QUE_FAZER_OK.replace('/origem/', '/%s/' % rel['formato']['chave']), contagens=cont,
                      ids={'master_sha256': rel['master']['sha256']}, numeros={'tempo_s': rel['tempo_s']},
                      pasta_job=pasta,
                      linhas_humanas=['Master gravado em render/%s/master.png (%d x %d).' % (

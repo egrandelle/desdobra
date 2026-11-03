@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:devolucoes:1",
+  "title": "Formatos devolvidos ao DA (devolucoes/1)",
+  "description": "derivacao/devolucoes.json: cada formato que a derivacao nao fez sozinha, com o motivo, o que fazer e, quando foi uma restricao obrigatoria, o nome e a fonte dela (arquitetura-v1.md, 4.10).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "gerado_em", "briefing_sha256", "devolucoes", "inventario"],
+  "properties": {
+    "esquema": {"const": "devolucoes/1"},
+    "job_id": {"type": "string"},
+    "gerado_em": {"type": "string"},
+    "briefing_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "devolucoes": {"type": "array", "items": {"type": "object", "required": ["formato", "chave", "motivo", "o_que_fazer", "restricao", "elementos"]}},
+    "inventario": {"type": "object", "required": ["mestre", "iguais_entre_formatos", "formatos"]}
+  }
+}

@@ -10,7 +10,11 @@ Le da entrada padrao o JSON do evento (tool_name e tool_input) e nega (permissio
     ou a do briefing do desdobra (pela linha de comando ou pelo codigo Python do motor), que mexe na conferencia do
     disparo humano, ou que escreve num arquivo que so o DA grava;
   - nas ferramentas que gravam arquivo (Write, Edit, MultiEdit, NotebookEdit), arquivo que so o DA grava ou que so o
-    render grava: os .json de briefing/, specs/confirmacoes.json e master, render.json e contrato de render/.
+    motor grava: os .json de briefing/ e de derivacao/, specs/confirmacoes.json e master, render.json e contrato de
+    render/.
+Escrita pelo terminal inclui redirecao, copia, movimento e troca de nome (os.replace, os.rename, shutil,
+Rename-Item, ren, Move-Item, Copy-Item) e a opcao --saida do motor. O motor chamado como desdobra, desdobra.exe,
+desdobra.cli ou desdobra.__main__ conta igual.
 Com a negacao, o Claude recebe o motivo: quem roda isso e o DA, num terminal proprio, fora do Claude. Sem negacao, o
 gancho nao imprime nada e o Claude Code segue o fluxo normal de permissao. O codigo de saida e sempre 0.
 
@@ -27,17 +31,18 @@ MOTIVO = ('O desdobra recusa este comando pelo Claude: render, confirmação de 
 FERRAMENTAS_DE_COMANDO = ('Bash', 'PowerShell')
 FERRAMENTAS_DE_ARQUIVO = ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')
 # subcomandos humanos do desdobra, depois de "desdobra" e de opcoes globais quaisquer
-SUBCOMANDO = re.compile(r'desdobra(?:\.exe)?["\']?(?:\s+--?[\w-]+(?:[ =](?!render\b|linkado\b|spec\b|briefing\b)[^\s|;&]+)?)*'
+SUBCOMANDO = re.compile(r'desdobra(?:\.exe|\.cli|\.__main__)?["\']?(?:\s+--?[\w-]+(?:[ =](?!render\b|linkado\b|spec\b|briefing\b)[^\s|;&]+)?)*'
                         r'\s+(render|linkado\s+confirmar|spec\s+confirmar|briefing\s+confirmar)(?![\w./\\-])',
                         re.IGNORECASE)
 # codigo do motor que grava o que so o DA grava, ou que mexe na conferencia
 CODIGO = re.compile(r'renderizar\s*\(|linkados\s*\.\s*(confirmar|sessao)|confirmar\s*\.\s*sessao|'
                     r'desdobra\s*\.\s*humano|from\s+desdobra\s+import\s+[^\n;]*\bhumano\b|\bhumano\s*\.\s*\w+\s*=|'
                     r'_SELOS|console_interativo', re.IGNORECASE)
-ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])(briefing[\\/][\w.-]+\.json\b|specs[\\/]confirmacoes\.json|render[\\/][^\\/]+[\\/]'
+ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])(briefing[\\/][\w.-]+\.json\b|derivacao[\\/][\w.-]+\.json\b|specs[\\/]confirmacoes\.json|render[\\/][^\\/]+[\\/]'
                             r'(master\.png|render\.json|contrato\.json)|linkados-confirmados\.json)', re.IGNORECASE)
 ESCRITA = re.compile(r'(>|\btee\b|Set-Content|Out-File|Add-Content|\bcp\b|\bmv\b|copy|move|New-Item|\bsed\s+-i|'
-                     r'write_text|write_bytes|open\s*\()', re.IGNORECASE)
+                     r'write_text|write_bytes|open\s*\(|os\s*\.\s*(replace|rename|link|symlink)|shutil\s*\.|'
+                     r'Rename-Item|\bren\b|\brename\b|Move-Item|Copy-Item|--saida)', re.IGNORECASE)
 
 
 def decidir(evento):

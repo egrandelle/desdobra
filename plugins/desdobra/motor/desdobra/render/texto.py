@@ -58,11 +58,13 @@ def _entrelinha(run, paragrafo):
     return float(run.get('entrelinha') or 0)
 
 
-def linhas_da_camada(texto, quebras=()):
+def linhas_da_camada(texto, quebras=(), juntar=()):
     """Divide os trechos em linhas pelas quebras gravadas e, na caixa de paragrafo, pelas quebras automaticas medidas
-    (quebras: posicoes de espaco no texto que viram fim de linha). Cada linha: {'pedacos': [(texto, run)],
-    'indices': [posicao de cada caractere no texto], 'entrelinha', 'just'}."""
+    (quebras: posicoes de espaco no texto que viram fim de linha). juntar: posicoes de quebra gravada que o DA aprovou
+    tirar na familia do formato (quebras por familia, decisoes-v1.md, 77): viram espaco. Cada linha: {'pedacos':
+    [(texto, run)], 'indices': [posicao de cada caractere no texto], 'entrelinha', 'just'}."""
     quebras = set(quebras or ())
+    juntar = set(juntar or ())
     runs = [r for r in texto.get('runs') or [] if r.get('texto')]
     paragrafos = texto.get('paragrafos') or []
     linhas = [{'pedacos': [], 'runs': [], 'indices': [], 'inicio': runs[0]['inicio'] if runs else 0}]
@@ -70,7 +72,10 @@ def linhas_da_camada(texto, quebras=()):
         atual = ''
         pos = r['inicio']
         for ch in r['texto']:
-            if ch in casamento.CONTROLES_DE_QUEBRA or pos in quebras:
+            if pos in juntar and ch in casamento.CONTROLES_DE_QUEBRA:
+                atual += ' '
+                linhas[-1]['indices'].append(pos)
+            elif ch in casamento.CONTROLES_DE_QUEBRA or pos in quebras:
                 if atual:
                     linhas[-1]['pedacos'].append((atual, r))
                 linhas[-1]['runs'].append(r)
@@ -131,7 +136,8 @@ def quebras_da_caixa(entrada, posicoes, faces_por_ps):
     esq, _topo, dir_, _base = (float(x) for x in t['box_bounds'])
     largura = dir_ - esq
     quebras = set(entrada.get('quebras_automaticas') or ())
-    for n, ln in enumerate(linhas_da_camada(t, quebras)):
+    for n, ln in enumerate(linhas_da_camada(t, quebras | set(entrada.get('quebras_inseridas') or ()),
+                                             entrada.get('quebras_juntadas'))):
         if not ln['pedacos']:
             continue
         texto_linha = ''.join(caixa_alta(s) if r.get('font_caps') in ('ALL_CAPS', 'SMALL_CAPS') else s
@@ -217,7 +223,8 @@ def montar_svg(entrada, faces_por_ps, prefixo, cor_da_passada=None, posicoes=Non
     x0, y0, x1, y1 = entrada['regiao']
     rw, rh = x1 - x0, y1 - y0
     xx, xy, yx, yy, tx, ty = t['matriz']
-    linhas = linhas_da_camada(t, entrada.get('quebras_automaticas'))
+    linhas = linhas_da_camada(t, set(entrada.get('quebras_automaticas') or ()) | set(entrada.get('quebras_inseridas') or ()),
+                              entrada.get('quebras_juntadas'))
     corpo, spans, defs, cores_linhas = [], [], [], {}
     ancoras_x, y = origem_das_linhas(t, linhas, faces_por_ps)
     for n, ln in enumerate(linhas):

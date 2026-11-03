@@ -41,6 +41,7 @@
                      "laudo_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
                      "conferencia_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
                      "linkados_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+                     "derivacao_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}], "description": "Formato derivado (M5): sha256 de derivacao/<formato>.json"},
                      "funcoes": {"enum": ["identidade", "derivacao", "autoteste"]}}
     },
     "faces": {
@@ -69,8 +70,18 @@
           "cores": {"type": "array", "items": {"type": "string"}}, "valores_cor": {"type": "object"},
           "cores_por_trecho": {"type": "object"}, "antialiasing": {"type": ["string", "null"]},
           "corpo_dispositivo_px": {"type": "number"}, "sharp_pequeno": {"type": "boolean"},
+          "quebras_juntadas": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Formato derivado (M5): posicoes de quebra gravada que viram espaco (quebras aprovadas por familia)"},
+          "quebras_inseridas": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Formato derivado (M5): posicoes de espaco que viram quebra (mestre propria)"},
+          "caixa_validada": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4, "description": "Formato derivado (M5): a caixa do texto que a derivacao validou, no formato; o render confere a tinta contra ela"},
           "arquivo": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"},
-          "colocacao": {"type": ["array", "null"], "items": {"type": "number"}}, "caixa": {"type": ["array", "null"]}
+          "colocacao": {"type": ["array", "null"], "items": {"type": "number"}}, "caixa": {"type": ["array", "null"]},
+          "elemento": {"type": "string", "pattern": "^el[0-9]+$", "description": "Formato derivado (M5): o elemento da derivacao"},
+          "transformacao": {"type": "object", "required": ["s", "origem_doc", "destino", "recorte_doc"],
+                            "description": "Formato derivado (M5): p' = s . (p - origem_doc) + destino; a pilha e cortada em recorte_doc (o canvas da mestre) antes",
+                            "properties": {"s": {"type": "number", "exclusiveMinimum": 0},
+                                           "origem_doc": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                                           "destino": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                                           "recorte_doc": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}}}
         },
         "allOf": [
           {"if": {"properties": {"tipo": {"const": "pilha"}}}, "then": {"required": ["indices", "layer_ids", "chave"]}},

@@ -694,6 +694,17 @@ def _resultado(estado, pasta, situacao, codigo, fase, rodadas, linhas, envelope_
     if pendentes:
         for k, v in pendentes[0][1].get('contagens', {}).items():
             contagens.setdefault(k, v)
+    recomendacao = None
+    if situacao == 'concluido' and (Path(pasta) / 'laudo' / 'laudo.json').is_file():
+        # preparo do PSD antes da rotulagem (decisoes-v1.md, 99): so contagens, nada de nome
+        from desdobra.laudo import preparo
+        try:
+            cont_preparo = preparo.contar(contratos.ler(Path(pasta) / 'laudo' / 'laudo.json', 'laudo/1'))
+        except contratos.ErroContrato:
+            cont_preparo = None
+        if cont_preparo is not None:
+            contagens.update({'preparo_' + k: v for k, v in cont_preparo.items()})
+            recomendacao = preparo.recomendacao(cont_preparo)
     if pendentes and situacao == 'concluido':
         # a esteira chegou ao fim, mas o job nao esta concluido: vale o bloqueio pendente
         situacao, fase = 'ok_com_bloqueio', pendentes[0][0]
@@ -711,6 +722,9 @@ def _resultado(estado, pasta, situacao, codigo, fase, rodadas, linhas, envelope_
         situacao = 'ok_com_bloqueio'
         o_que_fazer = '%s %s %s' % (o_que_fazer, MENSAGEM_BLOQUEIO % fid, bloqueio['o_que_fazer'])
         linhas = list(linhas) + [MENSAGEM_BLOQUEIO % fid]
+    if recomendacao:
+        o_que_fazer = '%s %s' % (o_que_fazer, recomendacao)
+        linhas = list(linhas) + [recomendacao]
     return Resultado(comando='job proxima', codigo=int(codigo), situacao=situacao, fase=fase,
                      o_que_fazer=o_que_fazer, contagens=contagens, ids=ids, numeros=numeros,
                      conteudo=conteudo, pasta_job=Path(pasta), linhas_humanas=linhas,

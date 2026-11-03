@@ -27,6 +27,7 @@ import argparse
 import enum
 import io
 import json
+import math
 import sys
 import time
 import traceback
@@ -54,6 +55,7 @@ PIXELS_BANDA = 8_000_000  # numero-neutro: pixels do PDFium por faixa (memoria);
 ESCALA_8 = 255.0  # numero-neutro: 8 bits por canal
 COMPRESSAO_PNG = 1  # numero-neutro: nivel de compressao do PNG; nao muda os pixels
 FORMATOS_LINKADO = ('PNG', 'JPEG')
+PIXELS_DE_FOLGA = 4  # numero-neutro: borda transparente em volta do recorte para o filtro de reamostragem; nao muda o desenho
 
 
 class Recusa(Exception):
@@ -253,6 +255,50 @@ def desenhar_linkado(canvas, e, pasta_job, perfil_doc, registros):
     return canvas.sobre(np.asarray(colocada), bx0, by0, e.get('opacidade', 1.0))
 
 
+def colocar_transformada(canvas, img, caixa_asset, tr):
+    """Pilha de formato derivado (M5): o asset (recortado na caixa de tinta caixa_asset, no espaco do documento) e
+    cortado no recorte da mestre, escalado por s e posto no destino (p' = s . (p - origem) + destino). A reducao e a
+    ampliacao sao feitas em alfa pre-multiplicado (RGBa) com LANCZOS, pela caixa de origem que corresponde ao destino
+    em pixels inteiros (sem deslocamento de meio pixel)."""
+    import numpy as np
+    from PIL import Image
+    s = float(tr['s'])
+    ox, oy = (float(v) for v in tr['origem_doc'])
+    dx, dy = (float(v) for v in tr['destino'])
+    r = tr['recorte_doc']
+    sx0, sy0 = max(int(r[0]), int(caixa_asset[0])), max(int(r[1]), int(caixa_asset[1]))
+    sx1, sy1 = min(int(math.ceil(r[2])), int(caixa_asset[2])), min(int(math.ceil(r[3])), int(caixa_asset[3]))
+    if sx1 <= sx0 or sy1 <= sy0:
+        return 0
+    recorte = img.crop((sx0 - caixa_asset[0], sy0 - caixa_asset[1], sx1 - caixa_asset[0], sy1 - caixa_asset[1]))
+    folga = int(math.ceil(PIXELS_DE_FOLGA / min(s, 1.0)))
+    # a folga e transparente, salvo no lado que sangra (o corte na borda do canvas da mestre): ali a borda se repete,
+    # para o filtro nao abrir uma franja transparente onde o elemento continua alem do canvas
+    arr = np.pad(np.asarray(recorte), ((folga, folga), (folga, folga), (0, 0)), mode='edge')
+    sangra = tr.get('sangra') or {}
+    if not sangra.get('topo'):
+        arr[:folga] = 0
+    if not sangra.get('base'):
+        arr[arr.shape[0] - folga:] = 0
+    if not sangra.get('esq'):
+        arr[:, :folga] = 0
+    if not sangra.get('dir'):
+        arr[:, arr.shape[1] - folga:] = 0
+    base = Image.fromarray(np.ascontiguousarray(arr), 'RGBA')
+    X0, Y0 = s * (sx0 - ox) + dx, s * (sy0 - oy) + dy
+    X1, Y1 = s * (sx1 - ox) + dx, s * (sy1 - oy) + dy
+    cx0, cy0 = max(int(math.floor(X0)), 0), max(int(math.floor(Y0)), 0)
+    cx1, cy1 = min(int(math.ceil(X1)), canvas.w), min(int(math.ceil(Y1)), canvas.h)
+    if cx1 <= cx0 or cy1 <= cy0:
+        return 0
+    # a caixa da fonte (no recorte com folga) que vai para [cx0, cx1] x [cy0, cy1]
+    caixa = ((cx0 - dx) / s + ox - sx0 + folga, (cy0 - dy) / s + oy - sy0 + folga,
+             (cx1 - dx) / s + ox - sx0 + folga, (cy1 - dy) / s + oy - sy0 + folga)
+    caixa = (max(caixa[0], 0.0), max(caixa[1], 0.0), min(caixa[2], float(base.width)), min(caixa[3], float(base.height)))
+    feito = base.convert('RGBa').resize((cx1 - cx0, cy1 - cy0), Image.Resampling.LANCZOS, box=caixa).convert('RGBA')
+    return canvas.sobre(np.asarray(feito), cx0, cy0)
+
+
 def executar(a, gancho, cabecalho, pdfs):
     import hashlib
 
@@ -297,6 +343,11 @@ def executar(a, gancho, cabecalho, pdfs):
                 estatisticas.append({'id': e['id'], 'tipo': 'pilha', 'px': 0})
                 continue
             with Image.open(info['arquivo']) as im:
+                if e.get('transformacao'):
+                    n = colocar_transformada(canvas, im.convert('RGBA'), info['caixa'], e['transformacao'])
+                    estatisticas.append({'id': e['id'], 'tipo': 'pilha', 'px': n})
+                    tempos[e['id']] = round(time.perf_counter() - t1, 3)
+                    continue
                 rgba = np.asarray(im.convert('RGBA'))
             n = canvas.sobre(rgba, info['caixa'][0], info['caixa'][1])
             estatisticas.append({'id': e['id'], 'tipo': 'pilha', 'px': n})
@@ -324,9 +375,18 @@ def executar(a, gancho, cabecalho, pdfs):
                 alfa_cor = np.where(soma > 0, alfa_cor / np.maximum(soma, 1e-300), 1.0)  # numero-neutro: idem
             cobertura = np.clip(soma, 0.0, 1.0) * alfa_cor * float(e['opacidade'])
             canvas.texto(cobertura, F, x0, y0, G, curva)
+            # a caixa da tinta real e os lados em que ela encosta na borda da regiao (o derivado confere contra a caixa
+            # validada; revisao 3 do M5)
+            tem = soma > 0
+            tinta, toca = None, []
+            if tem.any():
+                ys, xs = np.nonzero(tem)
+                tinta = [int(x0 + xs.min()), int(y0 + ys.min()), int(x0 + xs.max() + 1), int(y0 + ys.max() + 1)]
+                toca = [lado for lado, v in (('esq', tem[:, 0].any()), ('dir', tem[:, -1].any()), ('topo', tem[0].any()),
+                                             ('base', tem[-1].any())) if v]
             estatisticas.append({'id': e['id'], 'tipo': 'texto', 'layer_id': e['layer_id'],
                                  'px': int((cobertura > 0).sum()), 'cobertura_soma': round(float(cobertura.sum()), 3),
-                                 'paginas': len(por_entrada.get(e['id'], []))})
+                                 'paginas': len(por_entrada.get(e['id'], [])), 'tinta': tinta, 'toca_regiao': toca})
             if cabecalho.get('guardar_coberturas'):
                 coberturas[e['id']] = np.clip(soma, 0.0, 1.0).astype(np.float32)
             del soma, F, alfa_cor, cobertura

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:derivacao:1",
+  "title": "Derivacao de um formato (derivacao/1)",
+  "description": "derivacao/<formato>.json (arquitetura-v1.md, 4.10): a familia, o caminho (transform, solver, mestre_propria ou devolvido), os elementos com caixa, escala, ancora, quebras e a regra aplicada (funcao, regra e caminho), as restricoes com a forca e a fonte, as validacoes de layout e, quando o formato volta ao DA, a devolucao com o nome e a fonte da restricao. Sem texto da peca nem nome de camada: so ids, funcoes e medidas.",
+  "type": "object",
+  "required": ["esquema", "job_id", "gerado_em", "motor_versao", "formato", "areas", "parametros", "briefing_sha256", "briefing_origem", "laudo_sha256", "portao_fontes", "fora_da_peca", "sem_geometria", "mestre", "familia", "caminho", "situacao", "elementos", "restricoes", "validacoes", "devolucao", "registros"],
+  "$defs": {
+    "caixa": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}
+  },
+  "properties": {
+    "esquema": {"const": "derivacao/1"},
+    "job_id": {"type": "string"},
+    "gerado_em": {"type": "string"},
+    "motor_versao": {"type": "string"},
+    "formato": {
+      "type": "object",
+      "required": ["id", "chave", "largura", "altura", "composicao", "base"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "chave": {"type": "string"},
+        "largura": {"type": "integer", "minimum": 1},
+        "altura": {"type": "integer", "minimum": 1},
+        "composicao": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+        "base": {"type": "object", "required": ["tipo", "dimensoes"], "properties": {"tipo": {"enum": ["arquivo", "composicao", "area_util"]}}}
+      }
+    },
+    "areas": {"type": "object", "required": ["area_util", "faixas", "area_segura"]},
+    "parametros": {"type": "object", "required": ["faixa", "base", "mestres_max"]},
+    "briefing_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "briefing_origem": {"enum": ["da", "fixture_de_teste"]},
+    "laudo_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "portao_fontes": {"enum": ["passa", "decisao_do_da", "bloqueado", "nao_conferido"]},
+    "fora_da_peca": {"type": "array", "items": {"type": "integer"}},
+    "sem_geometria": {"type": "array", "items": {"type": "integer"}},
+    "fora_do_canvas": {"type": "array", "items": {"type": "integer"}},
+    "fora_do_quadro": {"type": "integer", "minimum": 0},
+    "mestre": {"type": ["object", "null"]},
+    "familia": {"type": ["object", "null"]},
+    "caminho": {"enum": ["transform", "solver", "mestre_propria", "devolvido"]},
+    "situacao": {"enum": ["derivado", "devolvido"]},
+    "elementos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "raiz", "funcao", "classe", "layer_ids", "texto", "regra", "ancora", "caixa_mestre", "caixa", "escala", "regra_aplicada", "transformacao"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^el[0-9]+$"},
+          "funcao": {"type": "string"},
+          "layer_ids": {"type": "array", "items": {"type": "integer"}},
+          "caixa": {"$ref": "#/$defs/caixa"},
+          "caixa_mestre": {"$ref": "#/$defs/caixa"},
+          "escala": {"type": "number", "exclusiveMinimum": 0},
+          "regra_aplicada": {"type": "object", "required": ["funcao", "regra", "caminho", "classe"]},
+          "transformacao": {"type": "object", "required": ["s", "origem_doc", "destino", "recorte_doc"]}
+        }
+      }
+    },
+    "restricoes": {"type": "array", "items": {"type": "object", "required": ["nome", "forca", "fonte", "elementos"]}},
+    "validacoes": {"type": "array", "items": {"type": "object", "required": ["nome", "situacao", "fonte", "elementos"], "properties": {"situacao": {"enum": ["ok", "reprova", "avisa", "registra"]}}}},
+    "devolucao": {
+      "anyOf": [{"type": "null"}, {
+        "type": "object",
+        "required": ["motivo", "o_que_fazer", "restricao", "elementos"],
+        "properties": {
+          "motivo": {"enum": ["troca_forte_de_orientacao", "troca_de_orientacao_quadrado", "fora_da_faixa_de_familia", "acima_do_numero_de_mestres", "restricao_obrigatoria_nao_fecha", "validacao_obrigatoria_reprovou", "indeterminado_sem_regra", "mestre_propria_incompleta", "formato_sem_folha", "dimensao_diferente_da_folha", "erro_no_formato", "ajuste_global_sem_aplicar", "bloco_partido_na_pilha", "bloco_com_regras_diferentes", "quebra_sem_medida"]},
+          "restricao": {"anyOf": [{"type": "null"}, {"type": "object", "required": ["nome", "forca", "fonte"]}]}
+        }
+      }]
+    },
+    "registros": {"type": "array", "items": {"type": "object", "required": ["codigo"]}},
+    "inventario_entre_formatos": {"enum": ["igual", "diferente"]}
+  }
+}

@@ -138,7 +138,13 @@ FIM_M4 = ('O laudo, a conferência de fontes, o design system e o rascunho das s
           'confirmar --job <pasta>"; os confirmados ficam em specs/formatos-do-job.json. O render da origem é do DA: '
           'ele roda "desdobra render --job <pasta>" num terminal interativo e confirma. A tela de briefing entra num '
           'marco seguinte.')
-FIM = FIM_M4
+FIM_M5 = ('O laudo, a conferência de fontes, o design system e o rascunho das specs (specs/rascunho.json) estão '
+          'prontos. Os valores das specs só valem depois que o DA confirma, no terminal, com "desdobra spec '
+          'confirmar --job <pasta>"; os confirmados ficam em specs/formatos-do-job.json. A derivação dos formatos sai '
+          'do briefing com "desdobra derivar --job <pasta>" (até a tela, o briefing de teste entra por "desdobra '
+          'briefing importar --teste"). O render da origem e de cada formato derivado é do DA: ele roda "desdobra '
+          'render --job <pasta> [--formato <id>]" num terminal interativo e confirma.')
+FIM = FIM_M5
 
 
 def validar_esteira(fases):

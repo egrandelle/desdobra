@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:briefing:1",
+  "title": "Briefing confirmado (briefing/1)",
+  "description": "briefing/briefing-confirmado.json (arquitetura-v1.md, 5.3). Todo campo de decisao tem valor, situacao e origem, sem valor inicial: padrao da marca e regra da decisao 10 so aparecem como sugestao citada. Quem grava como confirmado pelo DA e a tela (M7) ou 'desdobra briefing confirmar'; 'desdobra briefing importar --teste' grava com a origem fixture_de_teste, que o entregar recusa. A funcao resolvida de cada camada sai da heranca (desdobra.briefing.resolver) e e a unica que layout, validacao e teste leem.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "cabecalho", "quadro", "funcoes", "cobertas", "regras_escala", "regras_indeterminado", "ancoras", "formatos", "mestres", "modo_dados"],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sha_ou_nulo": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "caixa": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+    "origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo"],
+      "properties": {
+        "tipo": {"enum": ["da", "padrao_marca", "decisao_10", "folha", "fixture_de_teste"]},
+        "ref": {"type": ["string", "null"], "description": "Referencia da origem: o perfil da marca, a decisao, a folha e o trecho, ou o arquivo do fixture"}
+      }
+    },
+    "decisao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "situacao", "origem"],
+      "properties": {
+        "valor": {},
+        "situacao": {"enum": ["confirmado", "pendente"]},
+        "origem": {"$ref": "#/$defs/origem"}
+      }
+    },
+    "funcao": {
+      "enum": ["fundo", "imagem", "sujeito", "veu_de_legibilidade", "grafismo", "titulo", "texto_de_apoio", "cta",
+               "icone_de_cta", "url_ou_contato", "texto_legal", "informacao_de_evento", "destaque_numerico",
+               "logo_principal", "assinatura_institucional", "selo", "logo_de_parceiro", "ajuste_global", "estrutura",
+               "fora_da_peca", "indeterminado"]
+    },
+    "regra": {"enum": ["largura", "altura", "lado_curto", "lado_longo", "raiz_area", "constante", "contain", "cover"]}
+  },
+  "properties": {
+    "esquema": {"const": "briefing/1"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{8,64}$"},
+    "cabecalho": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["laudo_sha256", "specs_sha256", "ds_sha256", "conferencia_sha256", "origem", "meio", "por", "quando"],
+      "properties": {
+        "laudo_sha256": {"$ref": "#/$defs/sha256"},
+        "specs_sha256": {"$ref": "#/$defs/sha_ou_nulo", "description": "specs/formatos-do-job.json, ou o rascunho quando nao ha confirmados"},
+        "ds_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "conferencia_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
+        "origem": {"enum": ["da", "fixture_de_teste", "rascunho"], "description": "rascunho: sem valor, so para o DA preencher; o derivar e a entrega recusam"},
+        "meio": {"enum": ["tela", "terminal", "importar_teste", "rascunho"]},
+        "por": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["usuario", "maquina"],
+          "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]}}
+        },
+        "quando": {"type": "string"},
+        "importado_sha256": {"$ref": "#/$defs/sha_ou_nulo", "description": "Fixture: sha256 do arquivo importado"}
+      }
+    },
+    "quadro": {"$ref": "#/$defs/decisao", "description": "Id do quadro do laudo (q1...) de onde a peca sai (decisao 1), ou null quando o laudo nao tem quadro"},
+    "funcoes": {
+      "type": "array",
+      "description": "Funcao dada a um grupo (passa para as camadas de dentro) ou a uma camada (excecao), decidido em 29/10 (rotular por grupo)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer_id", "funcao"],
+        "properties": {
+          "layer_id": {"type": "integer"},
+          "funcao": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"anyOf": [{"$ref": "#/$defs/funcao"}, {"type": "null"}]}}}]},
+          "observacao": {"type": ["string", "null"], "description": "Obrigatoria para indeterminado"}
+        }
+      }
+    },
+    "cobertas": {
+      "type": "array",
+      "description": "Camadas cobertas no KV: o DA aceita ou inverte a funcao sugerida pela regra da decisao 10",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer_id", "decisao"],
+        "properties": {
+          "layer_id": {"type": "integer"},
+          "decisao": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"enum": ["aceita", "inverte", null]}}}]}
+        }
+      }
+    },
+    "regras_escala": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["funcao", "regra"],
+        "properties": {
+          "funcao": {"$ref": "#/$defs/funcao"},
+          "regra": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"anyOf": [{"$ref": "#/$defs/regra"}, {"type": "null"}]}}}]}
+        }
+      }
+    },
+    "regras_indeterminado": {
+      "type": "array",
+      "description": "A regra de escala de cada camada indeterminado, escolhida pelo DA na etapa Design system, sem padrao (arquitetura-v1.md, 4.10)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer_id", "regra"],
+        "properties": {
+          "layer_id": {"type": "integer"},
+          "regra": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"anyOf": [{"$ref": "#/$defs/regra"}, {"type": "null"}]}}}]}
+        }
+      }
+    },
+    "quebras_por_familia": {
+      "type": "array",
+      "description": "Quebras aprovadas pelo DA para um texto numa familia de formatos (decisoes-v1.md, 77, estendida as familias na rodada 3 do M5): quais quebras gravadas do texto ficam (indices, 0 e a primeira quebra; sem texto). A familia e uma faixa de proporcao do formato (largura / altura) ou uma lista de formatos",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer_id", "quebras"],
+        "properties": {
+          "layer_id": {"type": "integer"},
+          "razao_min": {"type": ["number", "null"], "exclusiveMinimum": 0},
+          "razao_max": {"type": ["number", "null"], "exclusiveMinimum": 0},
+          "formatos": {"type": "array", "items": {"type": "string"}},
+          "quebras": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"anyOf": [{"type": "array", "items": {"type": "integer", "minimum": 0}}, {"type": "null"}]}}}]}
+        }
+      }
+    },
+    "regras_bloco": {
+      "type": "array",
+      "description": "A regra de escala de um bloco rigido cujos membros tem regras diferentes, escolhida pelo DA (decisoes-v1.md, 100). O layer_id e o de qualquer camada do bloco; o bloco inteiro anda com esta regra",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer_id", "regra"],
+        "properties": {
+          "layer_id": {"type": "integer"},
+          "regra": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"anyOf": [{"$ref": "#/$defs/regra"}, {"type": "null"}]}}}]}
+        }
+      }
+    },
+    "ancoras": {
+      "type": "array",
+      "description": "Ancora por eixo, por funcao ou por elemento (layer_id da raiz do elemento, que vale sobre a da funcao), confirmada pelo DA, sem padrao",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["x", "y"],
+        "properties": {
+          "funcao": {"$ref": "#/$defs/funcao"},
+          "layer_id": {"type": "integer"},
+          "x": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"enum": ["esquerda", "centro", "direita", null]}}}]},
+          "y": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"enum": ["topo", "meio", "base", null]}}}]}
+        }
+      }
+    },
+    "lockup_governo": {"anyOf": [{"$ref": "#/$defs/decisao"}, {"type": "null"}]},
+    "sujeitos": {
+      "type": "array",
+      "description": "Caixas de sujeito desenhadas pelo DA, no espaco do documento",
+      "items": {"type": "object", "additionalProperties": false, "required": ["layer_id", "caixa"],
+                "properties": {"layer_id": {"type": "integer"}, "caixa": {"$ref": "#/$defs/caixa"}}}
+    },
+    "formatos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "chave", "largura", "altura"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "not": {"anyOf": [{"enum": ["devolucoes", "origem"]}, {"pattern": "^(con|prn|aux|nul|com[1-9]|lpt[1-9])$"}]}, "description": "Nome do formato na pasta do job (derivacao/<id>.json, render/<id>/). Recusa os nomes do motor (devolucoes, origem) e os reservados do Windows"},
+          "chave": {"type": "string", "minLength": 1, "description": "Chave do formato nas specs (veiculador|circuito|LxA)"},
+          "veiculador": {"type": ["string", "null"]},
+          "circuito": {"type": ["string", "null"]},
+          "largura": {"type": "integer", "minimum": 1},
+          "altura": {"type": "integer", "minimum": 1},
+          "rotacao": {"type": ["object", "null"], "additionalProperties": false, "required": ["graus", "sentido"],
+                      "properties": {"graus": {"enum": [0, 90, 180, 270]}, "sentido": {"enum": ["horario", "anti_horario", null]}}},
+          "mestre": {"type": ["string", "null"], "description": "Id da mestre propria deste formato (o formato e a propria mestre)"},
+          "sufixos": {"type": "array", "items": {"type": "object"}},
+          "sem_folha": {"type": "boolean", "description": "Formato sem folha de spec (so de medicao ou de teste), marcado de proposito: deriva sem obrigatoria da folha, com registro"}
+        }
+      }
+    },
+    "familias": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Faixa de proporcao, base do calculo e numero de mestres. Sem decisao do Duda, valem os parametros do job (parametros/derivacao.json) ou a proposta citada do registro de limites",
+      "properties": {
+        "faixa": {"$ref": "#/$defs/decisao"},
+        "base": {"$ref": "#/$defs/decisao"},
+        "mestres_max": {"$ref": "#/$defs/decisao"}
+      }
+    },
+    "mestres": {
+      "type": "array",
+      "description": "A mestre do KV (tipo kv) e as mestres proprias que o DA desenha, cada uma com os elementos (caixa de tinta no formato da mestre, por layer_id da raiz do elemento)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "tipo"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "tipo": {"enum": ["kv", "propria"]},
+          "formato": {"type": ["string", "null"], "description": "Id do formato da mestre propria"},
+          "elementos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["layer_id", "caixa"],
+              "properties": {
+                "layer_id": {"type": "integer"},
+                "caixa": {"$ref": "#/$defs/caixa"},
+                "quebras": {"description": "'origem' quando o DA aprovou as quebras da origem neste formato, ou a lista de posicoes de espaco que viram quebra", "anyOf": [{"const": "origem"}, {"type": "array", "items": {"type": "integer", "minimum": 0}}]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "opcoes_texto": {"type": "object"},
+    "modo_dados": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"enum": ["a", "b", "c", null]}}}]},
+    "sugestoes_ref": {"type": ["string", "null"]}
+  }
+}

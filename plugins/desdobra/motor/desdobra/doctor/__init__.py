@@ -2,7 +2,7 @@
 """desdobra doctor: confere o ambiente do motor e grava doctor.json (doctor/1).
 
 Doctor do M1 com o que o M2 pede (arquitetura-v1.md, 4.15, 9.2 e 9.3): versao do Python, versoes fixadas do lock,
-psd-tools com o extra composite, versao fixada do fontTools, do Playwright e do pypdfium2 (M3), o Chromium fixado na pasta de
+psd-tools com o extra composite, versao fixada do fontTools, do Playwright, do pypdfium2 (M3) e do kiwisolver (M5), o Chromium fixado na pasta de
 navegadores do motor, o carregamento de uma fonte sintetica pelo @font-face com conferencia por CDP, o autoteste do
 caminho PDF + PDFium do render com a fonte gerada pelo motor (M4), o isolador (um filho dentro do teto e outro que
 estoura) e o teto do modo de dados.
@@ -49,6 +49,10 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
               ('playwright', lambda: vc.verificar_versao('playwright', 'playwright', 'Versão fixada do Playwright')),
               # M3: o PDFium que le as folhas de spec no filho isolado (arquitetura-v1.md, 4.8)
               ('pypdfium2', lambda: vc.verificar_versao('pypdfium2', 'pypdfium2', 'Versão fixada do pypdfium2')),
+              # M5: o solver de restricoes da derivacao (arquitetura-v1.md, 4.10)
+              ('kiwisolver', lambda: vc.verificar_versao('kiwisolver', 'kiwisolver', 'Versão fixada do kiwisolver')),
+              # M5: o HiGHS do scipy, que resolve o layout da derivacao
+              ('scipy_highs', v.verificar_highs),
               ('chromium_fixado', vc.verificar_chromium)]
     for ident, passo in passos:
         try:

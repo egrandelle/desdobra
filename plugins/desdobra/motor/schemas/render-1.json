@@ -44,6 +44,11 @@
     "textos": {"type": "object", "required": ["camadas", "sharp_pequeno", "paginas_pdf"]},
     "recursos": {"type": "object"},
     "tempos": {"type": "object"},
-    "tempo_s": {"type": "number", "minimum": 0}
+    "tempo_s": {"type": "number", "minimum": 0},
+    "derivacao": {"type": "object", "required": ["arquivo", "sha256", "caminho", "briefing_sha256", "briefing_origem"],
+                  "description": "Formato derivado (M5): a derivacao usada, com o sha256, o caminho, a mestre e o briefing (com a origem; o entregar recusa fixture_de_teste)",
+                  "properties": {"arquivo": {"type": "string"}, "sha256": {"type": ["string", "null"]}, "caminho": {"type": "string"},
+                                 "briefing_sha256": {"type": "string"}, "briefing_origem": {"enum": ["da", "fixture_de_teste"]},
+                                 "mestre": {"type": ["string", "null"]}}}
   }
 }

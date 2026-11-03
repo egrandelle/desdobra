@@ -50,6 +50,9 @@ FILHO_ESTOURO = (
 )
 
 
+TOLERANCIA_HIGHS = 1e-6  # numero-neutro: folga numerica do programa de teste (otimo exato 1)
+
+
 @dataclass
 class Verificacao:
     id: str
@@ -239,6 +242,26 @@ def verificar_psd_tools(caminho_lock=None):
         v.detalhe += ' Problemas: %s.' % '; '.join(problemas)
         v.o_que_fazer = ('O compositor do psd-tools está incompleto. Apague a cópia requirements.lock da pasta de dados '
                          'do plugin e abra uma sessão nova, para o gancho recriar o ambiente.')
+    return v
+
+
+def verificar_highs():
+    """O HiGHS do scipy, que resolve o layout da derivacao (M5): importa e resolve um programa linear pequeno."""
+    v = Verificacao('scipy_highs', 'Solver da derivação (HiGHS do scipy)')
+    try:
+        from scipy.optimize import linprog
+        r = linprog([1.0, 1.0], A_ub=[[-1.0, -2.0]], b_ub=[-2.0], bounds=[(0, None), (0, None)], method='highs')
+        ok = r.status == 0 and abs(float(r.fun) - 1.0) < TOLERANCIA_HIGHS
+    except Exception as e:  # noqa: BLE001
+        ok, r = False, None
+        v.detalhe = 'O scipy.optimize não carregou (%s).' % type(e).__name__
+    if ok:
+        v.detalhe = 'HiGHS resolveu o programa de teste.'
+    else:
+        v.situacao = 'falha'
+        v.detalhe = v.detalhe or 'O HiGHS não resolveu o programa de teste.'
+        v.o_que_fazer = ('Sem o HiGHS, o "desdobra derivar" não resolve o layout. Apague a cópia requirements.lock da '
+                         'pasta de dados do plugin e abra uma sessão nova, para o gancho recriar o ambiente.')
     return v
 
 

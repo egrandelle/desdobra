@@ -27,7 +27,10 @@ desdobra spec importar --job <pasta>
 desdobra spec confirmar --job <pasta>          (só num terminal interativo, pelo DA)
 desdobra validar <arquivo> --formato <chave> --job <pasta>
 desdobra linkado confirmar --job <pasta>        (só num terminal interativo, pelo DA)
-desdobra render --job <pasta>                  (só num terminal interativo, pelo DA, com confirmação)
+desdobra briefing importar <arquivo.json> --teste --job <pasta>   (briefing de teste; o entregar recusa)
+desdobra briefing rascunho --job <pasta>
+desdobra derivar --job <pasta> [--formato <id>]
+desdobra render --job <pasta> [--formato <id>]  (só num terminal interativo, pelo DA, com confirmação)
 desdobra regressao --corpus <pasta> --linha-de-base <pasta> --saida <pasta>
 desdobra doctor
 ```

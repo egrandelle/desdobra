@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Novo job do desdobra
 
-Neste marco, a skill cria o job com o KV, as fontes e as folhas de spec e roda a esteira do M3, que tem cinco fases, nesta ordem: `ler` (a leitura do PSD e o laudo camada por camada), `fontes` (a conferência das fontes contra os arquivos enviados), `laudo-fontes` (a segunda passada do laudo, com a conferência), `ds` (o design system da peça e os limites do job) e `specs` (o rascunho das specs do veiculador, a partir das folhas). O render da origem já existe no motor (M4), mas só parte de uma pessoa: o DA roda o comando no terminal dele e confirma. A tela de briefing entra num marco seguinte.
+Neste marco, a skill cria o job com o KV, as fontes e as folhas de spec e roda a esteira do M3, que tem cinco fases, nesta ordem: `ler` (a leitura do PSD e o laudo camada por camada), `fontes` (a conferência das fontes contra os arquivos enviados), `laudo-fontes` (a segunda passada do laudo, com a conferência), `ds` (o design system da peça e os limites do job) e `specs` (o rascunho das specs do veiculador, a partir das folhas). O render da origem já existe no motor (M4), mas só parte de uma pessoa: o DA roda o comando no terminal dele e confirma. A derivação por família existe no motor (M5, `desdobra derivar`), a partir do briefing; até a tela de briefing (marco seguinte), esta skill não monta nem grava briefing.
 
 Regras desta skill:
 - Nunca calcule geometria, posição, escala, corpo ou limite. Quem mede é o motor.

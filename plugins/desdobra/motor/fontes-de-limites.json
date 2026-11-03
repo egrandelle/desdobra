@@ -763,7 +763,283 @@
    },
    "situacao": "decidido",
    "efeito": "registra",
-   "nota": "Tolerancia de borda do texto Sharp ate render.corpo_sharp_pequeno_px no dispositivo, maior que a do Smooth (decisoes-v1.md, render n. 3). Fixada pelo Duda em 01/11 sobre a medicao do M4: a pior das 8 camadas da SECOM dava 54,8, e a media, 43,2."
+   "nota": "Tolerancia de borda do texto Sharp ate render.corpo_sharp_pequeno_px no dispositivo, maior que a do Smooth (decisoes-v1.md, render n. 3). Fixada pelo Duda em 01/11 sobre a medicao do M4: a pior das 8 camadas do KV A dava 54,8, e a media, 43,2."
+  },
+  {
+   "id": "derivacao.faixa_familia_razao_max",
+   "valor": 2.0,
+   "unidade": "fator entre a proporcao do formato e a da mestre (a maior sobre a menor), medidas na base do calculo",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, itens 15 a 17"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Proposta do M5 para a faixa de familia, parametro do job ate o Duda fixar (arquitetura-v1.md, 10.2, pergunta 7). No corpus, a escala dos grafismos e das marcas segue uma regra so (residuo de 0,0002 a 0,0016 com contain nos grafismos) do KV vertical 0,5625 para 0,333 e 0,667 (fatores 1,69 e 1,19), e o titulo do KV horizontal deixa de seguir regra no 1248x250 (fator 2,8, residuo 0,24 com constante). O fator 2 cobre o primeiro caso e deixa o segundo para uma mestre propria."
+  },
+  {
+   "id": "derivacao.base_calculo",
+   "valor": "area_util",
+   "unidade": "base das proporcoes e das regras de escala: arquivo, composicao ou area_util",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "10.2, pergunta 7"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Proposta da arquitetura: pela area util (nos formatos girados, arquivo e composicao tem proporcoes inversas, pesquisa/v1-estatico-sintese.md, 6). Parametro do job ate o Duda fixar."
+  },
+  {
+   "id": "derivacao.mestres_max",
+   "valor": 3,
+   "unidade": "mestres que o DA desenha por job (a do KV conta como uma)",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "10.2, pergunta 7"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Proposta do M5: uma mestre por orientacao (horizontal, quadrada e vertical). Parametro do job ate o Duda fixar; acima dele, o formato sem mestre volta ao DA com o motivo."
+  },
+  {
+   "id": "derivacao.quadrado_ln_max",
+   "valor": 0.05,
+   "unidade": "modulo do logaritmo natural da proporcao (largura sobre altura) ate o qual o formato e quadrado",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, item 16"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Mesma banda que a analise de escala da pesquisa usou para separar o quadrado das duas orientacoes. Troca forte de orientacao e de horizontal para vertical ou o contrario; para ou de quadrado tambem e troca, e as duas pedem mestre propria."
+  },
+  {
+   "id": "derivacao.mesma_proporcao_px",
+   "valor": 1.0,
+   "unidade": "px de diferenca na outra dimensao depois da escala pela largura",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.10"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Mesma proporcao vira transform de saida (so a escala da peca inteira muda). O limiar 0,02 do predecessor, sem fonte, saiu (pesquisa/v1-estatico-sintese.md, 6); 1 px e o arredondamento do pixel."
+  },
+  {
+   "id": "derivacao.alinhamento_tolerancia_px",
+   "valor": 2.0,
+   "unidade": "px na mestre entre bordas ou centros para contar como alinhados",
+   "fonte": {
+    "arquivo": "pesquisa/v1-estatico-sintese.md",
+    "secao": "6"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Alinhamentos da mestre viram restricao forte. Valor de partida do M5, sem medida."
+  },
+  {
+   "id": "derivacao.colisao_tolerancia_px",
+   "valor": 1.0,
+   "unidade": "px de sobreposicao tolerada entre caixas que nao se tocam na mestre",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "9.6"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Validacao de colisao nova contra a origem e restricao de nao sobreposicao (relacao que a mestre ja satisfaz). 1 px e o arredondamento."
+  },
+  {
+   "id": "derivacao.enquadramento_tolerancia_px",
+   "valor": 1.0,
+   "unidade": "px de folga no enquadramento, na area util e nas faixas",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "9.6"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Arredondamento do pixel na conferencia das restricoes obrigatorias depois do solver."
+  },
+  {
+   "id": "derivacao.escala_min",
+   "valor": 0.01,
+   "unidade": "menor escala de um elemento em relacao a mestre",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "4.10"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "So impede escala zero ou negativa no solver. Valor de partida do M5, sem medida."
+  },
+  {
+   "id": "derivacao.tolerancia_regra_escala",
+   "valor": 0.001,
+   "unidade": "modulo do logaritmo natural da razao entre a escala do layout e a da regra",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, itens 15 e 17"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Acima disso, a validacao registra que outra restricao (obrigatoria ou forte) mexeu na escala da regra. So registra: a regra de escala e fraca (arquitetura-v1.md, 4.10)."
+  },
+  {
+   "id": "derivacao.residuo_regra_aviso",
+   "valor": 0.6931,
+   "unidade": "modulo do logaritmo natural da razao entre a escala do layout e a da regra (0,6931 e o fator 2)",
+   "fonte": {
+    "arquivo": "pesquisa/corpus-testes.md",
+    "secao": "4, item 15"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Acima disso, uma obrigatoria levou a escala do elemento para longe da regra (no corpus do M5, um logo de parceiro a 1% no 360x1080 do KV C). So avisa: a regra e fraca e o limite nao tem medida. Na pesquisa, titulo, imagem e sujeito ficam acima de 0,30 no pior caso, abaixo do fator 2."
+  },
+  {
+   "id": "derivacao.bloco_sobreposicao_min",
+   "valor": 0.01,
+   "unidade": "fracao de 0 a 1 da area da menor das duas caixas que precisa estar sobreposta",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 95"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Dois elementos de base que se sobrepoem pelo menos isto na mestre entram no mesmo bloco rigido. Valor de partida: na cena do KV B os elementos do aglomerado se sobrepoem muito mais que isto; 1% so tira encostos de borda."
+  },
+  {
+   "id": "derivacao.bloco_fundo_fracao",
+   "valor": 0.95,
+   "unidade": "fracao de 0 a 1 da area do canvas da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 95"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Elemento de cena que cobre pelo menos isto do canvas e fundo de cena: nao junta os outros num bloco so por sobreposicao. Em mesclagem, ele so puxa o que pega embaixo dele (no KV B, uma luz em tela do canvas inteiro puxava os icones de cima)."
+  },
+  {
+   "id": "derivacao.margem_minima_lado_curto",
+   "valor": 0.05,
+   "unidade": "fracao do lado curto do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 98"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Minimo obrigatorio da margem de texto e marca ate a borda (ou a margem da mestre na escala de contain, se for menor). Proposta: a menor margem de texto e marca nas mestres do corpus do M5 (KV A, KV B e KV C tela 3) e 0,050 do lado curto; mediana 0,066 (16 elementos)."
+  },
+  {
+   "id": "laudo.preparo_minimo_camadas",
+   "valor": 3,
+   "unidade": "soma de ajustes com mascara, mesclagens e cores solidas mascaradas sobre imagem",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 99"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "A partir disto (ou com um aglomerado sobreposto), a esteira recomenda ao DA preparar o PSD antes da rotulagem: juntar luz, cor e liquido num smart object ou grupo. Medido no corpus em 02/11 (aglomerados por prancheta desde a revisao 2): KV com cena de produto soma 28 (13 ajustes com mascara, 5 mesclagens, 10 cores solidas mascaradas sobre imagem) e tem 1 aglomerado de 20 camadas; KV DOOH de tres telas soma 3, com 3 aglomerados (um por tela) de 34 camadas ao todo; KV institucional soma 0, com 1 aglomerado de 3 camadas."
+  },
+  {
+   "id": "derivacao.bloco_fundo_faixa_ambigua",
+   "valor": 0.05,
+   "unidade": "fracao de 0 a 1 da area do canvas da mestre, abaixo de derivacao.bloco_fundo_fracao",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 95; revisao 2 do M5, M2"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Elemento de cena que cobre de (bloco_fundo_fracao - isto) ate bloco_fundo_fracao do canvas esta na faixa ambigua: o motor o trata como cena comum (junta por sobreposicao) e cada formato derivado avisa (fundo_de_cena_ambiguo), para o DA conferir se ele e o fundo. Proposta: 0,05 (uma faixa de 10 px num canvas de 200 px de altura ja tira o fundo do limiar)."
+  },
+  {
+   "id": "derivacao.cobertura_nova_cena_sobre_conteudo_max",
+   "valor": 0.01,
+   "unidade": "fracao de 0 a 1 da area da caixa do conteudo",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 96 (cena pode passar sobre conteudo); proposta da revisao 2, M4, a registrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Cena opaca (base, mesclagem normal) acima de texto, marca ou sujeito na pilha que passa a cobrir mais que isto da caixa do conteudo, alem do que ja cobria na mestre, reprova o formato. Proposta: 1%, da ordem da tolerancia de colisao; a revisao nao achou caso real no corpus."
+  },
+  {
+   "id": "derivacao.corpo_minimo_legal_px",
+   "valor": 8.0,
+   "unidade": "px de corpo no formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 97 (razao de corpo prende o legal); proposta da revisao 2, B5, a registrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Texto legal com corpo abaixo disto no formato avisa (corpo_minimo_do_legal). Proposta: 8 px, a ordem do menor corpo legivel em tela; sem medida no corpus nem nas folhas ainda. Medir com o Duda."
+  },
+  {
+   "id": "derivacao.proximidade_max",
+   "valor": 0.05,
+   "unidade": "fracao do lado curto da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "03/11, avaliacao da rodada 2 da fatia (titulo longe dos icones no 800x600); proposta da rodada 3, a registrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Conteudo (texto, marca, sujeito) e objeto solto (base opaca que nao sangra), empilhados (as projecoes no outro eixo se tocam) e separados na mestre por ate isto do lado curto, mantem a distancia da mestre na escala deles (forte); o grupo anda pela ancora do maior. Entre textos nao vale: a razao de corpo e as ancoras ja dao o espaco. Proposta: 0,05; no KV de produto, titulo e icones estao a 25 px (0,023 de 1080)."
+  },
+  {
+   "id": "derivacao.quebra_razao_aviso",
+   "valor": 0.405465,
+   "unidade": "|ln| da razao entre as proporcoes (largura / altura) do formato e da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "02/11, decisoes do M5, 77 (quebras na mestre propria); estendida as familias na rodada 3, a registrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Texto de mais de uma linha sem quebra aprovada para a familia do formato avisa (quebras_sem_aprovacao) quando a proporcao do formato fica a mais que isto da mestre. Proposta: fator 1,5 (ln 1,5); pega o 2048x720 contra um KV 1920x1080 (fator 1,6) e deixa o 800x600 (fator 1,33)."
+  },
+  {
+   "id": "derivacao.objeto_solto_opacidade_min",
+   "valor": 0.9,
+   "unidade": "fracao de 0 a 1 (opacidade x preenchimento da camada x opacidade dos grupos acima)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "03/11, revisao 3 do M5 (scratchpad/m5/revisao3/achados.md); proposta, a registrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Objeto solto (entra no nao sobrepor e na colisao contra conteudo) so com alguma camada de mesclagem normal e opacidade efetiva de pelo menos isto: um brilho em NORMAL com opacidade baixa e luz, nao objeto. Proposta: 0,9."
+  },
+  {
+   "id": "render.tolerancia_tinta_texto",
+   "valor": 0.05,
+   "unidade": "fracao do maior lado da caixa validada do texto",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "03/11, revisao 3 do M5 (scratchpad/m5/revisao3/achados.md); proposta, a registrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "No formato derivado, a tinta real do texto (medida no filho do render) pode passar da caixa validada pela derivacao ate isto; acima, o render reprova (tinta_fora_da_caixa_validada). Tinta que encosta na borda da regiao da pagina (cortada) tambem reprova. Proposta: 5%, a diferenca entre a tinta do PSD e a do Chromium nao foi medida no corpus ainda."
+  },
+  {
+   "id": "render.tolerancia_tinta_texto_min_px",
+   "valor": 3,
+   "unidade": "px no formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "03/11, revisao 3 do M5 (scratchpad/m5/revisao3/achados.md); proposta, a registrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Piso da tolerancia da tinta do texto contra a caixa validada (antialias e arredondamento). Proposta: 3 px."
   }
  ]
 }
