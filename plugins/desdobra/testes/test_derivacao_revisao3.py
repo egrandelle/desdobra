@@ -183,7 +183,8 @@ def test_m1_ancora_do_da_num_membro_do_grupo_vale_e_fica_registrada():
 # ------------------------------------------------------------------ M2
 def test_m2_media_vence_fraca_e_o_teste_falha_com_a_ordem_invertida(monkeypatch):
     sg = {'esq': False, 'topo': False, 'dir': False, 'base': False}
-    els = [{'id': 'a', 'caixa': [100.0, 100.0, 300.0, 140.0], 'sangra': sg, 'classe': 'texto', 'funcao': 'titulo',
+    # um grafismo (nao conteudo: a forca forte da escala de conteudo, decisoes-v1.md 132, nao entra)
+    els = [{'id': 'a', 'caixa': [100.0, 100.0, 300.0, 140.0], 'sangra': sg, 'classe': 'base', 'funcao': 'grafismo',
             'regra': 'constante', 'ancora': ('esquerda', 'topo')}]
 
     def escala():

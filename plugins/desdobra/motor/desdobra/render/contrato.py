@@ -314,7 +314,11 @@ def montar(pasta_job, *, funcoes=None, formato=FORMATO_ORIGEM):
     # fontes: a conferencia tem de ser deste laudo
     conf_arq = pasta_job / conferencia.ARQUIVO
     conf = contratos.ler(conf_arq, conferencia.ESQUEMA) if conf_arq.is_file() else None
-    textos = [r for r in _folhas(regs) if r.get('kind') == 'type' and (r.get('texto') or {}).get('runs')]
+    # so os textos que este render desenha: a camada fora da peca (no formato derivado, a que nao tem elemento, como a
+    # de outra tela) nao entra na conferencia das fontes nem na decisao de largura
+    fora_do_render = {int(k) for k, v in (funcoes or {}).items() if v == FUNCAO_FORA}
+    textos = [r for r in _folhas(regs) if r.get('kind') == 'type' and (r.get('texto') or {}).get('runs')
+              and r['layer_id'] not in fora_do_render]
     faces = faces_do_job(pasta_job, estado)
     pares = {}
     if textos:
@@ -341,7 +345,9 @@ def montar(pasta_job, *, funcoes=None, formato=FORMATO_ORIGEM):
                 if codigos & set(MOTIVOS_QUE_BLOQUEIAM) or ('face_com_bloqueio' in codigos):
                     bloqueios.append(_bloqueio('fonte_bloqueante', layer_id=item['layer_id'],
                                                motivos=sorted(codigos - {'largura_divergente'})))
-                if 'largura_divergente' in codigos:
+                if 'largura_divergente' in codigos and item['layer_id'] not in {x['layer_id'] for x in divergentes}:
+                    # um item por camada (a conferencia tem um por face da camada; vale o primeiro, o da face do
+                    # primeiro trecho)
                     divergentes.append({'layer_id': item['layer_id'], 'erro_pct': item.get('largura_erro_pct')})
             if divergentes:
                 confirmar.append(dict(_bloqueio('largura_divergente'), medidas={'camadas': divergentes}))

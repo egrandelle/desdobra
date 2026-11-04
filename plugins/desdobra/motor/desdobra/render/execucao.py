@@ -154,7 +154,10 @@ def _compor_pilhas(pasta, contrato, plat, kv, saida, faltam, indice, indice_arq,
         'kv_sha256': contrato['origem']['kv_sha256'],
         'pilhas': [{'chave': e['chave'], 'indices': e['indices']} for e in faltam]})
     from desdobra import leitor
-    orc = leitor.orcamento_bytes(kv.stat().st_size, contrato['formato']['largura'] * contrato['formato']['altura'])
+    # as pilhas sao compostas no tamanho do documento, qualquer que seja o formato (decisoes-v1.md, 131: o 300x600 do
+    # KV C parou no teto calculado pela area do formato)
+    doc = contrato.get('documento') or contrato['formato']
+    orc = leitor.orcamento_bytes(kv.stat().st_size, doc['largura'] * doc['altura'])
     cmd = [str(plat.interpretador()), '-I', '-B', '-m', MODULO_PILHAS, str(kv), str(saida),
            '--orcamento-bytes', str(orc)]
     r = _rodar(plat, cmd, orc, float(limites.valor('isolador.tempo_max_s')), pasta / PASTA_TRABALHO / 'pt')
@@ -336,8 +339,43 @@ def montar_contrato(pasta, formato=mod_contrato.FORMATO_ORIGEM, funcoes=None):
     return derivado.montar(pasta, formato)
 
 
+def _gravar_parada(pasta, formato, e):
+    """render/<formato>/parada.json com o motivo, o codigo e as medidas de toda parada (decisoes-v1.md, 131)."""
+    try:
+        destino = Path(pasta).resolve() / 'render' / str(formato)
+        destino.mkdir(parents=True, exist_ok=True)
+        arquivos.gravar_json_atomico(destino / 'parada.json', {
+            'formato': str(formato), 'quando': agora(), 'motivo': e.motivo, 'codigo': int(e.codigo),
+            'mensagem': str(e), 'o_que_fazer': e.o_que_fazer, 'medidas': e.medidas})
+    except OSError:
+        pass
+
+
 def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guardar_coberturas=None,
                formato=mod_contrato.FORMATO_ORIGEM):
+    """Renderiza um formato do job (veja _renderizar). Toda parada depois do disparo humano grava
+    render/<formato>/parada.json; o render que termina apaga a parada velha."""
+    from desdobra import humano
+    try:
+        humano.conferir(disparo, 'render', consumir=False)
+    except humano.ErroHumano:
+        return _renderizar(pasta_job, disparo=disparo, aceites=aceites, plat=plat, funcoes=funcoes,
+                           guardar_coberturas=guardar_coberturas, formato=formato)
+    try:
+        rel = _renderizar(pasta_job, disparo=disparo, aceites=aceites, plat=plat, funcoes=funcoes,
+                          guardar_coberturas=guardar_coberturas, formato=formato)
+    except ErroRender as e:
+        _gravar_parada(pasta_job, formato, e)
+        raise
+    velha = Path(pasta_job).resolve() / 'render' / str(formato) / 'parada.json'
+    if velha.is_file():
+        arquivos.tornar_gravavel(velha)
+        velha.unlink()
+    return rel
+
+
+def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guardar_coberturas=None,
+                formato=mod_contrato.FORMATO_ORIGEM):
     """Renderiza um formato do job: a origem (M4) ou um formato derivado (M5, de derivacao/<formato>.json). disparo:
     o Disparo que desdobra.humano.exigir('render') emitiu depois de conferir o console (nada mais vale, e o disparo so
     serve uma vez); aceites: decisoes do DA confirmadas no terminal (codigos de pede_confirmacao). Devolve o

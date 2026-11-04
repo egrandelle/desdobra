@@ -1040,6 +1040,42 @@
    "situacao": "a_calibrar",
    "efeito": "registra",
    "nota": "Piso da tolerancia da tinta do texto contra a caixa validada (antialias e arredondamento). Proposta: 3 px."
+  },
+  {
+   "id": "derivacao.escala_conteudo_forte_da_regra",
+   "valor": 0.9,
+   "unidade": "fracao da escala da regra",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "03/11, avaliacao do KV C, 132"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "Texto, marca e sujeito com escala de pelo menos isto da regra, como forca forte (desigualdade): os alinhamentos e as razoes fortes nao podem mais se cumprir encolhendo o conteudo (no Globo 1080x1920 do KV C, texto e marca saiam a 1% da regra)."
+  },
+  {
+   "id": "derivacao.escala_conteudo_min_da_regra",
+   "valor": 0.5,
+   "unidade": "fracao da escala da regra",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "03/11, avaliacao do KV C, 133"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Piso obrigatorio da escala de texto, marca e sujeito, em fracao da regra: quando nao fecha com a folha e as relacoes da mestre, o formato volta ao DA com o nome (escala_minima_de_conteudo) e a fonte. Proposta: 0,5."
+  },
+  {
+   "id": "derivacao.distancia_entre_linhas_min",
+   "valor": 0.5,
+   "unidade": "fracao da distancia da mestre vezes a escala do conteudo",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "03/11, avaliacao do KV DOOH de tres telas (Globo 1080x1920), 135"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Entre um elemento de conteudo e o vizinho de conteudo mais perto num eixo (sem sobreposicao na mestre), a distancia no formato e pelo menos isto da distancia da mestre na escala media dos dois (obrigatoria; a distancia inteira e forte). No Globo 1080x1920, o cta e a linha de logos tinham ficado encostados (-1 px, eram 69 na mestre). Proposta: 0,5."
   }
  ]
 }

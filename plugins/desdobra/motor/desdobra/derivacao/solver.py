@@ -472,6 +472,54 @@ def resolver(elementos, mestre, formato, areas, regras):
                                    'fonte': FONTE_DA, 'elementos': [elementos[escolhido]['id']] + [c[0] for c in caidas],
                                    'medidas': {'ancora': elementos[escolhido]['ancora'][ex], 'ancoras_sem_efeito': caidas,
                                                'propria': bool(proprias)}})
+    # conteudo nao encolhe para cumprir as outras relacoes (decisoes-v1.md, 132 e 133): forte, escala de pelo menos
+    # derivacao.escala_conteudo_forte_da_regra da regra; obrigatoria, o piso derivacao.escala_conteudo_min_da_regra
+    # (por ultimo entre as obrigatorias: quando nao fecha, e o piso que volta ao DA, com nome e fonte)
+    forte_c = limites.valor('derivacao.escala_conteudo_forte_da_regra')
+    piso_c = limites.valor('derivacao.escala_conteudo_min_da_regra')
+    fonte_piso = {'tipo': 'limite', 'ref': 'derivacao.escala_conteudo_min_da_regra'}
+    fonte_forte = {'tipo': 'limite', 'ref': 'derivacao.escala_conteudo_forte_da_regra'}
+    for i, e in enumerate(elementos):
+        if conteudo(e) and regras[i]:
+            obrigatoria('escala_minima_de_conteudo:%s' % e['id'], escala(i) - piso_c * regras[i], 'ge', fonte_piso,
+                        [e['id']])
+            outra('escala_de_conteudo:%s' % e['id'], escala(i) - forte_c * regras[i], 'strong', fonte_forte, [e['id']],
+                  op='ge')
+    # distancia entre linhas (e colunas) de conteudo (decisoes-v1.md, 135): entre um elemento de conteudo e o vizinho de
+    # conteudo mais perto naquele eixo (sem sobreposicao na mestre, com as projecoes no outro eixo se tocando), a
+    # distancia da mestre na escala media dos dois, forte; e o piso obrigatorio de derivacao.distancia_entre_linhas_min
+    # dela, por ultimo entre as obrigatorias (quando nao fecha, e ele que volta ao DA, com nome e fonte)
+    piso_d = limites.valor('derivacao.distancia_entre_linhas_min')
+    fonte_d = {'tipo': 'limite', 'ref': 'derivacao.distancia_entre_linhas_min'}
+    vistos = set()
+    for i, a in enumerate(elementos):
+        if not conteudo(a):
+            continue
+        ca = a['caixa']
+        for eixo, (k0, k1), (o0, o1) in (('x', (0, 2), (1, 3)), ('y', (1, 3), (0, 2))):
+            melhor = None
+            for j, b in enumerate(elementos):
+                if j == i or not conteudo(b):
+                    continue
+                cb = b['caixa']
+                if min(ca[o1], cb[o1]) - max(ca[o0], cb[o0]) <= 0:
+                    continue
+                gap = cb[k0] - ca[k1]
+                if gap > 0 and (melhor is None or gap < melhor[0]):
+                    melhor = (gap, j)
+            if melhor is None or (eixo, i, melhor[1]) in vistos:
+                continue
+            vistos.add((eixo, i, melhor[1]))
+            gap, j = melhor
+            fa, fb = caixa(i), caixa(j)
+            dist = fb[k0] - fa[k1]
+            media = (escala(i) + escala(j)) * (gap / U / 2.0)  # numero-neutro: media das duas escalas
+            ids = [elementos[i]['id'], elementos[j]['id']]
+            obrigatoria('distancia_minima_entre_conteudo:%s:%s:%s' % (eixo, ids[0], ids[1]), dist - media * piso_d, 'ge',
+                        fonte_d, ids)
+            # em fracao da distancia da mestre, para pesar como a escala de conteudo (as duas sao fortes)
+            outra('distancia_entre_conteudo:%s:%s:%s' % (eixo, ids[0], ids[1]), (dist - media) * (U / gap), 'strong',
+                  FONTE_MESTRE, ids, op='ge')
     # medias: ancora por eixo, posicao proporcional ao canvas
     formas_ancora = []
     for i, e in enumerate(elementos):
