@@ -31,11 +31,17 @@ desdobra briefing importar <arquivo.json> --teste --job <pasta>   (briefing de t
 desdobra briefing rascunho --job <pasta>
 desdobra derivar --job <pasta> [--formato <id>]
 desdobra render --job <pasta> [--formato <id>]  (só num terminal interativo, pelo DA, com confirmação)
+desdobra parametros-entrega --job <pasta> --formato <id> [--rotacao-sentido ...] [--condicao ...] [--cor-de-achatamento #rrggbb] [--borda-1px sim|nao] [--limpar <campo>]
+                                                (só num terminal interativo, pelo DA, com confirmação;
+                                                <campo> com hífen: rotacao-sentido, condicao, cor-de-achatamento ou borda-1px)
+desdobra aprovar --job <pasta> --formato <id> [--formato <id> ...]   (só num terminal interativo, pelo DA, com confirmação)
+desdobra entregar --job <pasta>                 (só num terminal interativo, pelo DA, com confirmação)
+desdobra conferir-entrega --job <pasta>         (só lê; o Claude pode rodar)
 desdobra regressao --corpus <pasta> --linha-de-base <pasta> --saida <pasta>
 desdobra doctor
 ```
 
-O render e as confirmações (`render`, `linkado confirmar`, `spec confirmar`) recusam rodar sem console interativo ou em processo aberto pelo Claude, e o gancho PreToolUse do plugin nega esses comandos nas ferramentas do Claude.
+O render, as confirmações e a entrega (`render`, `linkado confirmar`, `spec confirmar`, `parametros-entrega`, `aprovar` e `entregar`) recusam rodar sem console interativo ou em processo aberto pelo Claude, e o gancho PreToolUse do plugin nega esses comandos nas ferramentas do Claude. O `conferir-entrega` só lê: confere `entrega/` contra o `relatorio-entrega.json` e o `manifesto-licenca.json` da raiz do job, sem gravar nada, e roda em qualquer processo.
 
 Com `--envelope` antes do subcomando, o motor imprime só uma linha JSON (contrato `envelope/1`), filtrada pelo modo de dados do job e pelo detector de segredos. É assim que as skills chamam o motor.
 

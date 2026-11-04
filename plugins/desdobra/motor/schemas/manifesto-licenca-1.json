@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:manifesto-licenca:1",
+  "title": "Manifesto de licenca de fonte (manifesto-licenca/1)",
+  "description": "manifesto-licenca.json na raiz do job (arquitetura-v1.md, 5.8; decisoes-v1.md, arquitetura n. 19), gravado pelo \"desdobra entregar\" junto com a entrega, nunca dentro de entrega/aprovados. So registro, sem portao: nenhum campo bloqueia, avisa ou libera o job. Uma entrada por arquivo de entrada/fontes/: nome, sha256, formato e, de fontes/conferencia.json, o nome PostScript e a versao da tabela name de cada face; o sha256 da conferencia e a frase da responsabilidade. Sem campo de canal, EULA, kit web, fsType, restricao de uso desktop, titular, numero de usuarios ou comprovante; nunca guarda o arquivo da fonte. O relatorio da entrega guarda o sha256 deste manifesto (JSON com chaves ordenadas).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "gerado_em", "motor_versao", "conferencia_fontes_sha256", "responsabilidade",
+               "arquivos"],
+  "properties": {
+    "esquema": {"const": "manifesto-licenca/1"},
+    "job_id": {"type": "string", "minLength": 1},
+    "gerado_em": {"type": "string"},
+    "motor_versao": {"type": "string"},
+    "conferencia_fontes_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "responsabilidade": {"type": "string", "minLength": 1},
+    "arquivos": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["nome", "sha256", "formato", "faces"],
+        "properties": {
+          "nome": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "formato": {"type": ["string", "null"]},
+          "faces": {
+            "type": "array",
+            "items": {"type": "object", "additionalProperties": false, "required": ["nome_ps", "versao_name"],
+                      "properties": {"nome_ps": {"type": ["string", "null"]},
+                                     "versao_name": {"type": ["string", "null"]}}}
+          }
+        }
+      }
+    }
+  }
+}

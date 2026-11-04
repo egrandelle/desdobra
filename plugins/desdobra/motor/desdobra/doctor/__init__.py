@@ -5,7 +5,7 @@ Doctor do M1 com o que o M2 pede (arquitetura-v1.md, 4.15, 9.2 e 9.3): versao do
 psd-tools com o extra composite, versao fixada do fontTools, do Playwright, do pypdfium2 (M3) e do kiwisolver (M5), o Chromium fixado na pasta de
 navegadores do motor, o carregamento de uma fonte sintetica pelo @font-face com conferencia por CDP, o autoteste do
 caminho PDF + PDFium do render com a fonte gerada pelo motor (M4), o isolador (um filho dentro do teto e outro que
-estoura) e o teto do modo de dados.
+estoura), o teto do modo de dados e o encoder da entrega (M6: JPEG e sem libimagequant; outra build so avisa).
 
     desdobra [--envelope] [--teto-modo-dados {a,b,c}] doctor [--saida <pasta>] [--sem-isolador] [--sem-chromium]
 
@@ -53,6 +53,8 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
               ('kiwisolver', lambda: vc.verificar_versao('kiwisolver', 'kiwisolver', 'Versão fixada do kiwisolver')),
               # M5: o HiGHS do scipy, que resolve o layout da derivacao
               ('scipy_highs', v.verificar_highs),
+              # M6: o encoder da entrega (JPEG, sem libimagequant; outra build so avisa)
+              ('encoder_entrega', v.verificar_encoder),
               ('chromium_fixado', vc.verificar_chromium)]
     for ident, passo in passos:
         try:

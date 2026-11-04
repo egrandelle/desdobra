@@ -144,7 +144,10 @@ FIM_M5 = ('O laudo, a conferência de fontes, o design system e o rascunho das s
           'do briefing com "desdobra derivar --job <pasta>" (até a tela, o briefing de teste entra por "desdobra '
           'briefing importar --teste"). O render da origem e de cada formato derivado é do DA: ele roda "desdobra '
           'render --job <pasta> [--formato <id>]" num terminal interativo e confirma.')
-FIM = FIM_M5
+FIM_M6 = FIM_M5 + (' A entrega também é do DA, num terminal interativo: "desdobra parametros-entrega" (quando o '
+                   'formato pede uma decisão), depois "desdobra aprovar" e "desdobra entregar". "desdobra '
+                   'conferir-entrega --job <pasta>" só lê e confere entrega/ contra o relatório.')
+FIM = FIM_M6
 
 
 def validar_esteira(fases):

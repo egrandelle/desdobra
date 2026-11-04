@@ -1,5 +1,5 @@
 {
-  "description": "Prepara o ambiente Python do motor do desdobra na pasta de dados do plugin e impede o Claude de disparar o que so o DA dispara (render e confirmacoes)",
+  "description": "Prepara o ambiente Python do motor do desdobra na pasta de dados do plugin e impede o Claude de disparar o que so o DA dispara (render, confirmacoes, aprovacao, entrega e parametros de entrega)",
   "hooks": {
     "SessionStart": [
       {

@@ -450,6 +450,7 @@ def trocar_entrada(pasta, rel, novo, fases=ESTEIRA):
         if rel.startswith('entrada/kv') and (Path(rel).suffix.lower() != novo.suffix.lower() or not tem_assinatura_psd(novo)):
             raise ErroJob('O KV novo tem de ser do mesmo tipo do anterior (%s).' % Path(rel).suffix,
                           o_que_fazer='Salve o KV no mesmo formato ou crie um job novo.')
+        _invalidar_entrega(pasta)  # antes de mexer na entrada: arquivo da entrega aberto recusa com a entrada intacta
         estado['entradas'][rel] = _copiar_congelado(novo, pasta / rel)
         n_render = invalidar_render(pasta)
         avaliacao, diretas = avaliar(pasta, estado, fases)
@@ -478,6 +479,7 @@ def remover_entrada(pasta, rel, fases=ESTEIRA):
             raise ErroJob('O job não tem esta entrada.', codigo=Codigo.USO,
                           o_que_fazer='Confira o nome do arquivo, com a mesma caixa (maiúsculas e minúsculas) do que '
                                       'foi passado em --fontes.')
+        _invalidar_entrega(pasta)  # antes de mexer na entrada: arquivo da entrega aberto recusa com a entrada intacta
         arq = pasta / rel
         if arq.exists():
             tornar_gravavel(arq)
@@ -496,10 +498,12 @@ def remover_entrada(pasta, rel, fases=ESTEIRA):
 def invalidar_render(pasta):
     """Apaga o master e o render.json de cada formato (render/<formato>/): com uma entrada trocada ou removida, o
     master velho deixa de valer e nunca fica no lugar como se fosse do job atual. Os assets das pilhas ficam (o cache
-    e por hash). Devolve quantos formatos perderam o master."""
+    e por hash). A aprovacao e a previa caem junto, e a entrega atual vai para entrega/anteriores/ (_invalidar_entrega).
+    Devolve quantos formatos perderam o master."""
     n = 0
     raiz = Path(pasta) / 'render'
     if not raiz.is_dir():
+        _invalidar_entrega(pasta)
         return 0
     for formato in raiz.iterdir():
         if not formato.is_dir():
@@ -512,7 +516,43 @@ def invalidar_render(pasta):
                 arq.unlink()
                 apagou = True
         n += int(apagou)
+    _invalidar_entrega(pasta)
     return n
+
+
+def _invalidar_entrega(pasta):
+    """Sem o master, cai tambem o que veio dele. A entrega atual (o relatorio, aprovados, reprovados e o manifesto da
+    raiz) nao e apagada: vai inteira para entrega/anteriores/<carimbo>-invalidada/ (desdobra.entrega.validar.invalidar),
+    como o registro do que foi para o veiculo. A previa da aprovacao (entrega/previa/) e a aprovacao
+    (briefing/aprovacao.json) sao apagadas. As entregas anteriores ficam.
+
+    trocar_entrada e remover_entrada chamam isto antes de mexer na entrada: arquivo da entrega aberto (no Windows, o
+    os.replace e o unlink falham) vira ErroJob com a entrada ainda intacta. Depois disso, a chamada de invalidar_render
+    nao acha mais nada para mexer."""
+    from desdobra.entrega import aprovacao, validar
+    erro = ErroJob('Um arquivo de entrega/ está aberto em outro programa: a entrega atual não pôde ser guardada em '
+                   'entrega/anteriores/ e nada mudou no job.',
+                   o_que_fazer='Feche os arquivos de entrega/ (e o manifesto-licenca.json) e rode o comando de novo.')
+    try:
+        validar.invalidar(pasta)
+    except OSError:
+        raise erro from None
+    previa = Path(pasta) / aprovacao.PASTA_PREVIA
+    arq = Path(pasta) / aprovacao.ARQUIVO
+    try:
+        if previa.is_dir():
+            for q in sorted(previa.rglob('*'), reverse=True):
+                if q.is_dir():
+                    q.rmdir()
+                else:
+                    tornar_gravavel(q)
+                    q.unlink()
+            previa.rmdir()
+        if arq.exists():
+            tornar_gravavel(arq)
+            arq.unlink()
+    except OSError:
+        raise erro from None
 
 
 def _marcar_invalidadas(estado, diretas):

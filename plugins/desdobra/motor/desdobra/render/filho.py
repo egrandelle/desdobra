@@ -138,6 +138,17 @@ def cobertura_do_pdf(dados, largura, altura, regiao_l, regiao_a, supersample):
     return saida
 
 
+def _png_do_master(img, perfil_embutido):
+    """Bytes do PNG do master. Com perfil_embutido falso o arquivo sai sem perfil: o ImageCms.profileToProfile deixa o
+    perfil de saida em img.info, e o PNG o gravaria (decisoes-v1.md, 140)."""
+    from PIL import ImageCms
+    extra = {'icc_profile': (ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes() if perfil_embutido
+                             else None)}
+    buf = io.BytesIO()
+    img.save(buf, format='PNG', compress_level=COMPRESSAO_PNG, **extra)
+    return buf.getvalue()
+
+
 # ------------------------------------------------------------------ composicao
 class Canvas:
     """Valores do documento pre-multiplicados (C) e alfa (A), em float64."""
@@ -408,12 +419,7 @@ def executar(a, gancho, cabecalho, pdfs):
     if not opaco:
         img = img.convert('RGBA')
         img.putalpha(Image.fromarray(alfa, 'L'))
-    buf = io.BytesIO()
-    extra = {}
-    if cabecalho['parametros_cor'].get('perfil_embutido_na_saida'):
-        extra['icc_profile'] = ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes()
-    img.save(buf, format='PNG', compress_level=COMPRESSAO_PNG, **extra)
-    dados = buf.getvalue()
+    dados = _png_do_master(img, bool(cabecalho['parametros_cor'].get('perfil_embutido_na_saida')))
     arquivos.gravar_bytes_atomico(pasta / ARQUIVO_MASTER, dados)
     if coberturas:
         np.savez_compressed(pasta / 'coberturas.npz', **coberturas)

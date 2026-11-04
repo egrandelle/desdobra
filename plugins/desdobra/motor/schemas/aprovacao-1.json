@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:aprovacao:1",
+  "title": "Aprovacao do DA por formato (aprovacao/1)",
+  "description": "briefing/aprovacao.json (arquitetura-v1.md, 5.4; decisoes-v1.md, 138), gravado so pelo \"desdobra aprovar\" num terminal interativo. Um registro por formato aprovado: os hashes do briefing, do master, do render.json e do contrato, o sha256 do arquivo final que vai para o veiculo e os parametros do encoder. Mudar qualquer um derruba a aprovacao daquele formato. registro_sha256 e o sha256 do proprio registro sem esse campo (registro mexido a mao cai).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "formatos"],
+  "properties": {
+    "esquema": {"const": "aprovacao/1"},
+    "job_id": {"type": "string", "minLength": 1},
+    "formatos": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z0-9][a-z0-9-]*$"},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["formato", "job_id", "briefing_sha256", "master_sha256", "render_json_sha256", "contrato_sha256",
+                     "arquivo_entregue", "parametros_encoder", "aprovado_por", "registro_sha256"],
+        "properties": {
+          "formato": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "job_id": {"type": "string", "minLength": 1},
+          "briefing_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "master_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "render_json_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "contrato_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "arquivo_entregue": {"type": "object", "additionalProperties": false, "required": ["sha256", "bytes", "extensao"],
+                               "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                                              "bytes": {"type": "integer", "minimum": 0},
+                                              "extensao": {"enum": ["jpg", "png"]}}},
+          "parametros_encoder": {"type": "object"},
+          "aprovado_por": {"type": "object", "required": ["meio", "quando"],
+                           "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                                          "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}},
+          "registro_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

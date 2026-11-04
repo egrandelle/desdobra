@@ -138,6 +138,7 @@ def abrir(f, orcamento):
 def compor_pilha(psd, camadas, indices):
     """RGBA uint8 do canvas inteiro com so as camadas da pilha (e os grupos acima delas), em faixas."""
     import numpy as np
+    from psd_tools.constants import ColorMode
     W, H = psd.width, psd.height
     alvo = set()
     for i in indices:
@@ -156,11 +157,34 @@ def compor_pilha(psd, camadas, indices):
     rgba = np.zeros((H, W, 4), np.uint8)  # numero-neutro: canais RGBA
     for y0 in range(0, H, passo):
         y1 = min(H, y0 + passo)
+        if psd.color_mode in (ColorMode.RGB, ColorMode.GRAYSCALE):
+            rgba[y0:y1] = _faixa_rgb_ou_cinza(psd, (0, y0, W, y1), filtro)
+            continue
         im = psd.composite(viewport=(0, y0, W, y1), layer_filter=filtro, ignore_preview=True, apply_icc=False)
         if im is not None:
             rgba[y0:y1] = np.asarray(im.convert('RGBA'))
         del im
     return rgba
+
+
+def _faixa_rgb_ou_cinza(psd, viewport, filtro):
+    """RGBA uint8 de uma faixa de documento RGB ou cinza, direto dos arrays float do psd-tools.
+
+    O composite_pil da 1.26.0 trunca o alfa float32 com astype(uint8): sobre fundo opaco, b + s - b*s da
+    0.99999994 e a pilha sai com alfa 254 (composite.py:466-468 e :486). Aqui o alfa e arredondado; a cor
+    passa pela mesma conta do composite_pil (clip(255 * cor).astype(uint8)), byte a byte igual a de antes.
+    Mesmos argumentos que psd.composite passa: fundo branco transparente, sem forcar vetor, sem ICC.
+    """
+    import numpy as np
+    from psd_tools.composite import composite as compor_float
+    from psd_tools.constants import ColorMode
+    cor, _, alfa = compor_float(psd, color=1.0, alpha=0.0, viewport=viewport, layer_filter=filtro, force=False)
+    canais = 1 if psd.color_mode == ColorMode.GRAYSCALE else 3  # numero-neutro: canais do modo de cor
+    bytes_cor = np.clip(255 * cor[:, :, :canais], 0, 255).astype(np.uint8)  # numero-neutro: escala de 8 bits
+    if canais == 1:
+        bytes_cor = np.repeat(bytes_cor, 3, axis=2)  # numero-neutro: cinza vira RGB como no convert('RGBA')
+    bytes_alfa = np.rint(np.clip(alfa[:, :, :1], 0, 1) * ALFA_CHEIO).astype(np.uint8)
+    return np.concatenate((bytes_cor, bytes_alfa), 2)
 
 
 def executar(a, gancho):

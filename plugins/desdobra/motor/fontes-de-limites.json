@@ -467,12 +467,12 @@
    "valor": "nao",
    "unidade": "sim ou nao",
    "fonte": {
-    "arquivo": "arquitetura-v1.md",
-    "secao": "10.2, pergunta 5"
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, 140"
    },
-   "situacao": "a_calibrar",
+   "situacao": "decidido",
    "efeito": "registra",
-   "nota": "A saida em sRGB leva o perfil embutido (sim) ou sai sem perfil, como os exports das agencias do corpus (pesquisa/corpus-testes.md, 3). Proposta da arquitetura: sem perfil. Parametro do job ate o Duda decidir."
+   "nota": "O arquivo entregue sai sem perfil embutido (decisao 140, pergunta 5 da arquitetura), como os exports das agencias do corpus (pesquisa/corpus-testes.md, 3). O job ainda grava a escolha em parametros/cor.json; com sim, a entrega recusa, porque o motor nao tem um perfil fixo conferido por hash (o perfil gerado na hora grava a data e muda os bytes a cada execucao)."
   },
   {
    "id": "cor.delta_e76_token_max",
@@ -1076,6 +1076,138 @@
    "situacao": "a_calibrar",
    "efeito": "registra",
    "nota": "Entre um elemento de conteudo e o vizinho de conteudo mais perto num eixo (sem sobreposicao na mestre), a distancia no formato e pelo menos isto da distancia da mestre na escala media dos dois (obrigatoria; a distancia inteira e forte). No Globo 1080x1920, o cta e a linha de logos tinham ficado encostados (-1 px, eram 69 na mestre). Proposta: 0,5."
+  },
+  {
+   "id": "entrega.peso_reprova_acima_da_leitura_decimal",
+   "valor": "decimal",
+   "unidade": "leitura de KB, MB e GB",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, 136"
+   },
+   "situacao": "decidido",
+   "efeito": "reprova",
+   "nota": "Na entrega, o teto e a leitura estrita (alvo_bytes do valor da folha: 250 KB = 250.000 bytes). O encoder mira esse numero e o arquivo acima dele vai para entrega/reprovados. O desdobra validar continua avisando entre as duas leituras (specs.peso_avisa_acima_da_leitura_decimal)."
+  },
+  {
+   "id": "entrega.jpeg_subamostragem",
+   "valor": "4:4:4",
+   "unidade": "subamostragem de croma do JPEG",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "JPEG sem subamostragem de croma (no Pillow, subsampling=0; arquitetura-v1.md, 4.12 e 9.7)."
+  },
+  {
+   "id": "entrega.jpeg_progressivo",
+   "valor": "nao",
+   "unidade": "sim ou nao",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "JPEG baseline: o progressivo nao e entregue (arquitetura-v1.md, 9.7)."
+  },
+  {
+   "id": "entrega.jpeg_optimize",
+   "valor": "sim",
+   "unidade": "sim ou nao",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "Tabelas de Huffman otimizadas (optimize do Pillow). Com optimize, o libjpeg precisa do arquivo inteiro no buffer: ver entrega.jpeg_buffer_bytes."
+  },
+  {
+   "id": "entrega.jpeg_buffer_bytes",
+   "valor": 4194304,
+   "unidade": "bytes (ImageFile.MAXBLOCK do Pillow durante o save)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "Buffer de 4 MiB: com o padrao do Pillow (64 KiB ou largura x altura), o optimize quebra numa imagem pequena de muita entropia (400x300 de ruido, q90: broken data stream). Arquivo maior que o buffer recusa com jpeg_buffer_insuficiente, sem trocar de parametro."
+  },
+  {
+   "id": "entrega.jpeg_qualidade_max",
+   "valor": 95,
+   "unidade": "qualidade do JPEG no Pillow (1 a 100)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto da busca de qualidade. INFERENCIA: nao ha fonte de qualidade; o Pillow dobra o buffer a partir de 95, o que so diz respeito a memoria. Sem teto de peso na folha, o JPEG sai nesta qualidade."
+  },
+  {
+   "id": "entrega.jpeg_qualidade_min",
+   "valor": 1,
+   "unidade": "qualidade do JPEG no Pillow (1 a 100)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Piso da busca de qualidade. INFERENCIA. Quando nem esta qualidade cabe no teto, o arquivo sai nela e fica marcado fora do teto (vai para reprovados na entrega)."
+  },
+  {
+   "id": "entrega.jpeg_qualidade_piso_aviso",
+   "valor": null,
+   "unidade": "qualidade do JPEG no Pillow (1 a 100)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Qualidade abaixo da qual o arquivo final avisa o DA. Sem valor ate a medicao do corpus: enquanto isso, a qualidade escolhida so aparece no aprovar."
+  },
+  {
+   "id": "entrega.png_nivel_compressao",
+   "valor": 9,
+   "unidade": "nivel do zlib (0 a 9)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "PNG sem perda no nivel 9. Escolhido quando cabe no teto estrito e a folha aceita PNG; senao, JPEG. PNG quantizado fica fora da v1."
+  },
+  {
+   "id": "entrega.tolerancia_area_px",
+   "valor": 0,
+   "unidade": "px de folga na area segura, na area util e nas faixas, na validacao final da entrega",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, 141 e parâmetros aprovados no bloco (proposta-m6, seção 3)"
+   },
+   "situacao": "decidido",
+   "efeito": "reprova",
+   "nota": "Tolerancia zero na entrega: a tinta medida de cada texto (render.json) e a caixa do logo no layout (derivacao/<formato>.json) ficam inteiras dentro da area segura e da area util e fora das faixas. Um pixel dentro da area segura manda o arquivo para entrega/reprovados. A derivacao continua com a folga de derivacao.enquadramento_tolerancia_px."
+  },
+  {
+   "id": "entrega.encoder_build_referencia",
+   "valor": ["pillow=13.0.0", "libjpeg_turbo=3.2.0", "zlib=1.3.1.zlib-ng"],
+   "unidade": "biblioteca=versao do Pillow e das bibliotecas de JPEG e de PNG da build",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M6, parâmetros aprovados no bloco (proposta-m6, seção 3: o build do encoder vai para o relatório)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Build de referencia do encoder da entrega: os mesmos parametros dao os mesmos bytes so com as mesmas bibliotecas. Origem: versoes lidas do Pillow do requirements.lock (pillow 13.0.0, roda cp314 do Windows) no ambiente de desenvolvimento em 04/11, sem medicao em Mac. O doctor avisa quando a build e outra e falha so com o libimagequant (GPLv3, fora da v1, arquitetura-v1.md 9.7) ou sem suporte a JPEG; o relatorio da entrega grava as versoes de cada entrega."
   }
  ]
 }

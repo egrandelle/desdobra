@@ -13,7 +13,8 @@ Camada "fora da peca" nao entra em entrada nenhuma. Camada sem elemento (estrutu
 canvas) sai do formato com registro. O ajuste global entra no bloco da cena que ele cobre; o que cobre conteudo, e o
 bloco que a pilha parte (outro elemento entre um efeito e o que ele pega), devolvem o formato na derivacao
 (decisoes-v1.md, 95 e 99). Se ainda assim um efeito de um elemento abrir um pedaco de pilha separado do que ele pega,
-o render recusa (elemento_partido_no_render): pedaco de efeito sozinho nunca sai em silencio.
+o render recusa (elemento_partido_no_render): pedaco de efeito sozinho nunca sai em silencio. Formato com rotacao
+renderiza a composicao (largura e altura trocadas nos 90 e 270 graus); a entrega gira o master para o arquivo.
 
 Funcao pura dos arquivos do job.
 """
@@ -34,7 +35,6 @@ DESCRICOES = {
     'derivacao_desatualizada': 'A derivação gravada não é a que o briefing, as specs, os parâmetros e os limites de agora '
                                'dão (arquivo mexido ou entrada mudada). Rode "desdobra derivar" de novo.',
     'briefing_desatualizado': 'O briefing é de outra versão do laudo, das specs, do design system ou das fontes.',
-    'rotacao_sem_render': 'O formato tem rotação. O render da v1 ainda não gira a composição para o arquivo (M6).',
     'elemento_partido_no_render': 'Um efeito de um elemento (ajuste, mesclagem ou camada clipada) ficaria num pedaço de '
                                   'pilha separado do que ele pega. A derivação devia ter devolvido o formato: rode o '
                                   '"desdobra derivar" de novo e mande o caso para a Trezion.',
@@ -191,8 +191,6 @@ def montar(pasta_job, formato):
         bloqueios.append(_bloqueio('derivacao_desatualizada'))
     if not bloqueios and not _derivacao_confere(pasta, formato, d):
         bloqueios.append(_bloqueio('derivacao_desatualizada'))
-    if ((d['formato'].get('rotacao') or {}).get('graus') or 0) != 0:
-        bloqueios.append(_bloqueio('rotacao_sem_render', graus=d['formato']['rotacao']['graus']))
     if bloqueios:
         return None, bloqueios, confirmar
     laudo = contratos.ler(pasta / mb.ARQUIVO_LAUDO, 'laudo/1')
@@ -214,7 +212,9 @@ def montar(pasta_job, formato):
     origem, bloqueios, confirmar = mc.montar(pasta, funcoes=funcoes, formato=formato)
     if origem is None:
         return None, bloqueios, confirmar
-    W, H = int(d['formato']['largura']), int(d['formato']['altura'])
+    # o master e a composicao, como o publico ve (girada nos 90 e 270 graus): o giro para o arquivo e da entrega,
+    # sem reamostrar (decisoes-v1.md, 139; desdobra.entrega.codificar)
+    W, H = (int(v) for v in d['formato']['composicao'])
     estrutura, _arq = mc.estrutura_do_documento(pasta, laudo)
     regs = estrutura['camadas']
     por_lid = {}

@@ -264,3 +264,27 @@ def test_limites_do_chromium_tem_fonte_e_nota_de_origem():
     for lid in ('chromium.corpo_medicao_px', 'chromium.tempo_max_s'):
         lim = limites.obter(lid)
         assert lim.fonte is not None and lim.situacao == 'a_calibrar' and 'Origem:' in lim.nota
+
+
+# ------------------------------------------------------------------ limites da entrega (M6)
+def test_limites_da_entrega_tem_fonte_sao_usados_e_o_relatorio_cita_todos():
+    """Cada entrega.* do registro tem fonte nas decisoes do M6, e usado pelo id no codigo do pacote e e citado no
+    relatorio da entrega; a calibrar so avisa ou registra."""
+    from desdobra.entrega import relatorio
+    ids = sorted(i for i in limites.carregar() if i.startswith('entrega.'))
+    assert ids
+    usados = set()
+    for arq in _arquivos_do_pacote():
+        fonte = arq.read_text(encoding='utf-8')
+        # pelo limites.valor/obter/efeito ou por um ajudante que recebe o id (codificar._sim)
+        usados |= ids_referenciados(fonte) | {no.value for no in ast.walk(ast.parse(fonte))
+                                              if isinstance(no, ast.Constant) and no.value in ids}
+    assert [i for i in ids if i not in usados] == []
+    for i in ids:
+        lim = limites.obter(i)
+        assert lim.fonte['arquivo'] == 'decisoes-v1.md' and 'M6' in lim.fonte['secao'], i
+        if lim.situacao == 'a_calibrar':
+            assert lim.efeito_efetivo in ('avisa', 'registra'), i
+    assert {c['limite_id'] for c in relatorio.citacoes_da_entrega()} >= set(ids)
+    assert limites.efeito('entrega.peso_reprova_acima_da_leitura_decimal') == 'reprova'
+    assert limites.efeito('entrega.tolerancia_area_px') == 'reprova' and limites.valor('entrega.tolerancia_area_px') == 0

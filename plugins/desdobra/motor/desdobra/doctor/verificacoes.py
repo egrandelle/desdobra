@@ -265,6 +265,46 @@ def verificar_highs():
     return v
 
 
+def recursos_do_pillow():
+    """{'jpeg', 'libimagequant', 'versoes'} da build do Pillow instalada."""
+    from PIL import features
+    from desdobra.entrega import codificar
+    return {'jpeg': bool(features.check('jpg')), 'libimagequant': bool(features.check_feature('libimagequant')),
+            'versoes': codificar.versoes()}
+
+
+def verificar_encoder(recursos=None):
+    """O encoder da entrega (M6, arquitetura-v1.md, 9.7): falha so sem JPEG ou com o libimagequant (GPLv3, PNG
+    quantizado fora da v1); outra build (versao do Pillow, do libjpeg-turbo ou do zlib) so avisa, porque os bytes da
+    entrega podem mudar."""
+    from desdobra.entrega import codificar
+    v = Verificacao('encoder_entrega', 'Encoder da entrega (Pillow)')
+    v.limite = limites.obter('entrega.encoder_build_referencia').citacao()
+    r = recursos if recursos is not None else recursos_do_pillow()
+    vers = r['versoes']
+    v.detalhe = 'Pillow %s; libjpeg-turbo %s; zlib %s; JPEG %s; libimagequant %s.' % (
+        vers.get('pillow'), vers.get('libjpeg_turbo') or 'ausente', vers.get('zlib') or 'ausente',
+        'sim' if r['jpeg'] else 'não', 'presente' if r['libimagequant'] else 'ausente')
+    if not r['jpeg']:
+        v.situacao = 'falha'
+        v.o_que_fazer = ('O Pillow deste ambiente não grava JPEG, e a entrega não sai sem ele. Apague a cópia '
+                         'requirements.lock da pasta de dados do plugin e abra uma sessão nova, para o gancho recriar o '
+                         'ambiente.')
+    elif r['libimagequant']:
+        v.situacao = 'falha'
+        v.o_que_fazer = ('O Pillow deste ambiente traz o libimagequant (GPLv3), que a v1 não usa. Apague a cópia '
+                         'requirements.lock da pasta de dados do plugin e abra uma sessão nova, para o gancho recriar o '
+                         'ambiente com o Pillow do lock.')
+    else:
+        difere = codificar.build_difere(vers)
+        if difere:
+            v.situacao = 'aviso'
+            v.detalhe += ' Diferente da build de referência: %s.' % ', '.join(difere)
+            v.o_que_fazer = ('A build do encoder não é a de referência: os mesmos parâmetros podem dar outros bytes, e a '
+                             'aprovação feita em outra máquina pode cair. As versões vão para o relatório da entrega.')
+    return v
+
+
 def _rodar_filho(plat, codigo, teto, tempo_s, *extra):
     with tempfile.TemporaryDirectory(prefix='desdobra-doctor-') as pasta:
         comando = [str(plat.interpretador()), '-I', '-B', '-c', codigo, *[str(x) for x in extra]]

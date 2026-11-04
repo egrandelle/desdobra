@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Disparo humano: o que so uma pessoa faz (render, confirmacao de linkado, confirmacao de spec) passa por aqui.
+"""Disparo humano: o que so uma pessoa faz (render, confirmacoes, aprovacao e entrega) passa por aqui.
 
-Regra (decisoes-v1.md, arquitetura n. 2): render, aprovacao e confirmacoes so partem do DA, pela tela (M7) ou por um
-terminal interativo. O Claude nunca dispara. Este modulo:
+Regra (decisoes-v1.md, arquitetura n. 2 e n. 142): render, aprovacao, entrega e confirmacoes so partem do DA, pela
+tela (M7) ou por um terminal interativo. O Claude nunca dispara. Este modulo:
   - confere o console do processo (console_interativo): nada de modo envelope; nada de variavel de ambiente que o
     Claude Code poe nos processos que ele abre; no Windows, a entrada e a saida padrao tem de ser um console de
     verdade (GetFileType de caractere e GetConsoleMode que responde nos dois: o dispositivo nulo NUL e um arquivo de
     caractere sem modo de console, e por isso e recusado) e o processo tem de ter janela de console; fora do
     Windows, isatty nos dois;
   - emite um Disparo so depois dessa conferencia (exigir). O Disparo leva um selo aleatorio guardado neste processo,
-    e quem grava o que so o DA pode gravar (o render, os linkados confirmados, as confirmacoes de spec) confere o selo
-    (conferir). Nao ha parametro que pule a conferencia;
+    e quem grava o que so o DA pode gravar (o render, os linkados confirmados, as confirmacoes de spec, a aprovacao)
+    confere o selo (conferir), e os parametros de entrega tambem. Nao ha parametro que pule a conferencia;
   - le as respostas do DA so pelo console (ler).
 
 Risco residual declarado: um processo do mesmo usuario, fora do Claude, com acesso ao console (por exemplo um
@@ -28,7 +28,11 @@ from datetime import datetime
 
 # variaveis que o Claude Code poe no ambiente dos processos que ele abre (ferramentas Bash e PowerShell)
 VARIAVEIS_DO_CLAUDE = ('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_PID', 'AI_AGENT')
-COMANDOS = ('render', 'linkado confirmar', 'spec confirmar')
+# os mesmos do gancho PreToolUse (scripts/gancho_confirmacoes.py, SUBCOMANDOS_HUMANOS), com teste: aprovar e entregar
+# so partem do DA (decisoes-v1.md, 138 e 142); briefing confirmar entra com a tela (M7); parametros-entrega grava as
+# decisoes do DA por formato ate a tela (139)
+COMANDOS = ('render', 'linkado confirmar', 'spec confirmar', 'briefing confirmar', 'aprovar', 'entregar',
+            'parametros-entrega')
 O_QUE_FAZER = ('Isto é do DA: abra um terminal próprio (Prompt de Comando, PowerShell ou Terminal), fora do Claude, e '
                'rode o comando lá. O desdobra recusa rodar com --envelope, com a entrada ou a saída redirecionada, '
                'sem console interativo ou em processo aberto pelo Claude.')

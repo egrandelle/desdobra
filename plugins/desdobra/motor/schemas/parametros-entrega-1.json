@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:parametros-entrega:1",
+  "title": "Parametros de entrega do job (parametros-entrega/1)",
+  "description": "parametros/entrega.json: decisoes do DA por formato que a entrega usa ate a tela do M7: o sentido do giro de 90 e 270 graus confirmado com o veiculo (decisoes-v1.md, 139; sem ele, a entrega recusa o formato girado de um quarto de volta), a condicao do teto de peso (137; sem ela, vale o teto mais estrito), a cor de achatamento do master com transparencia (sem ela, o formato vai para reprovados) e a condicao da borda de 1 px (borda_1px sim: o fundo da peca e o da pagina; so com ela a entrega desenha e confere a borda que a folha confirmou).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "formatos"],
+  "properties": {
+    "esquema": {"const": "parametros-entrega/1"},
+    "formatos": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z0-9][a-z0-9-]*$"},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "rotacao_sentido": {
+            "type": "object", "additionalProperties": false, "required": ["valor", "confirmado_por"],
+            "properties": {
+              "valor": {"enum": ["horario", "anti_horario"]},
+              "confirmado_por": {"type": "object", "required": ["meio", "quando"],
+                                 "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                                                "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}}
+            }
+          },
+          "condicao": {
+            "type": "object", "additionalProperties": false, "required": ["valor", "confirmado_por"],
+            "properties": {
+              "valor": {"enum": ["hospedado", "por_tag", "tag_carga_inicial", "tag_carga_posterior"]},
+              "confirmado_por": {"type": "object", "required": ["meio", "quando"],
+                                 "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                                                "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}}
+            }
+          },
+          "borda_1px": {
+            "type": "object", "additionalProperties": false, "required": ["valor", "confirmado_por"],
+            "properties": {
+              "valor": {"type": "boolean"},
+              "confirmado_por": {"type": "object", "required": ["meio", "quando"],
+                                 "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                                                "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}}
+            }
+          },
+          "cor_de_achatamento": {
+            "type": "object", "additionalProperties": false, "required": ["valor", "confirmado_por"],
+            "properties": {
+              "valor": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+              "confirmado_por": {"type": "object", "required": ["meio", "quando"],
+                                 "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                                                "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}}
+            }
+          }
+        }
+      }
+    }
+  }
+}
