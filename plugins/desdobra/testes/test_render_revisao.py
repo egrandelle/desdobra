@@ -31,7 +31,8 @@ from desdobra.resultado import Codigo
 pytestmark = pytest.mark.skipif(sys.platform != 'win32', reason='o isolador dos filhos roda no Windows')
 
 RAIZ_PLUGIN = Path(__file__).resolve().parent.parent
-VARIAVEIS_DO_CLAUDE = ('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_PID', 'AI_AGENT')
+VARIAVEIS_DO_CLAUDE = ('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_PID', 'AI_AGENT',
+                       'TERM_PROGRAM', 'CLAUDE_AGENT_SDK_VERSION')
 
 
 def _job(base, psd, campanha=None, fontes=True):
@@ -132,7 +133,12 @@ def test_nul_na_entrada_e_recusado_mesmo_com_console(tmp_path):
     ok, motivo = eval(saida.read_text())
     assert ok is False and motivo == 'entrada_sem_console'
     _filho_em_console_novo(codigo, env=_ambiente_sem_claude())
-    assert eval(saida.read_text()) == (True, None)  # o console novo de verdade passa (risco residual declarado)
+    # o console novo de verdade passa (risco residual declarado), menos quando o teste roda num processo aberto pelo
+    # Claude: o console novo continua filho de claude.exe, e a conferencia dos pais recusa (decisoes-v1.md, 160)
+    from desdobra import plataforma
+    pais = plataforma.obter().processos_ancestrais(64)
+    esperado = (False, 'terminal_do_claude') if any(n.lower() == 'claude.exe' for n in pais) else (True, None)
+    assert eval(saida.read_text()) == esperado
 
 
 def test_console_novo_com_teclas_injetadas_por_processo_do_claude_e_recusado(tmp_path):

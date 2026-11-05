@@ -35,6 +35,7 @@ COMPONENTES = (
     ('desdobra.briefing', ('briefing',)),
     ('desdobra.derivacao', ('derivar',)),
     ('desdobra.entrega', ('aprovar', 'entregar', 'conferir-entrega', 'parametros-entrega')),
+    ('desdobra.tela', ('tela',)),
 )
 MODULO_ENVELOPE = 'desdobra.sugestao.envelope'
 

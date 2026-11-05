@@ -421,6 +421,54 @@
    "nota": "Teto de cada passo do Chromium na conferencia de fontes. Estourado, a conferencia sai sem a parte do Chromium e as camadas ficam bloqueantes para o DA decidir. Origem: valor escolhido na implementacao do M2, igual ao de fontes.tempo_max_s, sem medicao; a arquitetura pede o passo no Chromium sem dar tempo. A conferencia das fontes sinteticas dos testes leva poucos segundos."
   },
   {
+   "id": "chromium.perfil_caracteres_max",
+   "valor": 220,
+   "unidade": "caracteres do caminho do perfil do Chromium da tela",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 20 (perfil do Chromium na pasta temporaria do sistema)"
+   },
+   "situacao": "decidido",
+   "efeito": "reprova",
+   "nota": "A n 20 registra que, no Windows, com o perfil acima de uns 220 caracteres o Chromium deixa de gravar cache, e o teste de cache perde o valor. A tela (M7a1, proposta do M7, secao 3, linha Perfil) recusa abrir com o perfil num caminho mais longo que isto."
+  },
+  {
+   "id": "chromium.apagar_perfil_tentativas",
+   "valor": 20,
+   "unidade": "tentativas de apagar o perfil do Chromium no fecho",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 20 e n 156 (perfil apagado ao fechar); proposta do M7, secao 3, linha Perfil (novas tentativas e confirmacao de que a pasta sumiu)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O Chromium solta os arquivos do perfil alguns instantes depois de fechar. Origem: valor escolhido na implementacao do M7a1, sem medicao; com chromium.apagar_perfil_intervalo_s da uns 10 s no total. Esgotadas as tentativas, apagar_perfil devolve falso e quem chama registra a pasta que ficou."
+  },
+  {
+   "id": "chromium.apagar_perfil_intervalo_s",
+   "valor": 0.5,
+   "unidade": "segundos entre duas tentativas de apagar o perfil",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 20 e n 156 (perfil apagado ao fechar); proposta do M7, secao 3, linha Perfil"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Origem: valor escolhido na implementacao do M7a1, sem medicao."
+  },
+  {
+   "id": "tela.partida_max_s",
+   "valor": 180,
+   "unidade": "segundos que o desdobra tela abrir espera o aviso do processo de fundo",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 159 (o Claude abre a tela pela skill e o comando volta logo); proposta do M7, secao 3, linha Lancamento, e fatia a2"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "O processo de fundo monta o conteudo do job (preparar da derivacao, que pode medir as quebras no Chromium sem janela, e a derivacao em memoria), sobe o servidor e abre a janela antes de avisar. Estourado, o comando encerra o fundo e devolve tela_nao_respondeu ao Claude. Origem: valor escolhido na implementacao do M7a2, sem medicao: uma vez e meia chromium.tempo_max_s, para caber a medida das quebras e a abertura da janela; o job sintetico dos testes abre em poucos segundos."
+  },
+  {
    "id": "leitor.filhos_paralelos",
    "valor": 4,
    "unidade": "processos filhos de smart object ao mesmo tempo",
@@ -776,6 +824,186 @@
    "situacao": "a_calibrar",
    "efeito": "registra",
    "nota": "Proposta do M5 para a faixa de familia, parametro do job ate o Duda fixar (arquitetura-v1.md, 10.2, pergunta 7). No corpus, a escala dos grafismos e das marcas segue uma regra so (residuo de 0,0002 a 0,0016 com contain nos grafismos) do KV vertical 0,5625 para 0,333 e 0,667 (fatores 1,69 e 1,19), e o titulo do KV horizontal deixa de seguir regra no 1248x250 (fator 2,8, residuo 0,24 com constante). O fator 2 cobre o primeiro caso e deixa o segundo para uma mestre propria."
+  },
+  {
+   "id": "derivacao.grupo_proporcao_dif_max",
+   "valor": 0.3,
+   "unidade": "diferenca entre a maior e a menor proporcao (lado longo sobre lado curto) das composicoes de um grupo da tela, dentro da orientacao",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela, revisao da 163"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A tela calcula os grupos sozinha, dentro de cada orientacao, por ligacao completa: a amplitude do grupo inteiro fica ate o limite, e a cadeia de vizinhos nao passa dele. Exemplos do Duda: 960x192 (5,00) com 1248x250 (4,99); 1280x720 (1,778) com 960x576 (1,667). Revisa o 0,2 da 163 original."
+  },
+  {
+   "id": "derivacao.galeria_variantes_max",
+   "valor": 4,
+   "unidade": "variantes por formato na galeria",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto de variantes que a galeria mostra por formato (o Duda pediu de 3 a 4). Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_duplicada_distancia_max",
+   "valor": 0.03,
+   "unidade": "media, sobre o conteudo, do deslocamento do centro de cada elemento entre duas variantes, em fracao da diagonal do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Variante a menos disto de uma anterior da galeria e quase igual a ela e sai. Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_conteudo_fracao",
+   "valor": 0.6,
+   "unidade": "fracao do lado maior do quadro",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Nas variantes de imagem livre, o conteudo fica reunido nesta parte do lado maior e a imagem fica livre no resto. Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_faixa_razao_min",
+   "valor": 3.0,
+   "unidade": "lado longo sobre lado curto do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A partir disto o formato e faixa: a galeria abre com o conteudo no inicio e a imagem no fim, e com o inverso (a tendencia de leitura citada pelo Duda, como opcao). Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_arte_area_min",
+   "valor": 0.25,
+   "unidade": "fracao de 0 a 1 da area do canvas da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Base que sangra em parte dos lados e cobre pelo menos isto da mestre e a arte que vira bloco na parte livre das variantes de imagem livre. Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_fundo_visivel_min",
+   "valor": 0.3,
+   "unidade": "fracao de 0 a 1 da caixa do fundo que aparece no formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Fundo que sangra com menos disto da caixa dentro do formato avisa na variante (fundo_pouco_visivel); nunca bloqueia. Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_grafismo_sobre_regra_max",
+   "valor": 2.0,
+   "unidade": "escala do grafismo sobre a escala da regra dele",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Grafismo que sangra e cresce mais que isto da regra para continuar sangrando avisa na variante (grafismo_acima_da_regra); nunca bloqueia. Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_penalidade_estrutura",
+   "valor": 0.1,
+   "unidade": "fracao da escala do conteudo por passo de distancia a estrutura da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Pontuacao de uma particao em trilhas: a escala do conteudo, menos isto por trilha a mais ou a menos que a mestre e pela troca de colunas por linhas (desempata para o que a mestre ja faz). Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_atomo_min_lado_curto",
+   "valor": 0.02,
+   "unidade": "fracao do lado curto da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Atomo de conteudo com o menor lado abaixo disto junta ao vizinho mais perto (uma linha fina nao vira bloco sozinha). Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_linha_vao_lado_curto",
+   "valor": 0.15,
+   "unidade": "fracao do lado curto da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Na mestre vertical, itens lado a lado na mesma linha, separados por menos disto, formam um atomo so. Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_colado_margem_max",
+   "valor": 0.05,
+   "unidade": "fracao do eixo da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Legal com a margem ate uma borda abaixo disto (e fino, derivacao.galeria_colado_espessura_max) fica colado a essa borda em todas as variantes. Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_colado_espessura_max",
+   "valor": 0.05,
+   "unidade": "fracao do eixo da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Espessura maxima, atraves da borda, do legal que fica colado a ela (derivacao.galeria_colado_margem_max). Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_vao_padrao_lado_curto",
+   "valor": 0.04,
+   "unidade": "fracao do lado curto da mestre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Vao entre atomos quando a mestre tem um atomo so (sem vao para medir). Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_margem_min_lado_curto",
+   "valor": 0.05,
+   "unidade": "fracao do lado curto do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Margem minima do quadro das variantes; vale a da mestre quando ela e maior. Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
   },
   {
    "id": "derivacao.base_calculo",
@@ -1208,6 +1436,18 @@
    "situacao": "a_calibrar",
    "efeito": "avisa",
    "nota": "Build de referencia do encoder da entrega: os mesmos parametros dao os mesmos bytes so com as mesmas bibliotecas. Origem: versoes lidas do Pillow do requirements.lock (pillow 13.0.0, roda cp314 do Windows) no ambiente de desenvolvimento em 04/11, sem medicao em Mac. O doctor avisa quando a build e outra e falha so com o libimagequant (GPLv3, fora da v1, arquitetura-v1.md 9.7) ou sem suporte a JPEG; o relatorio da entrega grava as versoes de cada entrega."
+  },
+  {
+   "id": "humano.profundidade_max_ancestrais",
+   "valor": 32,
+   "unidade": "niveis de processo pai conferidos acima do processo do motor",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "04/11/2026: decisões do M7, 160 (medição do shell do painel de terminal do app do Claude, scratchpad/m7/painel-medicao.json)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto da subida pela cadeia de processos pais na conferencia do disparo humano (desdobra.humano, processo pai claude.exe recusa). Medido em 04/11: no shell do painel, o claude.exe esta 1 nivel acima do powershell.exe (2 acima do motor) e a cadeia inteira tem 7 niveis ate o wininit.exe. O 32 e folga sobre a cadeia medida, sem medicao de cadeia maior; so limita o laco, e a subida tambem para no pai que ja terminou e em ciclo de pid."
   }
  ]
 }

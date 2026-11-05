@@ -5,6 +5,9 @@
     nunca importa o fontTools nem o pypdfium2);
   - o Chromium fixado: o headless shell da revisao que o Playwright instalado pede, na pasta de navegadores que o
     motor usa (no ambiente do plugin, <pasta de dados>/ms-playwright, baixado pelo gancho de preparo);
+  - o Chromium com janela da tela de briefing (M7a1, decisoes-v1.md n 158): o executavel da mesma revisao e a versao
+    gravada ao lado dele, sem abrir janela; e as pastas de perfil dsd-tela- que uma tela morta deixou, apagadas so
+    quando o dono morreu;
   - um carregamento de verdade de uma fonte sintetica pelo @font-face, servida pela rota propria no loopback, com a
     conferencia por CDP de que a face usada e a do arquivo;
   - o autoteste do caminho PDF + PDFium do render (M4, decisoes-v1.md, 01/11, 36): a pagina de referencia desenhada
@@ -90,6 +93,60 @@ def verificar_chromium(pasta=None, arquivo_browsers=None):
     if revisao is None or exe is None:
         v.situacao = 'falha'
         v.o_que_fazer = O_QUE_FAZER_CHROMIUM
+    return v
+
+
+O_QUE_FAZER_JANELA = ('O Chromium com janela da tela de briefing (o Chrome for Testing da versão fixada do Playwright, '
+                      'cerca de 180 MiB para baixar) não está na pasta de navegadores do desdobra. Sem ele a tela de '
+                      'briefing não abre. Dê o aval para o download, como o preparo pede, e abra uma sessão nova do '
+                      'Claude Code. Se o problema voltar, veja o preparo.log na pasta de dados do plugin e mande o '
+                      'doctor.json para a Trezion.')
+O_QUE_FAZER_PERFIS = ('Uma tela de briefing foi fechada à força e deixou a pasta temporária do navegador. O doctor '
+                      'apagou o que pôde. Se alguma ficou, feche as telas abertas e rode o doctor de novo; se ela '
+                      'continuar, mande o doctor.json para a Trezion.')
+
+
+def verificar_chromium_janela(pasta=None, arquivo_browsers=None):
+    """O Chromium com janela da revisao fixada pelo Playwright instalado (M7a1, decisoes-v1.md n 158): executavel
+    presente e, no Windows, o manifesto da versao que o Playwright pede ao lado dele. Nao abre janela. Ausente: aviso
+    (download opcional); versao errada ou revisao desconhecida: falha."""
+    v = Verificacao('chromium_janela', 'Chromium com janela da tela de briefing')
+    revisao, versao = chromium.revisao_fixada(arquivo_browsers, navegador=chromium.NAVEGADOR_JANELA)
+    pasta = Path(pasta) if pasta is not None else (chromium.pasta_navegadores() or chromium.pasta_padrao_do_playwright())
+    exe = chromium.executavel_fixado(pasta, revisao, navegador=chromium.NAVEGADOR_JANELA)
+    gravada = None
+    if exe is not None and sys.platform == 'win32':
+        manifestos = sorted(p.name[:-len('.manifest')] for p in exe.parent.glob('*.manifest'))
+        gravada = versao if versao in manifestos else ', '.join(manifestos)
+    v.detalhe = 'Chromium com janela revisão %s (versão %s) em %s: %s%s.' % (
+        revisao or 'desconhecida', versao or 'desconhecida', pasta, 'presente' if exe else 'ausente',
+        '' if gravada is None else ', versão gravada %s' % (gravada or 'nenhuma'))
+    if revisao is None or (gravada is not None and gravada != versao):
+        v.situacao = 'falha'
+        v.o_que_fazer = O_QUE_FAZER_JANELA
+    elif exe is None:
+        # o download e opcional e pede o aval do DA (decisoes-v1.md, 158): sem ele, so a tela nao abre; o render e o
+        # resto da esteira seguem (revisao do M7a0)
+        v.situacao = 'aviso'
+        v.o_que_fazer = O_QUE_FAZER_JANELA
+    return v
+
+
+def verificar_perfis_da_tela(pasta_temp=None):
+    """Apaga as pastas de perfil da tela (dsd-tela-) cujo dono morreu e avisa (M7a1, proposta do M7, secao 3). A
+    pasta de outra tela aberta fica. O detalhe so tem contagens, sem caminho."""
+    from desdobra.chromium import navegador
+    v = Verificacao('perfis_da_tela', 'Pastas temporárias de telas de briefing fechadas à força')
+    r = navegador.varrer_orfaos(pasta_temp)
+    v.numeros = dict(r)
+    v.detalhe = ('%d pasta(s) órfã(s) apagada(s), %d que não saiu(ram), %d de tela aberta mantida(s).'
+                 % (r['removidas'], r['nao_removidas'], r['mantidas']))
+    if r['nao_removidas']:
+        v.situacao = 'falha'
+        v.o_que_fazer = O_QUE_FAZER_PERFIS
+    elif r['removidas']:
+        v.situacao = 'aviso'
+        v.o_que_fazer = O_QUE_FAZER_PERFIS
     return v
 
 

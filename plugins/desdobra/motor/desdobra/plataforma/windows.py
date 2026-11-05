@@ -37,7 +37,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 from desdobra import limites
-from desdobra.plataforma import LINHA_LIBERAR, Plataforma, ResultadoFilho
+from desdobra.plataforma import LINHA_LIBERAR, Plataforma, ResultadoFilho, cadeia_de_pais
 
 
 class Limite(enum.IntFlag):
@@ -99,6 +99,7 @@ class Mensagem(enum.IntEnum):
 
 class Constante(enum.IntEnum):
     """Valores de protocolo do Windows e do isolador."""
+    TH32CS_SNAPPROCESS = 0x00000002
     TH32CS_SNAPTHREAD = 0x00000004
     RESUME_FALHOU = 0xFFFFFFFF          # ResumeThread devolve (DWORD)-1 em erro
     SEVERIDADE_ERRO_NTSTATUS = 0x80000000  # codigo de saida com o bit alto ligado: NTSTATUS de aviso ou erro
@@ -138,6 +139,14 @@ class THREADENTRY32(ctypes.Structure):
                 ('dwFlags', wintypes.DWORD)]
 
 
+class PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [('dwSize', wintypes.DWORD), ('cntUsage', wintypes.DWORD), ('th32ProcessID', wintypes.DWORD),
+                ('th32DefaultHeapID', ctypes.c_size_t), ('th32ModuleID', wintypes.DWORD),
+                ('cntThreads', wintypes.DWORD), ('th32ParentProcessID', wintypes.DWORD),
+                ('pcPriClassBase', wintypes.LONG), ('dwFlags', wintypes.DWORD),
+                ('szExeFile', wintypes.WCHAR * 260)]  # numero-neutro: MAX_PATH da API do Windows
+
+
 _INVALIDO = wintypes.HANDLE(-1).value  # INVALID_HANDLE_VALUE
 
 
@@ -163,6 +172,8 @@ def _kernel32():
         'CreateToolhelp32Snapshot': (wintypes.HANDLE, [wintypes.DWORD, wintypes.DWORD]),
         'Thread32First': (wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(THREADENTRY32)]),
         'Thread32Next': (wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(THREADENTRY32)]),
+        'Process32FirstW': (wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]),
+        'Process32NextW': (wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]),
     }
     for nome, (retorno, argumentos) in assinaturas.items():
         funcao = getattr(k32, nome)
@@ -451,6 +462,11 @@ class PlataformaWindows(Plataforma):
     def console_interativo(self):
         return console_do_windows()
 
+    def processos_ancestrais(self, profundidade_max):
+        tabela = tabela_de_processos(self._k32)
+        return None if tabela is None else cadeia_de_pais(os.getpid(), tabela, profundidade_max,
+                                                          inicio=identidade_do_processo)
+
     def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None, entrada=b''):
         inicio = time.perf_counter()
         try:
@@ -563,6 +579,28 @@ def console_do_windows(k32=None):
     return True, None
 
 
+def tabela_de_processos(k32=None):
+    """Foto dos processos do sistema por CreateToolhelp32Snapshot: {pid: (nome do executavel, pid do pai)}; None
+    quando o Windows nao deu a foto. So nomes e pids: nada de linha de comando nem de ambiente de outro processo."""
+    k32 = k32 or _kernel32()
+    foto = k32.CreateToolhelp32Snapshot(Constante.TH32CS_SNAPPROCESS, 0)
+    if not foto or foto == _INVALIDO:
+        return None
+    tabela = {}
+    try:
+        entrada = PROCESSENTRY32W()
+        entrada.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        tem = k32.Process32FirstW(foto, ctypes.byref(entrada))
+        while tem:
+            tabela[int(entrada.th32ProcessID)] = (str(entrada.szExeFile), int(entrada.th32ParentProcessID))
+            entrada = PROCESSENTRY32W()
+            entrada.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+            tem = k32.Process32NextW(foto, ctypes.byref(entrada))
+    finally:
+        k32.CloseHandle(foto)
+    return tabela or None
+
+
 def _escrever_entrada(fluxo, entrada):
     """Escreve a linha de liberacao e a entrada na entrada padrao do filho e fecha. Nunca levanta excecao."""
     try:
@@ -602,3 +640,78 @@ def _classificar(codigo, estourou, pico, mensagens, teto, fracao_pico, stdout, s
         return ResultadoFilho(situacao='queda', motivo='O processo filho terminou de forma anormal, com o código '
                                                        'do sistema 0x%08X.' % codigo, **base)
     return ResultadoFilho(situacao='ok', **base)
+
+
+# ------------------------------------------------------------------ tela (M7a1): dono do perfil e amarra do Chromium
+class ConstanteTela(enum.IntEnum):
+    """Valores de protocolo do Windows usados pela tela (processthreadsapi.h)."""
+    STILL_ACTIVE = 259
+    BITS_DWORD = 32
+
+
+def _kernel32_tela():
+    k32 = _kernel32()
+    tempos = [ctypes.POINTER(wintypes.FILETIME)] * 4  # numero-neutro: criacao, saida, nucleo e usuario
+    extras = {
+        'GetExitCodeProcess': (wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]),
+        'GetProcessTimes': (wintypes.BOOL, [wintypes.HANDLE] + tempos),
+        'GetCurrentProcess': (wintypes.HANDLE, []),
+        'IsProcessInJob': (wintypes.BOOL, [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]),
+    }
+    for nome, (retorno, argumentos) in extras.items():
+        funcao = getattr(k32, nome)
+        funcao.restype = retorno
+        funcao.argtypes = argumentos
+    return k32
+
+
+def identidade_do_processo(pid):
+    """Instante de criacao (inteiro do FILETIME) do processo `pid` enquanto ele roda, ou None quando ele nao existe
+    ou ja saiu. Com o PID, separa o dono do perfil da tela de outro processo que reaproveitou o mesmo PID."""
+    k32 = _kernel32_tela()
+    h = k32.OpenProcess(Acesso.PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not h:
+        return None
+    try:
+        codigo = wintypes.DWORD()
+        if not k32.GetExitCodeProcess(h, ctypes.byref(codigo)) or codigo.value != ConstanteTela.STILL_ACTIVE:
+            return None
+        criado, saida, nucleo, usuario = (wintypes.FILETIME() for _ in range(4))  # numero-neutro: quatro FILETIME
+        if not k32.GetProcessTimes(h, ctypes.byref(criado), ctypes.byref(saida), ctypes.byref(nucleo),
+                                   ctypes.byref(usuario)):
+            return None
+        return (int(criado.dwHighDateTime) << ConstanteTela.BITS_DWORD) | int(criado.dwLowDateTime)
+    finally:
+        k32.CloseHandle(h)
+
+
+def amarrar_este_processo():
+    """Poe este processo num Job Object so com KILL_ON_JOB_CLOSE e devolve o handle do job (nao herdavel), ou None
+    quando o Windows recusa. Quem chama guarda o handle ate sair: os processos que nascem depois (o driver do
+    Playwright e o Chromium) herdam o job e morrem quando o ultimo handle fecha, mesmo com este processo morto a
+    forca."""
+    k32 = _kernel32_tela()
+    job = k32.CreateJobObjectW(None, None)
+    if not job:
+        return None
+    info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+    info.BasicLimitInformation.LimitFlags = Limite.KILL_ON_JOB_CLOSE
+    if not k32.SetInformationJobObject(job, Classe.EXTENDED_LIMIT_INFORMATION, ctypes.byref(info),
+                                       ctypes.sizeof(info)) \
+            or not k32.AssignProcessToJobObject(job, k32.GetCurrentProcess()):
+        k32.CloseHandle(job)
+        return None
+    return job
+
+
+def processo_no_job(job, pid):
+    """O processo `pid` esta dentro do job `job` (IsProcessInJob)."""
+    k32 = _kernel32_tela()
+    h = k32.OpenProcess(Acesso.PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not h:
+        return False
+    try:
+        dentro = wintypes.BOOL()
+        return bool(k32.IsProcessInJob(h, job, ctypes.byref(dentro)) and dentro.value)
+    finally:
+        k32.CloseHandle(h)

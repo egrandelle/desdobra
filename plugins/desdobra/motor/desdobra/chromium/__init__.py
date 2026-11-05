@@ -21,6 +21,13 @@ EXECUTAVEL = {'win32': ('chrome-headless-shell-win64', 'chrome-headless-shell.ex
               'darwin': ('chrome-headless-shell-mac-arm64', 'chrome-headless-shell'),
               'linux': ('chrome-headless-shell-linux64', 'chrome-headless-shell')}
 MARCA_INSTALADO = 'INSTALLATION_COMPLETE'
+# M7a1: o Chromium com janela da tela (Chrome for Testing), pelo layout do Playwright
+NAVEGADOR_JANELA = 'chromium'
+EXECUTAVEL_JANELA = {'win32': ('chrome-win64', 'chrome.exe'),
+                     'darwin': ('chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS',
+                                'Google Chrome for Testing'),
+                     'linux': ('chrome-linux64', 'chrome')}
+_EXECUTAVEIS = {NAVEGADOR_FIXADO: EXECUTAVEL, NAVEGADOR_JANELA: EXECUTAVEL_JANELA}
 
 
 def pasta_dados_do_plugin():
@@ -57,8 +64,9 @@ def apontar_playwright():
     return pasta
 
 
-def revisao_fixada(arquivo_browsers=None):
-    """(revisao, versao do navegador) do headless shell que o Playwright instalado pede, ou (None, None)."""
+def revisao_fixada(arquivo_browsers=None, navegador=NAVEGADOR_FIXADO):
+    """(revisao, versao do navegador) que o Playwright instalado pede para `navegador` (o headless shell, ou o
+    Chromium com janela com NAVEGADOR_JANELA), ou (None, None)."""
     if arquivo_browsers is None:
         try:
             import playwright
@@ -71,17 +79,18 @@ def revisao_fixada(arquivo_browsers=None):
     except (OSError, ValueError):
         return None, None
     for b in dados.get('browsers') or []:
-        if b.get('name') == NAVEGADOR_FIXADO:
+        if b.get('name') == navegador:
             return b.get('revision'), b.get('browserVersion')
     return None, None
 
 
-def executavel_fixado(pasta, revisao, sistema=None):
-    """Caminho do headless shell da revisao dentro da pasta dos navegadores, ou None se nao esta instalado."""
+def executavel_fixado(pasta, revisao, sistema=None, navegador=NAVEGADOR_FIXADO):
+    """Caminho do executavel de `navegador` (headless shell por padrao) da revisao dentro da pasta dos navegadores,
+    ou None se nao esta instalado."""
     if pasta is None or revisao is None:
         return None
-    partes = EXECUTAVEL.get(sistema or sys.platform)
-    raiz = Path(pasta) / ('%s-%s' % (NAVEGADOR_FIXADO.replace('-', '_'), revisao))
+    partes = _EXECUTAVEIS[navegador].get(sistema or sys.platform)
+    raiz = Path(pasta) / ('%s-%s' % (navegador.replace('-', '_'), revisao))
     if not partes or not (raiz / MARCA_INSTALADO).is_file():
         return None
     exe = raiz.joinpath(*partes)

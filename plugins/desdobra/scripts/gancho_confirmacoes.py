@@ -13,7 +13,20 @@ Le da entrada padrao o JSON do evento (tool_name e tool_input) e nega (permissio
   - nas ferramentas que gravam arquivo (Write, Edit, MultiEdit, NotebookEdit), arquivo que so o DA grava ou que so o
     motor grava: os .json de briefing/ (a aprovacao inclusive) e de derivacao/, specs/confirmacoes.json, master,
     render.json e contrato de render/, o que esta em entrega/, o manifesto e o relatorio da entrega e
-    parametros/entrega.json.
+    parametros/entrega.json;
+  - a ferramenta do painel de terminal do app do Claude (mcp__terminal__run_in_terminal), sempre, como pede a
+    decisoes-v1.md, 160, com o motivo MOTIVO_PAINEL: o painel roda no shell do DA, onde o Claude tira as marcas de
+    ambiente e, com um salto (explorer.exe abrindo um script), a cadeia de pais que o motor confere;
+  - nas ferramentas Bash e PowerShell, pedido as rotas do servidor da tela no loopback (ROTA_DA_TELA), comando que cita
+    o perfil temporario do navegador da tela (PERFIL_DA_TELA, com curinga inclusive), codigo que chama o processo de
+    fundo ou o servidor da tela (CODIGO_DA_TELA), despejo de memoria de processo (DESPEJO_DE_MEMORIA: o token, a
+    sessao e as fontes ficam na memoria do processo de fundo) e teclas ou cliques simulados (TECLAS_SIMULADAS: a
+    janela da tela tem DevTools); nas ferramentas de arquivo, escrita no perfil da tela; nas de leitura (Read, Glob,
+    Grep), caminho ou padrao no perfil da tela; nas de navegador (mcp__claude-in-chrome__*, mcp__Claude_Browser__*,
+    WebFetch), as rotas da tela, o cookie dela (COOKIE_DA_TELA) e o perfil. O "desdobra tela abrir" passa: quem abre a
+    tela e o Claude (decisoes-v1.md, 159), e o token da entrada nunca sai do processo de fundo;
+  - escrita no aval do download do Chromium com janela (aval-chromium-janela.json, decisoes-v1.md, 158), que so o DA
+    da.
 Escrita pelo terminal inclui redirecao, copia, movimento e troca de nome (os.replace, os.rename, shutil,
 Rename-Item, ren, Move-Item, Copy-Item) e a opcao --saida do motor. O motor chamado como desdobra, desdobra.exe,
 desdobra.cli ou desdobra.__main__ conta igual. O comando e conferido como chegou e normalizado (sem aspas, sem o
@@ -35,8 +48,21 @@ import sys
 MOTIVO = ('O desdobra recusa este comando pelo Claude: render, confirmação de linkado, confirmação de spec, '
           'confirmação de briefing, aprovação, entrega e parâmetros de entrega só partem do DA. Peça ao DA para abrir um terminal próprio, fora do Claude, e rodar '
           'o comando lá; o desdobra pergunta e grava. Não tente outro caminho para o mesmo efeito.')
+MOTIVO_PAINEL = ('O desdobra recusa comandos do Claude no painel de terminal do app: o painel roda no terminal do DA, '
+                 'e o que só o DA faz não parte do Claude. O que não é do DA (job proxima, doctor) segue pelas '
+                 'ferramentas Bash ou PowerShell; o resto só parte do DA. Não tente outro caminho para o mesmo efeito.')
 FERRAMENTAS_DE_COMANDO = ('Bash', 'PowerShell')
 FERRAMENTAS_DE_ARQUIVO = ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')
+# ferramenta do app do Claude que digita um comando no painel de terminal, no shell do DA e fora da sandbox
+# (decisoes-v1.md, 160). O motor recusa o painel (desdobra.humano, marcas medidas do painel); o gancho nega a
+# ferramenta sempre: o texto do comando nao diz o que ele faz (string partida, script gravado antes). A
+# mcp__terminal__open_terminal_tab nao digita comando nenhum e fica de fora
+FERRAMENTAS_DO_PAINEL = ('mcp__terminal__run_in_terminal',)
+FERRAMENTAS_DE_LEITURA = ('Read', 'Glob', 'Grep')
+CAMPOS_DE_LEITURA = ('file_path', 'path', 'pattern', 'glob', 'notebook_path')
+# ferramentas de navegador e de rede do Claude: o que elas pedem e conferido pelo texto inteiro da entrada
+PREFIXOS_DE_NAVEGADOR = ('mcp__claude-in-chrome__', 'mcp__Claude_Browser__')
+FERRAMENTAS_DE_REDE = ('WebFetch',)
 # subcomandos humanos do desdobra, depois de "desdobra" e de opcoes globais quaisquer. Os mesmos de
 # desdobra.humano.COMANDOS, com teste (aprovar e entregar: decisoes-v1.md, 138 e 142)
 SUBCOMANDOS_HUMANOS = ('render', 'linkado confirmar', 'spec confirmar', 'briefing confirmar', 'aprovar', 'entregar',
@@ -69,7 +95,25 @@ FONTE_DO_PACOTE = r'(?:__pycache__/)?\w+(?:\.[\w-]+)?\.pyc?(?![\w.\\/{},-])'
 ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])(briefing[\\/][\w.-]+\.json\b|derivacao[\\/][\w.-]+\.json\b|specs[\\/]confirmacoes\.json|render[\\/][^\\/]+[\\/]'
                             r'(master\.png|render\.json|contrato\.json)|linkados-confirmados\.json|'
                             r'(?<!desdobra[\\/])entrega[\\/]|entrega[\\/](?!%s)|manifesto-licenca\.json|relatorio-entrega\.json|'
-                            r'parametros[\\/]entrega\.json)' % FONTE_DO_PACOTE, re.IGNORECASE)
+                            r'parametros[\\/]entrega\.json|aval-chromium-janela\.json)' % FONTE_DO_PACOTE,
+                            re.IGNORECASE)
+# tela de briefing (M7a2; decisoes-v1.md, 159; proposta do M7, 160c): o Claude abre a tela ("desdobra tela abrir"
+# passa), mas nao pede as rotas do servidor dela no loopback (a entrada, a api, a fonte, os assets e o controle), nao
+# chama o processo de fundo nem o servidor pelo codigo e nao toca no perfil temporario do navegador da tela (pastas
+# dsd-, o arquivo do dono)
+ROTA_DA_TELA = re.compile(r'(?:127\.0\.0\.1|localhost|\[?::1\]?)(?::[^/\s]*)?/+(?:entrar|api|fonte|asset|controle|'
+                          r'tela\.(?:js|css)|fontes\.css)\b', re.IGNORECASE)
+# o perfil pelo nome, ou por curinga logo depois do prefixo dsd- (dsd-t*, dsd-*)
+PERFIL_DA_TELA = re.compile(r'(?<![\w-])dsd-(?:tela|nasce)-|dsd-dono\.json|(?<![\w-])dsd-[\w-]*[*?\[]', re.IGNORECASE)
+COOKIE_DA_TELA = re.compile(r'dsd_tela', re.IGNORECASE)
+# despejo da memoria de um processo (rundll32 comsvcs.dll MiniDump, procdump, createdump do .NET)
+DESPEJO_DE_MEMORIA = re.compile(r'minidump|procdump|createdump', re.IGNORECASE)
+# teclas e cliques simulados numa janela (SendKeys do Windows Forms e do WScript.Shell, AppActivate, SendInput)
+TECLAS_SIMULADAS = re.compile(r'sendkeys|sendwait|sendinput|keybd_event|mouse_event|appactivate|setcursorpos',
+                              re.IGNORECASE)
+CODIGO_DA_TELA = re.compile(r'desdobra\s*\.\s*tela\s*\.\s*(?:processo|servidor)\b|'
+                            r'from\s+desdobra\s*\.\s*tela\s+import\s+[^\n;]*\b(?:processo|servidor)\b',
+                            re.IGNORECASE)
 ESCRITA = re.compile(r'(>|\btee\b|Set-Content|Out-File|Add-Content|\bcp\b|\bmv\b|copy|move|New-Item|\bsed\s+-i|'
                      r'write_text|write_bytes|open\s*\(|os\s*\.\s*(replace|rename|link|symlink)|shutil\s*\.|'
                      r'Rename-Item|\bren\b|\brename\b|Move-Item|Copy-Item|--saida)', re.IGNORECASE)
@@ -92,10 +136,42 @@ def normalizar(comando):
     return _caminhos(re.sub('[\'"^`]', '', comando))
 
 
+def decidir_painel(entrada, cwd_da_sessao=None):
+    """'deny' sempre (decisoes-v1.md, 160): o comando do painel roda no shell do DA, e o texto dele nao diz o que ele
+    faz."""
+    return 'deny'
+
+
+def _texto_da_entrada(entrada):
+    try:
+        return json.dumps(entrada, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(entrada)
+
+
+def decidir_navegador(entrada):
+    """'deny' quando a ferramenta de navegador ou de rede pede as rotas da tela, mexe no cookie dela ou cita o
+    perfil."""
+    texto = _texto_da_entrada(entrada)
+    for t in (texto, _caminhos(texto)):
+        if ROTA_DA_TELA.search(t) or COOKIE_DA_TELA.search(t) or PERFIL_DA_TELA.search(t):
+            return 'deny'
+    return None
+
+
 def decidir(evento):
     """'deny' ou None."""
     ferramenta = evento.get('tool_name') or ''
     entrada = evento.get('tool_input') or {}
+    if ferramenta in FERRAMENTAS_DO_PAINEL:
+        return decidir_painel(entrada, evento.get('cwd'))
+    if ferramenta.startswith(PREFIXOS_DE_NAVEGADOR) or ferramenta in FERRAMENTAS_DE_REDE:
+        return decidir_navegador(entrada)
+    if ferramenta in FERRAMENTAS_DE_LEITURA:
+        for campo in CAMPOS_DE_LEITURA:
+            if PERFIL_DA_TELA.search(_caminhos(str(entrada.get(campo) or ''))):
+                return 'deny'
+        return None
     if ferramenta in FERRAMENTAS_DE_COMANDO:
         bruto = str(entrada.get('command') or '')
         for comando in (bruto, normalizar(bruto)):
@@ -105,10 +181,14 @@ def decidir(evento):
                 return 'deny'
             if ARQUIVOS_DO_DA.search(comando) and ESCRITA.search(comando):
                 return 'deny'
+            if ROTA_DA_TELA.search(comando) or PERFIL_DA_TELA.search(comando) or CODIGO_DA_TELA.search(comando):
+                return 'deny'
+            if DESPEJO_DE_MEMORIA.search(comando) or TECLAS_SIMULADAS.search(comando):
+                return 'deny'
         return None
     if ferramenta in FERRAMENTAS_DE_ARQUIVO:
         caminho = str(entrada.get('file_path') or entrada.get('notebook_path') or '')
-        if ARQUIVOS_DO_DA.search(_caminhos(caminho)):
+        if ARQUIVOS_DO_DA.search(_caminhos(caminho)) or PERFIL_DA_TELA.search(_caminhos(caminho)):
             return 'deny'
     return None
 
@@ -118,9 +198,12 @@ def main():
         evento = json.loads(sys.stdin.buffer.read().decode('utf-8') or '{}')
     except (ValueError, UnicodeDecodeError):
         return 0
+    if not isinstance(evento, dict):
+        return 0
     if decidir(evento) == 'deny':
+        motivo = MOTIVO_PAINEL if evento.get('tool_name') in FERRAMENTAS_DO_PAINEL else MOTIVO
         saida = json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
-                                                   'permissionDecisionReason': MOTIVO}}, ensure_ascii=False)
+                                                   'permissionDecisionReason': motivo}}, ensure_ascii=False)
         sys.stdout.buffer.write(saida.encode('utf-8') + bytes([10]))
         sys.stdout.buffer.flush()
     return 0

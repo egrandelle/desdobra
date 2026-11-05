@@ -49,10 +49,11 @@ REVISAO_FALSA = '1217'
 class Executor:
     """Executor falso: registra cada etapa pelo argv e simula o que o comando deixaria no disco."""
 
-    def __init__(self, falhar_em=None, chromium_ok=True):
+    def __init__(self, falhar_em=None, chromium_ok=True, janela_ok=True):
         self.etapas = []
         self.falhar_em = falhar_em
         self.chromium_ok = chromium_ok
+        self.janela_ok = janela_ok
         self.ambientes = {}
 
     def __call__(self, argv, log, ambiente=None):
@@ -65,13 +66,22 @@ class Executor:
             pacote = Path(argv[4]) / 'Lib' / 'site-packages' / 'playwright' / 'driver' / 'package'
             pacote.mkdir(parents=True, exist_ok=True)
             (pacote / 'browsers.json').write_text(json.dumps({'browsers': [
+                {'name': 'chromium', 'revision': REVISAO_FALSA},
                 {'name': 'chromium-headless-shell', 'revision': REVISAO_FALSA}]}), encoding='utf-8')
-        elif argv[2:5] == ['-m', 'playwright', 'install']:
+        elif argv[2:5] == ['-m', 'playwright', 'install'] and argv[5:] == ['--only-shell', 'chromium']:
             etapa = 'chromium'
-            assert argv[5:] == ['--only-shell', 'chromium']
             pasta = Path(ambiente['PLAYWRIGHT_BROWSERS_PATH'])
             if self.chromium_ok:
                 marca = pasta / ('chromium_headless_shell-%s' % REVISAO_FALSA) / 'INSTALLATION_COMPLETE'
+                marca.parent.mkdir(parents=True, exist_ok=True)
+                marca.write_bytes(b'')
+        elif argv[2:5] == ['-m', 'playwright', 'install']:
+            # M7a1: o Chromium com janela, sem baixar de novo o headless shell
+            etapa = 'chromium_janela'
+            assert argv[5:] == ['--no-shell', 'chromium']
+            pasta = Path(ambiente['PLAYWRIGHT_BROWSERS_PATH'])
+            if self.janela_ok:
+                marca = pasta / ('chromium-%s' % REVISAO_FALSA) / 'INSTALLATION_COMPLETE'
                 marca.parent.mkdir(parents=True, exist_ok=True)
                 marca.write_bytes(b'')
         elif 'pip' in argv and '-r' in argv:
@@ -180,6 +190,70 @@ def test_falha_no_download_do_chromium_avisa_e_nao_desfaz_o_ambiente(raiz, dados
     assert (dados / 'interpretador.json').exists()
     preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
     assert preparo['situacao'] == 'ok' and preparo['chromium']['situacao'] == 'falhou'
+
+
+# ------------------------------------------------------------------ Chromium com janela da tela (M7a1, decisao 158)
+def _dar_aval(dados):
+    dados.mkdir(parents=True, exist_ok=True)
+    (dados / pa.NOME_AVAL_JANELA).write_text('{"aval": "DA"}', encoding='utf-8')
+
+
+def test_chromium_com_janela_sem_aval_nao_baixa_e_avisa(raiz, dados):
+    ex = Executor()
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert 'chromium_janela' not in ex.etapas and linha.startswith('ambiente Python criado em')
+    assert 'janela' in linha and 'aval' in linha and 'MiB' in linha
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    assert preparo['chromium_janela'] == {'situacao': 'sem_aval', 'revisao': REVISAO_FALSA}
+    assert not pa.chromium_presente(dados, REVISAO_FALSA, pa.NAVEGADOR_JANELA)
+    # a sessao seguinte continua rapida e sem baixar nada
+    ex = Executor()
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert ex.etapas == [] and 'sem mudança' in linha and 'aval' in linha
+
+
+def test_chromium_com_janela_com_aval_e_baixado_uma_vez(raiz, dados):
+    _dar_aval(dados)
+    ex = Executor()
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert ex.etapas[-2:] == ['chromium', 'chromium_janela'] and linha.startswith('ambiente Python criado em')
+    assert pa.mesmo_caminho(ex.ambientes['chromium_janela']['PLAYWRIGHT_BROWSERS_PATH'], dados / 'ms-playwright')
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    etapa = preparo['etapas'][-1]
+    assert etapa['etapa'] == 'chromium_janela' and etapa['baixado'] is True and isinstance(etapa['tempo_s'], float)
+    assert preparo['chromium_janela'] == {'situacao': 'baixado', 'revisao': REVISAO_FALSA}
+    ex = Executor()
+    assert 'sem mudança' in pa.preparar(raiz, dados, executar=ex, python_base='python-base') and ex.etapas == []
+
+
+def test_aval_dado_depois_so_baixa_o_chromium_com_janela(raiz, dados):
+    pa.preparar(raiz, dados, executar=Executor(), python_base='python-base')
+    _dar_aval(dados)
+    ex = Executor()
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert ex.etapas == ['chromium_janela'] and 'janela' in linha
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    assert preparo['acao'] == 'chromium' and preparo['chromium_janela']['situacao'] == 'baixado'
+
+
+def test_chromium_com_janela_ja_presente_nao_pede_aval_nem_baixa(raiz, dados):
+    marca = dados / 'ms-playwright' / ('chromium-%s' % REVISAO_FALSA) / 'INSTALLATION_COMPLETE'
+    marca.parent.mkdir(parents=True)
+    marca.write_bytes(b'')
+    ex = Executor()
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert 'chromium_janela' not in ex.etapas and 'aval' not in linha
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    assert preparo['chromium_janela'] == {'situacao': 'presente', 'revisao': REVISAO_FALSA}
+
+
+def test_falha_no_download_do_chromium_com_janela_avisa_e_nao_desfaz_o_ambiente(raiz, dados):
+    _dar_aval(dados)
+    ex = Executor(janela_ok=False)
+    linha = pa.preparar(raiz, dados, executar=ex, python_base='python-base')
+    assert 'janela' in linha and '/desdobra:doctor' in linha and (dados / 'interpretador.json').exists()
+    preparo = json.loads((dados / 'preparo.json').read_text(encoding='utf-8'))
+    assert preparo['situacao'] == 'ok' and preparo['chromium_janela']['situacao'] == 'falhou'
 
 
 def test_falha_no_pip_nao_grava_interpretador_e_a_proxima_sessao_tenta_de_novo(raiz, dados):

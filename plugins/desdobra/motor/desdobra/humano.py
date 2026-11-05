@@ -4,7 +4,9 @@
 Regra (decisoes-v1.md, arquitetura n. 2 e n. 142): render, aprovacao, entrega e confirmacoes so partem do DA, pela
 tela (M7) ou por um terminal interativo. O Claude nunca dispara. Este modulo:
   - confere o console do processo (console_interativo): nada de modo envelope; nada de variavel de ambiente que o
-    Claude Code poe nos processos que ele abre; no Windows, a entrada e a saida padrao tem de ser um console de
+    Claude Code poe nos processos que ele abre; nada das marcas do painel de terminal do app do Claude (decisoes-v1.md,
+    160: TERM_PROGRAM=claude-desktop, CLAUDE_AGENT_SDK_VERSION e, depois da conferencia do console, processo pai
+    claude.exe na cadeia de pais, lida por uma foto dos processos do sistema; cadeia ilegivel recusa); no Windows, a entrada e a saida padrao tem de ser um console de
     verdade (GetFileType de caractere e GetConsoleMode que responde nos dois: o dispositivo nulo NUL e um arquivo de
     caractere sem modo de console, e por isso e recusado) e o processo tem de ter janela de console; fora do
     Windows, isatty nos dois;
@@ -16,7 +18,13 @@ tela (M7) ou por um terminal interativo. O Claude nunca dispara. Este modulo:
 Risco residual declarado: um processo do mesmo usuario, fora do Claude, com acesso ao console (por exemplo um
 programa que abre um console novo e escreve teclas nele com WriteConsoleInputW) ainda passa por aqui. O gancho
 PreToolUse do plugin (scripts/gancho_confirmacoes.py) cobre o caminho do Claude; um processo malicioso local fica
-fora do que o motor consegue impedir.
+fora do que o motor consegue impedir. O processo pai que ja terminou some da foto, e a cadeia para nele: um processo
+do Claude que abre um intermediario e o encerra antes do comando passa pela conferencia dos pais (as marcas de
+ambiente continuam valendo se ele as herdar). Isso nao pede corrida: um comando comum (explorer.exe abrindo um .bat)
+abre um console de verdade filho do explorer.exe, com o ambiente limpo dele, e a conferencia inteira passa; o que
+segura esse caminho e o gancho (o painel negado sempre, decisoes-v1.md, 160) e as regras de permissao, nao o motor.
+A cadeia para tambem no pai que nasceu depois do filho (PID reaproveitado pelo Windows, plataforma.cadeia_de_pais).
+No Mac a cadeia de pais nao e lida (plataforma base), so as marcas.
 """
 import getpass
 import os
@@ -33,9 +41,21 @@ VARIAVEIS_DO_CLAUDE = ('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESS
 # decisoes do DA por formato ate a tela (139)
 COMANDOS = ('render', 'linkado confirmar', 'spec confirmar', 'briefing confirmar', 'aprovar', 'entregar',
             'parametros-entrega')
+# marcas do painel de terminal do app do Claude (decisoes-v1.md, 160), medidas no shell do painel em 04/11: o painel
+# nao poe as VARIAVEIS_DO_CLAUDE, mas poe TERM_PROGRAM=claude-desktop e CLAUDE_AGENT_SDK_VERSION, e o shell dele e
+# filho de claude.exe (powershell.exe -> claude.exe -> claude.exe -> sihost.exe). Cada marca recusa sozinha
+MARCAS_DO_PAINEL = {'TERM_PROGRAM': 'claude-desktop'}
+VARIAVEIS_DO_PAINEL = ('CLAUDE_AGENT_SDK_VERSION',)
+PROCESSOS_DO_CLAUDE = ('claude.exe',)
 O_QUE_FAZER = ('Isto é do DA: abra um terminal próprio (Prompt de Comando, PowerShell ou Terminal), fora do Claude, e '
                'rode o comando lá. O desdobra recusa rodar com --envelope, com a entrada ou a saída redirecionada, '
-               'sem console interativo ou em processo aberto pelo Claude.')
+               'sem console interativo, em processo aberto pelo Claude ou no painel de terminal do app do Claude.')
+TEXTO_MOTIVO = {
+    'terminal_do_claude': ('O comando veio do painel de terminal do app do Claude ou de um processo aberto pelo '
+                           'Claude, e o que só o DA faz não parte de lá.'),
+    'cadeia_de_processos_ilegivel': ('O sistema não deixou ler os processos pais deste terminal, e sem isso o '
+                                     'desdobra não confirma que o comando não veio do Claude.'),
+}
 _SELOS = {}
 
 
@@ -71,12 +91,28 @@ def _console_do_sistema():
     return plataforma.obter().console_interativo()
 
 
+def _ancestrais():
+    """Nomes dos processos pais deste processo (None quando o sistema nao deixou ler), ate o teto registrado."""
+    from desdobra import limites, plataforma
+    return plataforma.obter().processos_ancestrais(int(limites.valor('humano.profundidade_max_ancestrais')))
+
+
+def _marca_do_painel():
+    """O ambiente tem marca do painel de terminal do app do Claude (MARCAS_DO_PAINEL, VARIAVEIS_DO_PAINEL)."""
+    if any((os.environ.get(v) or '').strip().lower() == valor for v, valor in MARCAS_DO_PAINEL.items()):
+        return True
+    return any(os.environ.get(v) for v in VARIAVEIS_DO_PAINEL)
+
+
 def console_interativo():
-    """(ok, motivo). Recusa o modo envelope, o ambiente aberto pelo Claude e o console que nao e interativo."""
+    """(ok, motivo). Recusa o modo envelope, o ambiente aberto pelo Claude, o painel de terminal do app do Claude
+    (marca de ambiente ou processo pai claude.exe), o console que nao e interativo e a cadeia de pais ilegivel."""
     if _modo_envelope():
         return False, 'modo_envelope'
     if any(os.environ.get(v) for v in VARIAVEIS_DO_CLAUDE):
         return False, 'processo_aberto_pelo_claude'
+    if _marca_do_painel():
+        return False, 'terminal_do_claude'
     ok, motivo = _console_do_sistema()
     if not ok:
         return ok, motivo
@@ -85,6 +121,11 @@ def console_interativo():
             return False, 'sem_terminal'
     except (AttributeError, ValueError):
         return False, 'sem_terminal'
+    pais = _ancestrais()
+    if pais is None:
+        return False, 'cadeia_de_processos_ilegivel'
+    if any(str(n).strip().lower() in PROCESSOS_DO_CLAUDE for n in pais):
+        return False, 'terminal_do_claude'
     return True, None
 
 

@@ -95,6 +95,12 @@ class Plataforma(abc.ABC):
             ok = False
         return (True, None) if ok else (False, 'sem_terminal')
 
+    def processos_ancestrais(self, profundidade_max):
+        """Nomes dos executaveis dos processos pais deste processo, do pai para cima, ate profundidade_max niveis;
+        None quando o sistema nao deixou ler a lista de processos. A base nao sabe listar e devolve () (no Mac a
+        recusa do painel do Claude fica so pelas marcas de ambiente, decisoes-v1.md, 160; risco declarado)."""
+        return ()
+
     def porta_livre(self):
         """Uma porta TCP livre em 127.0.0.1, escolhida pelo sistema."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -117,6 +123,28 @@ class PlataformaSemSuporte(Plataforma):
     def executar_isolado(self, comando, orcamento_bytes, tempo_s, pasta_trabalho, *, ambiente=None, entrada=b''):
         return ResultadoFilho(situacao='recusado', codigo=None, pico_bytes=None, stdout_bytes=b'', stderr_resumo='',
                               motivo=self.motivo)
+
+
+def cadeia_de_pais(pid, tabela, profundidade_max, inicio=None):
+    """Nomes dos pais de `pid` pela tabela {pid: (nome, pid_do_pai)} (uma foto dos processos do sistema), do pai
+    para cima, no maximo profundidade_max. Para no pid 0, no pai que nao esta na foto (ja terminou), em ciclo e no pai
+    que nasceu depois do filho: o Windows reusa pid, e o pai registrado de um processo cujo pai ja saiu pode ser outro
+    processo, mais novo (revisao do M7a0). inicio(pid): instante de criacao do processo, ou None quando nao se le; sem
+    ele (ou com instante desconhecido) o pai conta. None quando `pid` nao esta na foto."""
+    if pid not in tabela:
+        return None
+    nomes, vistos, atual = [], {pid}, tabela[pid][1]
+    nascido = inicio(pid) if inicio is not None else None
+    while len(nomes) < profundidade_max and atual and atual not in vistos and atual in tabela:
+        nascido_pai = inicio(atual) if inicio is not None else None
+        if nascido is not None and nascido_pai is not None and nascido_pai > nascido:
+            break
+        vistos.add(atual)
+        nome, pai = tabela[atual]
+        nomes.append(nome)
+        atual = pai
+        nascido = nascido_pai
+    return tuple(nomes)
 
 
 _IMPLEMENTACOES = {'win32': ('desdobra.plataforma.windows', 'PlataformaWindows'),

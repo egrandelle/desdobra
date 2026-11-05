@@ -5,7 +5,8 @@ Doctor do M1 com o que o M2 pede (arquitetura-v1.md, 4.15, 9.2 e 9.3): versao do
 psd-tools com o extra composite, versao fixada do fontTools, do Playwright, do pypdfium2 (M3) e do kiwisolver (M5), o Chromium fixado na pasta de
 navegadores do motor, o carregamento de uma fonte sintetica pelo @font-face com conferencia por CDP, o autoteste do
 caminho PDF + PDFium do render com a fonte gerada pelo motor (M4), o isolador (um filho dentro do teto e outro que
-estoura), o teto do modo de dados e o encoder da entrega (M6: JPEG e sem libimagequant; outra build so avisa).
+estoura), o teto do modo de dados e o encoder da entrega (M6: JPEG e sem libimagequant; outra build so avisa), o
+Chromium com janela da tela de briefing e as pastas de perfil dsd-tela- orfas, apagadas com aviso (M7a1).
 
     desdobra [--envelope] [--teto-modo-dados {a,b,c}] doctor [--saida <pasta>] [--sem-isolador] [--sem-chromium]
 
@@ -55,7 +56,10 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
               ('scipy_highs', v.verificar_highs),
               # M6: o encoder da entrega (JPEG, sem libimagequant; outra build so avisa)
               ('encoder_entrega', v.verificar_encoder),
-              ('chromium_fixado', vc.verificar_chromium)]
+              ('chromium_fixado', vc.verificar_chromium),
+              # M7a1: o Chromium com janela da tela e as pastas de perfil que uma tela morta deixou
+              ('chromium_janela', vc.verificar_chromium_janela),
+              ('perfis_da_tela', vc.verificar_perfis_da_tela)]
     for ident, passo in passos:
         try:
             lista.append(passo())

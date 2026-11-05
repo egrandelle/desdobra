@@ -25,6 +25,11 @@ O que faz, nesta ordem:
      chromium" e PLAYWRIGHT_BROWSERS_PATH=DATA/ms-playwright (a mesma pasta que o motor usa). Ja presente, nao baixa.
      Isso vale tambem no caminho rapido: um ambiente pronto sem o Chromium so baixa o Chromium. A falha do download
      nao desfaz o ambiente Python: a linha de situacao avisa, e o doctor confere.
+  6. confere o Chromium com janela da tela de briefing (M7a1, decisoes-v1.md n 158): o 'chromium' da mesma revisao
+     (Chrome for Testing), em DATA/ms-playwright. Ele so e baixado com o aval do DA, gravado em
+     DATA/aval-chromium-janela.json, com "python -m playwright install --no-shell chromium" (o headless shell ja
+     esta la). Sem o aval, nada e baixado e a linha de situacao diz o tamanho e que falta o aval; ja presente, nao
+     pede aval nem baixa. A falha do download tambem nao desfaz o ambiente.
 
 Registro: DATA/preparo.json (etapas, codigos e tempos, inclusive o tempo da primeira criacao e o do download do
 Chromium, que se medem contra o timeout do gancho) e DATA/preparo.log (saida do venv, do pip e do Playwright).
@@ -57,6 +62,10 @@ NOME_LOG = 'preparo.log'
 NOME_VENV = 'venv'
 NOME_NAVEGADORES = 'ms-playwright'
 NAVEGADOR_FIXADO = 'chromium-headless-shell'
+NAVEGADOR_JANELA = 'chromium'
+NOME_AVAL_JANELA = 'aval-chromium-janela.json'
+# tamanho medido no download de 04/11 (decisoes-v1.md n 158: 179,4 MiB baixados, 408 MB instalados)
+TAMANHO_JANELA = 'cerca de 180 MiB para baixar e 410 MB instalados'
 MARCA_INSTALADO = 'INSTALLATION_COMPLETE'
 
 
@@ -210,19 +219,76 @@ def tomar_trava(dados, idade_max_s):
 
 
 # ------------------------------------------------------------------ Chromium fixado
-def revisao_do_chromium(venv):
-    """Revisao do headless shell que o Playwright instalado no venv pede (driver/package/browsers.json), ou None."""
+def revisao_do_chromium(venv, navegador=NAVEGADOR_FIXADO):
+    """Revisao de `navegador` (o headless shell, ou o Chromium com janela) que o Playwright instalado no venv pede
+    (driver/package/browsers.json), ou None."""
     for arq in sorted(Path(venv).glob('**/site-packages/playwright/driver/package/browsers.json')):
         dados = ler_json(arq)
         for b in (dados or {}).get('browsers') or []:
-            if b.get('name') == NAVEGADOR_FIXADO and b.get('revision'):
+            if b.get('name') == navegador and b.get('revision'):
                 return str(b['revision'])
     return None
 
 
-def chromium_presente(dados, revisao):
-    pasta = Path(dados) / NOME_NAVEGADORES / ('%s-%s' % (NAVEGADOR_FIXADO.replace('-', '_'), revisao))
+def chromium_presente(dados, revisao, navegador=NAVEGADOR_FIXADO):
+    pasta = Path(dados) / NOME_NAVEGADORES / ('%s-%s' % (navegador.replace('-', '_'), revisao))
     return (pasta / MARCA_INSTALADO).is_file()
+
+
+def aval_da_janela(dados):
+    """O DA deu o aval para baixar o Chromium com janela (o arquivo do aval existe na pasta de dados)."""
+    return (Path(dados) / NOME_AVAL_JANELA).is_file()
+
+
+def _janela_em_dia(dados):
+    """Nada a fazer com o Chromium com janela: ja presente, ou sem aval (entao nao se baixa)."""
+    revisao = revisao_do_chromium(Path(dados) / NOME_VENV, NAVEGADOR_JANELA)
+    presente = revisao is not None and chromium_presente(dados, revisao, NAVEGADOR_JANELA)
+    return presente or not aval_da_janela(dados)
+
+
+def aviso_sem_janela(dados):
+    """Texto que vai junto da linha de situacao enquanto o Chromium com janela falta e o DA nao deu o aval."""
+    revisao = revisao_do_chromium(Path(dados) / NOME_VENV, NAVEGADOR_JANELA)
+    if revisao is not None and chromium_presente(dados, revisao, NAVEGADOR_JANELA):
+        return None
+    if aval_da_janela(dados):
+        return None
+    return ('a tela de briefing precisa do Chromium com janela (%s), que só é baixado com o aval do DA.'
+            % TAMANHO_JANELA)
+
+
+def preparar_chromium_janela(dados, registro, log, executar):
+    """Baixa o Chromium com janela fixado para DATA/ms-playwright, so com o aval e so quando ele nao esta la.
+    Devolve a linha de aviso (sem o prefixo) quando falha ou falta o aval, ou None. Registra a etapa no preparo.json."""
+    venv = Path(dados) / NOME_VENV
+    revisao = revisao_do_chromium(venv, NAVEGADOR_JANELA)
+    if revisao is None:
+        registro['chromium_janela'] = {'situacao': 'falhou', 'revisao': None}
+        return ('o Playwright do ambiente não diz qual Chromium com janela usar, e a tela de briefing não abre. '
+                'Rode /desdobra:doctor.')
+    if chromium_presente(dados, revisao, NAVEGADOR_JANELA):
+        registro['chromium_janela'] = {'situacao': 'presente', 'revisao': revisao}
+        return None
+    if not aval_da_janela(dados):
+        registro['chromium_janela'] = {'situacao': 'sem_aval', 'revisao': revisao}
+        return aviso_sem_janela(dados)
+    inicio = time.monotonic()
+    codigo, _texto = executar([python_do_venv(venv), '-I', '-m', 'playwright', 'install', '--no-shell', 'chromium'],
+                              log, ambiente={'PLAYWRIGHT_BROWSERS_PATH': Path(dados) / NOME_NAVEGADORES})
+    registro['etapas'].append({'etapa': 'chromium_janela', 'codigo': codigo,
+                               'tempo_s': round(time.monotonic() - inicio, 3), 'baixado': True})
+    if codigo != 0 or not chromium_presente(dados, revisao, NAVEGADOR_JANELA):
+        registro['chromium_janela'] = {'situacao': 'falhou', 'revisao': revisao}
+        return ('o ambiente Python está pronto, mas o download do Chromium com janela falhou (rede ou proxy), e a '
+                'tela de briefing não abre sem ele. Abra uma sessão nova para tentar de novo ou rode /desdobra:doctor.')
+    registro['chromium_janela'] = {'situacao': 'baixado', 'revisao': revisao}
+    return None
+
+
+def _juntar(linha, aviso):
+    """A linha de situacao com o aviso do Chromium com janela no fim, numa linha so."""
+    return linha if not aviso else '%s Também: %s' % (linha, aviso)
 
 
 def preparar_chromium(dados, registro, log, executar):
@@ -321,8 +387,9 @@ def preparar(raiz, dados, executar=executar_comando, python_base=None):
     except OSError:
         return 'não consegui criar a pasta de dados do plugin. Rode /desdobra:doctor.'
 
-    if situacao_atual(raiz, dados, lock_bytes) == 'pronto' and _chromium_em_dia(dados):
-        return 'ambiente Python pronto (Python %s, sem mudança).' % platform.python_version()
+    if situacao_atual(raiz, dados, lock_bytes) == 'pronto' and _chromium_em_dia(dados) and _janela_em_dia(dados):
+        return _juntar('ambiente Python pronto (Python %s, sem mudança).' % platform.python_version(),
+                       aviso_sem_janela(dados))
     trava = tomar_trava(dados, idade_trava_s)
     if trava is None:
         return ('outra sessão está preparando o ambiente Python agora. Espere alguns minutos e abra uma sessão '
@@ -330,8 +397,9 @@ def preparar(raiz, dados, executar=executar_comando, python_base=None):
     try:
         acao = situacao_atual(raiz, dados, lock_bytes)  # outra sessao pode ter terminado enquanto esta esperava
         if acao == 'pronto':
-            if _chromium_em_dia(dados):
-                return 'ambiente Python pronto (Python %s, sem mudança).' % platform.python_version()
+            if _chromium_em_dia(dados) and _janela_em_dia(dados):
+                return _juntar('ambiente Python pronto (Python %s, sem mudança).' % platform.python_version(),
+                               aviso_sem_janela(dados))
             return _so_chromium(raiz, dados, lock_bytes, executar, python_base)
         return _preparar_com_trava(raiz, dados, lock_bytes, acao, executar, python_base)
     finally:
@@ -353,11 +421,17 @@ def _so_chromium(raiz, dados, lock_bytes, executar, python_base):
     with open(dados / NOME_LOG, 'w', encoding='utf-8') as log:
         log.write('preparo chromium em %s\n' % registro['inicio'])
         aviso = preparar_chromium(dados, registro, log, executar)
+        aviso_janela = preparar_chromium_janela(dados, registro, log, executar)
     registro.update(situacao='ok', fim=agora_iso(), tempo_s=round(time.monotonic() - inicio, 3))
     gravar_json_atomico(dados / NOME_PREPARO, registro)
     if aviso:
-        return aviso
-    return 'ambiente Python pronto; o Chromium fixado foi baixado em %d s.' % round(registro['tempo_s'])
+        return _juntar(aviso, aviso_janela)
+    baixados = [nome for chave, nome in (('chromium', 'o Chromium fixado'), ('chromium_janela', 'o Chromium com janela'))
+                if (registro.get(chave) or {}).get('situacao') == 'baixado']
+    if not baixados:
+        return _juntar('ambiente Python pronto (Python %s, sem mudança).' % platform.python_version(), aviso_janela)
+    return _juntar('ambiente Python pronto; %s %s baixado em %d s.' % (
+        ' e '.join(baixados), 'foram' if len(baixados) > 1 else 'foi', round(registro['tempo_s'])), aviso_janela)
 
 
 def _registro_novo(raiz, lock_bytes, acao, python_base):
@@ -384,6 +458,7 @@ def _preparar_com_trava(raiz, dados, lock_bytes, acao, executar, python_base):
     gravar_json_atomico(dados / NOME_PREPARO, registro)
     linha = None
     aviso_chromium = None
+    aviso_janela = None
     with open(dados / NOME_LOG, 'w', encoding='utf-8') as log:
         log.write('preparo %s em %s\n' % (acao, registro['inicio']))
         try:
@@ -392,6 +467,7 @@ def _preparar_com_trava(raiz, dados, lock_bytes, acao, executar, python_base):
             else:
                 _instalar_motor(raiz, dados / NOME_VENV, registro, log, executar)
             aviso_chromium = preparar_chromium(dados, registro, log, executar)
+            aviso_janela = preparar_chromium_janela(dados, registro, log, executar)
         except Falha as f:
             registro['situacao'] = 'falhou'
             registro['etapa_que_falhou'] = f.etapa
@@ -415,10 +491,11 @@ def _preparar_com_trava(raiz, dados, lock_bytes, acao, executar, python_base):
     registro['situacao'] = 'ok'
     gravar_json_atomico(dados / NOME_PREPARO, registro)
     if aviso_chromium:
-        return aviso_chromium
+        return _juntar(aviso_chromium, aviso_janela)
     if acao == 'religar':
-        return 'ambiente Python pronto; o motor foi religado à versão instalada do plugin.'
-    return 'ambiente Python criado em %d s (Python %s).' % (round(registro['tempo_s']), platform.python_version())
+        return _juntar('ambiente Python pronto; o motor foi religado à versão instalada do plugin.', aviso_janela)
+    return _juntar('ambiente Python criado em %d s (Python %s).' % (round(registro['tempo_s']),
+                                                                    platform.python_version()), aviso_janela)
 
 
 def principal():

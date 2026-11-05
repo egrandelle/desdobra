@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>desdobra: briefing</title>
+<link rel="stylesheet" href="/tela.css">
+<link rel="stylesheet" href="/fontes.css">
+<link rel="stylesheet" href="/controle">
+<script src="/tela.js" defer></script>
+</head>
+<body>
+<header class="topo">
+  <div class="marca">
+    <svg class="marca-simbolo" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+      <rect x="1.5" y="1.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+      <rect x="7.5" y="7.5" width="11" height="11" rx="2" fill="currentColor"></rect>
+    </svg>
+    <span class="marca-nome">desdobra</span>
+    <span class="marca-contexto">Briefing</span>
+  </div>
+  <nav id="passos" class="passos" role="tablist" aria-label="Passos do briefing">
+    <button type="button" role="tab" data-passo="lido">O que eu li</button>
+    <button type="button" role="tab" data-passo="funcoes">Funções</button>
+    <button type="button" role="tab" data-passo="pecas">Composições</button>
+    <button type="button" role="tab" data-passo="design">Design system</button>
+  </nav>
+  <div class="topo-direita">
+    <p id="selo" class="selo-leitura">Só para ver, nada é gravado</p>
+    <button type="button" id="faltam" class="faltam" aria-expanded="false" aria-controls="lista-faltam">Faltam 0</button>
+  </div>
+</header>
+<section id="lista-faltam" class="lista-faltam" aria-label="O que falta" hidden>
+  <div class="lista-faltam-topo">
+    <h2>O que falta</h2>
+    <p class="nota">Nesta versão a tela mostra o que falta; as decisões ainda são tomadas fora dela.</p>
+  </div>
+  <ol id="itens-faltam"></ol>
+</section>
+<main>
+  <section id="passo-lido" class="passo passo-lido" aria-label="O que eu li">
+    <div class="lido-grade">
+      <div class="lido-coluna">
+        <header class="cabeca-passo">
+          <p class="sobretitulo">Passo 1</p>
+          <h1>O que eu li no arquivo</h1>
+          <p class="nota">Antes de desdobrar, confira o que o desdobra encontrou no PSD, nas specs e nas fontes.</p>
+        </header>
+        <section class="bloco" aria-labelledby="t-bloqueios"><h2 id="t-bloqueios">Bloqueios</h2><div id="lido-bloqueios"></div></section>
+        <section class="bloco" aria-labelledby="t-linkados"><h2 id="t-linkados">Arquivos linkados</h2><div id="lido-linkados"></div></section>
+        <section class="bloco" aria-labelledby="t-specs"><h2 id="t-specs">Valores de spec</h2><div id="lido-specs"></div></section>
+        <section class="bloco" aria-labelledby="t-modo"><h2 id="t-modo">Modo de dados</h2><div id="lido-modo"></div></section>
+      </div>
+      <section class="lido-fontes" aria-labelledby="t-fontes">
+        <h2 id="t-fontes">Fontes do job</h2>
+        <div id="fontes"></div>
+      </section>
+    </div>
+  </section>
+  <section id="passo-funcoes" class="passo passo-funcoes" aria-label="Funções" hidden>
+    <nav id="arvore" class="arvore" aria-label="Grupos e camadas"></nav>
+    <div class="mesa">
+      <div class="mesa-topo"><span class="selo selo-neutro">Mestre do KV</span></div>
+      <div id="palco-kv" class="area-palco" aria-label="KV"></div>
+    </div>
+    <aside id="detalhe" class="detalhe" aria-live="polite"></aside>
+  </section>
+  <section id="passo-pecas" class="passo passo-pecas" aria-label="Composições" hidden>
+    <aside class="trilho" aria-label="Composições do job">
+      <div id="orientacoes" class="segmentos" role="tablist" aria-label="Orientação"></div>
+      <div id="composicoes" class="miniaturas" role="tablist" aria-label="Composições" aria-orientation="vertical"></div>
+    </aside>
+    <div class="mesa">
+      <div class="mesa-topo">
+        <div class="mesa-info">
+          <span id="selo-palco" class="selo"></span>
+          <span id="nome-palco" class="nome-palco"></span>
+          <span id="medida-palco" class="medida"></span>
+        </div>
+        <div class="controles" role="toolbar" aria-label="Vista do palco">
+          <button type="button" id="ajustar" class="botao-vista">Ajustar</button>
+          <button type="button" id="um-por-um" class="botao-vista">1:1</button>
+          <button type="button" id="afastar" class="botao-vista botao-icone" aria-label="Afastar" title="Afastar">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 8h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+          </button>
+          <button type="button" id="aproximar" class="botao-vista botao-icone" aria-label="Aproximar" title="Aproximar">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 8h9M8 3.5v9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+          </button>
+          <span class="controles-divisor" aria-hidden="true"></span>
+          <button type="button" id="ver-limpo" class="botao-vista" aria-pressed="false">Ver limpo</button>
+        </div>
+      </div>
+      <div id="fichas" class="fichas" aria-label="Arquivos desta composição"></div>
+      <p id="devolucao" class="devolucao" hidden></p>
+      <div class="mesa-corpo">
+        <div class="mesa-palco">
+          <div id="variante-palco" class="variante-palco" aria-live="polite" hidden></div>
+          <div id="palco" class="area-palco" aria-label="Palco"></div>
+        </div>
+        <aside id="galeria" class="galeria" aria-labelledby="t-galeria" hidden>
+          <div class="galeria-topo">
+            <h2 id="t-galeria">Versões do motor</h2>
+            <p id="motivo-galeria" class="motivo-galeria"></p>
+            <p id="nota-galeria" class="nota">Escolha uma versão para começar. Nada é gravado nesta versão da tela.</p>
+          </div>
+          <div id="variantes" class="variantes" role="tablist" aria-orientation="vertical" aria-labelledby="t-galeria"></div>
+        </aside>
+      </div>
+    </div>
+  </section>
+  <section id="passo-design" class="passo passo-design" aria-label="Design system" hidden>
+    <div id="resumo-design" class="resumo"></div>
+  </section>
+</main>
+<footer class="acoes" aria-label="Ações do briefing">
+  <p id="passo-atual" class="passo-atual"></p>
+  <div class="acoes-direita">
+    <p id="dica-acoes" class="dica-acoes">Disponível na próxima versão</p>
+    <button type="button" id="confirmar-composicao" class="botao" disabled aria-describedby="dica-acoes">Confirmar composição</button>
+    <button type="button" id="salvar-seguir" class="botao botao-primario" disabled aria-describedby="dica-acoes">Salvar e seguir</button>
+  </div>
+</footer>
+</body>
+</html>

@@ -16,7 +16,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|Read|Glob|Grep|WebFetch|mcp__terminal__run_in_terminal|mcp__claude-in-chrome__.*|mcp__Claude_Browser__.*",
         "hooks": [
           {
             "type": "command",

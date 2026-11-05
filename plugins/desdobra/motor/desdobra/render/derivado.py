@@ -129,6 +129,33 @@ def _tolerancia_tinta(caixa):
                float(limites.valor('render.tolerancia_tinta_texto')) * lado)
 
 
+def caixa_validada_do_texto(el, layer_id, caixa_doc):
+    """A caixa que a derivacao validou para o texto layer_id do elemento, no formato: a medida da quebra por familia,
+    a caixa do DA na mestre propria (elemento de um texto so), ou caixa_doc (a tinta da camada no KV) transformada."""
+    tr = el['transformacao']
+    fam = next((x for x in ((el.get('quebras') or {}).get('familia') or []) if x['layer_id'] == layer_id),
+               None) if isinstance(el.get('quebras'), dict) else None
+    if fam is not None:
+        return _caixa(tr, fam['caixa_doc'])
+    if el.get('quebras_camada') == layer_id and isinstance(el.get('quebras'), list):
+        return list(el['caixa'])
+    return _caixa(tr, caixa_doc)
+
+
+def regiao_da_pagina_de_texto(tr, regiao, cv, W, H):
+    """Regiao da pagina de um texto no formato: a caixa validada cv com folga, unida a regiao da origem
+    transformada, dentro do formato. O texto nunca e cortado no recorte do elemento (a tela de briefing usa esta
+    mesma regiao como recorte do texto)."""
+    reg = _regiao(tr, regiao, W, H)
+    folga = int(limites.valor('render.margem_regiao_px')) + int(math.ceil(_tolerancia_tinta(cv)))
+    alvo = [int(math.floor(cv[0])) - folga, int(math.floor(cv[1])) - folga, int(math.ceil(cv[2])) + folga,
+            int(math.ceil(cv[3])) + folga]
+    alvo = [max(alvo[0], 0), max(alvo[1], 0), min(alvo[2], W), min(alvo[3], H)]
+    if reg is not None:
+        alvo = [min(alvo[0], reg[0]), min(alvo[1], reg[1]), max(alvo[2], reg[2]), max(alvo[3], reg[3])]
+    return alvo
+
+
 def tinta_fora_da_caixa(entradas, estatisticas, W, H):
     """Textos cuja tinta real (medida no filho) passa da caixa validada pela derivacao alem da tolerancia, ou encosta
     na borda da regiao da pagina (cortada) sem que a caixa validada chegue ali (revisao 3, C1 e A1)."""
@@ -266,22 +293,9 @@ def montar(pasta_job, formato):
             novo.update(quebras_da_entrada(el, e))
             # a caixa que a derivacao validou para este texto, no formato: a medida da quebra por familia, a caixa do
             # DA na mestre propria (elemento de um texto so), ou a tinta da camada no KV transformada
-            fam = next((x for x in ((el.get('quebras') or {}).get('familia') or []) if x['layer_id'] == e['layer_id']),
-                       None) if isinstance(el.get('quebras'), dict) else None
-            if fam is not None:
-                cv = _caixa(tr, fam['caixa_doc'])
-            elif el.get('quebras_camada') == e['layer_id'] and isinstance(el.get('quebras'), list):
-                cv = list(el['caixa'])
-            else:
-                ct = (camadas_laudo.get(e['layer_id']) or {}).get('geometria') or {}
-                cv = _caixa(tr, ct.get('caixa_tinta') or e['regiao'])
-            regiao = _regiao(tr, e['regiao'], W, H)
-            folga = int(limites.valor('render.margem_regiao_px')) + int(math.ceil(_tolerancia_tinta(cv)))
-            alvo = [int(math.floor(cv[0])) - folga, int(math.floor(cv[1])) - folga, int(math.ceil(cv[2])) + folga,
-                    int(math.ceil(cv[3])) + folga]
-            alvo = [max(alvo[0], 0), max(alvo[1], 0), min(alvo[2], W), min(alvo[3], H)]
-            if regiao is not None:
-                alvo = [min(alvo[0], regiao[0]), min(alvo[1], regiao[1]), max(alvo[2], regiao[2]), max(alvo[3], regiao[3])]
+            ct = (camadas_laudo.get(e['layer_id']) or {}).get('geometria') or {}
+            cv = caixa_validada_do_texto(el, e['layer_id'], ct.get('caixa_tinta') or e['regiao'])
+            alvo = regiao_da_pagina_de_texto(tr, e['regiao'], cv, W, H)
             if alvo[2] <= alvo[0] or alvo[3] <= alvo[1]:
                 registros.append({'codigo': 'texto_fora_do_formato', 'layer_id': e['layer_id']})
                 continue
