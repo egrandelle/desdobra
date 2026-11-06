@@ -673,8 +673,44 @@ def _item(codigo, texto, elementos, **medidas):
     return d
 
 
-def _conferir(cf, caixas, sangra):
-    """Falhas obrigatorias contra a mestre verdadeira e avisos de elemento. Devolve (falhas, avisos)."""
+def sem_elementos(cf, apagados):
+    """O contexto do formato sem os elementos que o DA apagou no palco (decisoes-v1.md, 169)."""
+    if not apagados:
+        return cf
+    if 'esperado' not in cf:
+        cf['esperado'] = mod_nucleo._esperado(cf['ctx'], cf['kv'])
+    kv = dict(cf['kv'], elementos=[e for e in cf['kv']['elementos'] if e['id'] not in set(apagados)])
+    return dict(cf, kv=kv, kv_inteiro=cf.get('kv_inteiro') or cf['kv'])
+
+
+def reencaixar(cf, caixas, sangra, apagados=()):
+    """O encaixe refeito pelo solver do repositorio depois de uma edicao do DA no palco (desdobra.tela.edicao): as
+    caixas editadas sao a mestre sintetica do formato, como na variante (_resolver). Devolve (caixas, nome da
+    obrigatoria que nao fecha ou None)."""
+    return _resolver(sem_elementos(cf, apagados), caixas, sangra)
+
+
+def contexto_do_formato(ctx, kv, formato, *, specs=None, arquivo_specs=None, params=None):
+    """O contexto que a galeria monta para um formato (para a edicao no palco reaproveitar entre as edicoes)."""
+    cf = _contexto(ctx, kv, formato, specs, arquivo_specs, params)
+    cf['esperado'] = mod_nucleo._esperado(ctx, kv)
+    return cf
+
+
+def conferir_edicao(cf, caixas, sangra, apagados=()):
+    """(falhas, avisos, validacoes reprovadas) do layout editado pelo DA, contra a mestre verdadeira; o elemento
+    apagado sai da conta e o inventario o registra."""
+    return _conferir(sem_elementos(cf, apagados), caixas, sangra, apagados=apagados, com_validacoes=True)
+
+
+def elementos_do_layout(cf, caixas, sangra, apagados=()):
+    """Os elementos do layout editado, na forma dos elementos de derivacao/<formato>.json."""
+    return _elementos(sem_elementos(cf, apagados), {'caixas': caixas, 'sangra': sangra})
+
+
+def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False):
+    """Falhas obrigatorias contra a mestre verdadeira e avisos de elemento. Devolve (falhas, avisos); com_validacoes,
+    (falhas, avisos, nomes das validacoes do motor que reprovam)."""
     kv, W, H, areas = cf['kv'], cf['W'], cf['H'], cf['areas']
     els = kv['elementos']
     tol = limites.valor('derivacao.enquadramento_tolerancia_px')
@@ -729,14 +765,7 @@ def _conferir(cf, caixas, sangra):
             minimo = piso_d * gap * (esc[a['id']] + esc[b['id']]) / 2.0  # numero-neutro: media das duas escalas
             if sep < minimo - tol:
                 perto.append((a, b, sep, minimo))
-    aplicados = mod_nucleo._aplicados(kv, [regra[e['id']] for e in els])
-    for x in aplicados:
-        if x['id'] in sangra:
-            x['sangra'] = sangra[x['id']]
-    if 'esperado' not in cf:
-        cf['esperado'] = mod_nucleo._esperado(cf['ctx'], kv)
-    val = mod_validacao.validar((W, H), areas, aplicados, [caixas[e['id']] for e in els], [esc[e['id']] for e in els],
-                                mod_nucleo._kv_por_id(kv), cf['esperado'])
+    val = _validacoes(cf, caixas, sangra, esc, apagados)
     falhas = []
     for e in fora:
         falhas.append(_item('fora_do_quadro', '%s sai do formato.' % _maiuscula(_rotulo(e)), [e['id']]))
@@ -757,7 +786,31 @@ def _conferir(cf, caixas, sangra):
         falhas.append(_item('validacao_reprova', 'A conferência do motor reprova esta versão.', v['elementos'],
                              validacao=v['nome']))
     avisos = _avisos_de_elemento(cf, caixas, sangra, esc)
+    if com_validacoes:
+        return falhas, avisos, sorted({v['nome'] for v in mod_validacao.reprovadas(val)})
     return falhas, avisos
+
+
+def _validacoes(cf, caixas, sangra, esc, apagados=()):
+    """As validacoes do motor (desdobra.derivacao.validacao) do layout, contra a mestre verdadeira; o elemento apagado
+    pelo DA sai da conta do inventario."""
+    kv, W, H, areas = cf['kv'], cf['W'], cf['H'], cf['areas']
+    els, regra = kv['elementos'], cf['regras']
+    aplicados = mod_nucleo._aplicados(kv, [regra[e['id']] for e in els])
+    for x in aplicados:
+        if x['id'] in sangra:
+            x['sangra'] = sangra[x['id']]
+    if 'esperado' not in cf:
+        cf['esperado'] = mod_nucleo._esperado(cf['ctx'], kv)
+    return mod_validacao.validar((W, H), areas, aplicados, [caixas[e['id']] for e in els], [esc[e['id']] for e in els],
+                                 mod_nucleo._kv_por_id(cf.get('kv_inteiro') or kv), cf['esperado'], apagados=apagados)
+
+
+def validacoes_do_layout(cf, caixas, sangra, apagados=()):
+    """As validacoes do motor do layout editado pelo DA, na forma de derivacao/<formato>.json (para a derivacao gravar
+    a proposta confirmada; desdobra.derivacao.proposta)."""
+    cf = sem_elementos(cf, apagados)
+    return _validacoes(cf, caixas, sangra, _escalas(cf['kv'], caixas), apagados)
 
 
 def _avisos_de_elemento(cf, caixas, sangra, esc):

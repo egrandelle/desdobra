@@ -9,7 +9,9 @@ sha256 do laudo e do KV a que ela vale, quem confirmou, o meio e quando. O rende
 quando o laudo e o KV sao os mesmos da confirmacao; o sha256 vai para o render.json.
 
 So grava com o Disparo que desdobra.humano.exigir('linkado confirmar') emite depois de conferir o console, e com a
-trava do job. Nenhuma pergunta tem resposta padrao: Enter vazio repete. O M7 leva esta confirmacao para a tela.
+trava do job. Nenhuma pergunta tem resposta padrao: Enter vazio repete. No M7a a mesma confirmar() serve ao botao do
+passo 1 da tela (desdobra.tela.atos), com o Disparo da tela (meio tela; no modo de teste, meio medicao e origem
+fixture_de_teste, gravada em confirmado_por.origem).
 """
 from pathlib import Path
 
@@ -66,7 +68,7 @@ def confirmar(pasta, unique_id, arquivo, *, disparo):
                                  'layer_ids': sorted(c['identidade']['layer_id'] for c in camadas),
                                  'arquivo': arquivo, 'sha256': reg['sha256'], 'bytes': reg['bytes'],
                                  'registro_no_psd': camadas[0]['smart_object'].get('registro'),
-                                 'confirmado_por': disparo.registro()}
+                                 'confirmado_por': dict(disparo.registro(), origem=disparo.origem)}
         return _gravar(pasta, laudo, sorted(existentes.values(), key=lambda x: x['unique_id']))
 
 

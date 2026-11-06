@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Processo de fundo da tela (M7a2): servidor so de leitura e Chromium com janela, ate o DA fechar a janela.
+"""Processo de fundo da tela (M7a2; M7a, fatia 1): servidor da tela e Chromium com janela, ate o DA fechar a janela.
 
     python -I -B -m desdobra.tela.processo --job <pasta>
 
@@ -9,12 +9,15 @@ da entrada e a sessao do cookie nascem aqui (desdobra.tela.servidor) e vao so ao
   1. apaga as pastas dsd-tela- orfas (navegador.varrer_orfaos);
   2. monta o conteudo do job (desdobra.tela.estado.montar), com a trava do job so durante a montagem; erro fora do
      previsto vira "recusado erro_interno", com o evento tela_recusou;
-  3. sobe o servidor, cria o perfil dsd-tela- e abre a janela (toda recusa daqui em diante apaga o perfil): a entrada
+  3. sobe o servidor, com a escrita do rascunho e dos atos do passo 1 (desdobra.tela.atos) so quando este processo
+     pode abrir a sessao humana da tela (opcoes_do_servidor: sem o modo envelope e sem as marcas do Claude, que o ambiente do fundo ja tira; com elas o
+     servidor fica so de leitura, e o evento tela_aberta diz escrita false), cria o perfil dsd-tela- e abre a janela
+     (toda recusa daqui em diante apaga o perfil): a entrada
      de uso unico (resposta 204, que nao entra no historico do perfil) e depois a pagina, ja com o cookie (entrar);
   4. avisa quem chamou por uma linha fixa na saida padrao ("pronto" ou "recusado <motivo>") e fecha a saida padrao:
      depois disso nada e escrito nela;
   5. espera a janela fechar; com o Chromium fechado e antes de apagar o perfil, varre o perfil inteiro (copia de
-     fonte, controle positivo, token e sessao em qualquer arquivo; varrer_fechado); para o servidor, apaga o perfil e
+     fonte, controle positivo, token, sessao e CSRF em qualquer arquivo; varrer_fechado); para o servidor, apaga o perfil e
      registra os eventos tela_aberta e tela_fechada em log/eventos.jsonl, so com codigos e contagens.
 """
 import argparse
@@ -44,16 +47,17 @@ def _avisar(linha):
         pass
 
 
-def executar(pasta, avisar=_avisar, ao_abrir=None):
+def executar(pasta, avisar=_avisar, ao_abrir=None, teto=None):
     """Roda a tela do job ate a janela fechar. ao_abrir(janela, servidor): so para os testes (a janela ja aberta).
+    teto: o teto do modo de dados que o tela abrir recebeu (a tela nunca oferece modo acima dele nem do estado.json).
     Devolve o codigo de saida do processo."""
     from desdobra.chromium import navegador
     from desdobra.job import nucleo
-    from desdobra.tela import estado, servidor
+    from desdobra.tela import atos, estado, servidor
     pasta = Path(pasta).resolve()
     try:
         orfaos = navegador.varrer_orfaos()
-        conteudo = estado.montar(pasta)
+        conteudo = estado.montar(pasta, teto=teto) if teto else estado.montar(pasta)
     except estado.ErroTela as e:
         _registrar_recusa(pasta, motivo=e.motivo)
         avisar('%s %s' % (RECUSADO, e.motivo))
@@ -67,7 +71,11 @@ def executar(pasta, avisar=_avisar, ao_abrir=None):
     varredura = {}
     try:
         # o servidor sobe antes do perfil existir: a recusa do servidor (id fora do padrao) nao deixa pasta
-        with servidor.ServidorTela(conteudo) as srv:
+        opcoes = opcoes_do_servidor(pasta)
+        if opcoes:
+            # os botoes do passo 1 (modo de dados, linkados e valores de spec), so no servidor que grava
+            opcoes['atos'] = atos.atos_do_job(pasta, teto=teto, conteudo=conteudo)
+        with servidor.ServidorTela(conteudo, **opcoes) as srv:
             def conferir_perfil(p):
                 varredura.update(varrer_fechado(p, srv))
 
@@ -77,7 +85,8 @@ def executar(pasta, avisar=_avisar, ao_abrir=None):
                 entrar(janela, srv)
                 nucleo.registrar_evento(pasta, 'tela_aberta', chromium=janela.versao,
                                         orfaos_removidos=orfaos['removidas'], orfaos_que_ficaram=orfaos['nao_removidas'],
-                                        formatos=len(conteudo['previas']), fontes=len(conteudo['fontes']))
+                                        formatos=len(conteudo['previas']), fontes=len(conteudo['fontes']),
+                                        escrita=srv.escreve)
                 avisar(PRONTO)
                 avisado = True
                 if ao_abrir is not None:
@@ -99,6 +108,17 @@ def executar(pasta, avisar=_avisar, ao_abrir=None):
     campos.update({'varredura_%s' % k: v for k, v in sorted(varredura.items())})
     nucleo.registrar_evento(pasta, 'tela_fechada', perfil_apagado=janela.perfil_apagado, **campos)
     return 0 if janela.perfil_apagado and varredura.get('limpa') else int(Codigo.ERRO_INTERNO)
+
+
+def opcoes_do_servidor(pasta):
+    """{'pasta': pasta} quando o servidor pode gravar (o processo abre a sessao humana da tela e o job tem laudo); {}
+    para o servidor so de leitura."""
+    from desdobra import humano
+    from desdobra.tela import rascunho
+    ok, _motivo = humano.ambiente_da_tela()
+    if not ok or rascunho.laudo_sha256(pasta) is None:
+        return {}
+    return {'pasta': pasta}
 
 
 def _perfil_apagado(perfil, janela):
@@ -160,6 +180,8 @@ def varrer_fechado(perfil, srv):
     from desdobra.chromium import navegador
     servidos = [d for d, _t in srv.fontes.values()]
     segredos = [srv.token.encode('ascii'), srv.sessao.encode('ascii')]
+    if srv.csrf:
+        segredos.append(srv.csrf.encode('ascii'))
     tentativas = int(limites.valor('chromium.apagar_perfil_tentativas'))
     for n in range(tentativas):
         r = navegador.varrer_perfil(perfil, servidos, srv.marcador_controle)
@@ -176,12 +198,13 @@ def varrer_fechado(perfil, srv):
 def principal(argv=None, ao_abrir=None):
     p = argparse.ArgumentParser(prog='desdobra.tela.processo', add_help=False)
     p.add_argument('--job', required=True)
+    p.add_argument('--teto', choices=('a', 'b', 'c'), default=None)
     try:
         args = p.parse_args(list(sys.argv[1:] if argv is None else argv))
     except SystemExit:
         _avisar('%s uso' % RECUSADO)
         return int(Codigo.USO)
-    return executar(args.job, ao_abrir=ao_abrir)
+    return executar(args.job, ao_abrir=ao_abrir, teto=args.teto)
 
 
 if __name__ == '__main__':

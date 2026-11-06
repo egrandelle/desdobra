@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:desdobra:schema:spec-confirmacoes:1",
   "title": "Acoes do DA sobre o rascunho de spec (spec-confirmacoes/1)",
-  "description": "specs/confirmacoes.json, gravado so pelo \"desdobra spec confirmar\" num terminal interativo. Cada acao e do DA: confirmar um valor (pela impressao do conteudo, que deixa de valer se a folha mudar), escolher uma das leituras de um campo com fontes divergentes, ou digitar um valor ao lado do recorte de uma pagina sem texto.",
+  "description": "specs/confirmacoes.json, gravado so pelo \"desdobra spec confirmar\" num terminal interativo ou pelo botao do passo 1 da tela (decisoes-v1.md, 159: meio tela; no modo de teste, por fixture_de_teste e meio medicao). Cada acao e do DA: confirmar um valor (pela impressao do conteudo, que deixa de valer se a folha mudar), escolher uma das leituras de um campo com fontes divergentes, ou digitar um valor ao lado do recorte de uma pagina sem texto.",
   "type": "object",
   "additionalProperties": false,
   "required": ["esquema", "acoes"],
@@ -25,8 +25,8 @@
           "campo": {"type": "string"},
           "texto": {"type": "string", "minLength": 1},
           "entrada": {"type": "integer", "minimum": 1},
-          "por": {"const": "da"},
-          "meio": {"const": "terminal"},
+          "por": {"enum": ["da", "fixture_de_teste"]},
+          "meio": {"enum": ["terminal", "tela", "medicao"]},
           "em": {"type": "string"}
         },
         "allOf": [

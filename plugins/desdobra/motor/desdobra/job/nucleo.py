@@ -278,6 +278,29 @@ def avaliar(pasta, estado, fases):
     return resultado, diretas
 
 
+def fase_valida(pasta, fase_id, fases=ESTEIRA):
+    """A fase esta valida agora (concluida, com as mesmas entradas e saidas e as dependencias validas). So le."""
+    avaliacao, _ = avaliar(pasta, ler_estado(pasta), fases)
+    return bool(avaliacao.get(fase_id, (False, None))[0])
+
+
+def renovar_fase(pasta, fase_id, fases=ESTEIRA):
+    """Grava a fase como concluida com as entradas e as saidas de agora. So para a fase que o motor acabou de rodar no
+    proprio processo, a partir de um ato do DA na tela (desdobra.specs.confirmar.confirmar_da_tela refaz a fase specs
+    com a acao nova): sem isto, a fase ficaria desatualizada e a tela so voltaria depois de um passo no terminal
+    (revisao do M7a). Quem chama segura a trava do job e so renova a fase que estava valida antes do ato."""
+    por_id = {f.id: f for f in fases}
+    alvo = por_id[fase_id]
+    estado = ler_estado(pasta)
+    reg = estado['fases'].setdefault(fase_id, _registro_vazio())
+    reg.update(situacao='concluida', hash_entradas=hashes_da_fase(pasta, alvo, por_id),
+               hash_saidas=hashes_das_saidas(pasta, alvo), fim=agora(), codigo=0, motivo=None)
+    avaliacao, _ = avaliar(pasta, estado, fases)
+    estado['proxima'] = calcular_proxima(estado, avaliacao, fases)
+    gravar_estado(pasta, estado)
+    registrar_evento(pasta, 'fase_renovada', fase=fase_id)
+
+
 def fases_invalidas(pasta, fases=ESTEIRA):
     """Conjunto das fases que nao estao validas agora (sem gravar nada)."""
     estado = ler_estado(pasta)

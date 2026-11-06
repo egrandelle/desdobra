@@ -194,6 +194,28 @@ def ler_larguras(item, larguras):
     return max(com) / item['escala'], max(sem) / item['escala']
 
 
+def tinta_do_bloco(item, larguras, tintas, justificacao):
+    """{'esq', 'dir', 'sobe', 'desce'} da tinta do bloco no espaco de texto, ou None sem medida: x a partir do ponto de
+    ancora do paragrafo (o inicio da linha na esquerda, o meio no centro, o fim na direita), a subida da primeira linha
+    e a descida da ultima, cada uma a partir da linha de base dela."""
+    just = (justificacao or 'LEFT').upper()
+    bloco, primeira, ultima = None, None, None
+    for ln in item['linhas']:
+        w, t = larguras.get(ln['id']), (tintas or {}).get(ln['id'])
+        if not isinstance(w, (int, float)) or not isinstance(t, (list, tuple)) or len(t) != 4:  # numero-neutro: os 4 lados
+            return None
+        avanco = float(w) - float(ln['ls_ultimo_px'])
+        desvio = -avanco / 2.0 if just.startswith('CENTER') else (-avanco if just.startswith('RIGHT') else 0.0)  # numero-neutro: o meio
+        esq, dir_ = desvio + float(t[0]), desvio + float(t[1])
+        bloco = [esq, dir_] if bloco is None else [min(bloco[0], esq), max(bloco[1], dir_)]
+        primeira = primeira if primeira is not None else float(t[2])
+        ultima = float(t[3])
+    if bloco is None:
+        return None
+    k = item['escala']
+    return {'esq': bloco[0] / k, 'dir': bloco[1] / k, 'sobe': primeira / k, 'desce': ultima / k}
+
+
 def erro_largura_pct(item, larguras):
     """Erro da largura em porcentagem contra a caixa TySh, na variante mais proxima; None sem medida."""
     if item['motivo_sem_largura'] or not item['largura_tysh']:

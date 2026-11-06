@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:rascunho-tela:1",
+  "title": "Rascunho da tela de briefing (rascunho-tela/1)",
+  "description": "briefing/rascunho.json, gravado so pelo servidor da tela (decisoes-v1.md, 164 e 167; proposta do M7, 164): as escolhas e as edicoes do DA por familia, salvas sozinhas a cada mudanca. Nunca e o briefing confirmado: o preparar e o portao de entrega leem so briefing/briefing-confirmado.json. A chave e o hash do laudo: o rascunho de outro laudo (PSD relido) nunca volta calado. O passo 2 (Funcoes) e o Design system gravam aqui as escolhas do DA (desdobra.tela.funcoes): a funcao por grupo ou camada, a decisao das cobertas e a regra e a ancora por funcao e por elemento indeterminado, sem valor padrao; as opcoes sao as do esquema briefing/1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "job_id",
+    "laudo_sha256",
+    "origem",
+    "atualizado_em",
+    "familias"
+  ],
+  "properties": {
+    "esquema": {
+      "const": "rascunho-tela/1"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "laudo_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "origem": {
+      "enum": [
+        "rascunho",
+        "fixture_de_teste"
+      ]
+    },
+    "atualizado_em": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    },
+    "familias": {
+      "description": "Por id da familia da tela (orientacao e numero, por exemplo vertical-1).",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/familia"
+      }
+    },
+    "quadro": {
+      "description": "Prancheta de onde a peca sai (decisao 1; revisao do M7a): o id do quadro do laudo (q1...), escolhido pelo DA no passo 1; null enquanto ele nao escolheu. So o PSD com pranchetas tem o que escolher.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^q[0-9]+$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rotacoes": {
+      "description": "Giro de cada formato (decisao 139; revisao do M7a), escolhido pelo DA no passo 1, pela chave do formato na folha (veiculador|circuito|LxA). O quarto de volta (90 e 270 graus) pede o sentido; 0 e 180 graus, nao.",
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/rotacao"
+      }
+    },
+    "funcoes": {
+      "description": "Funcao dada pelo DA a um grupo (passa para as camadas de dentro) ou a uma camada (vale sobre a do grupo), por layer_id. Indeterminado pede a observacao.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9]{1,9}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/escolha_funcao"
+      }
+    },
+    "cobertas": {
+      "description": "Camada coberta no KV: o DA aceita ou inverte a funcao sugerida pela regra da decisao 10, por layer_id.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9]{1,9}$"
+      },
+      "additionalProperties": {
+        "enum": [
+          "aceita",
+          "inverte"
+        ]
+      }
+    },
+    "design": {
+      "description": "Regra de escala e ancora por funcao, escolhidas no Design system; null enquanto o DA nao escolheu.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/funcao"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/design"
+      }
+    },
+    "design_camadas": {
+      "description": "Regra de escala e ancora de cada elemento indeterminado (layer_id da raiz do elemento).",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9]{1,9}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/design"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "rotacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "graus",
+        "sentido"
+      ],
+      "properties": {
+        "graus": {
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        },
+        "sentido": {
+          "enum": [
+            "horario",
+            "anti_horario",
+            null
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "graus": {
+            "enum": [
+              90,
+              270
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "sentido": {
+            "enum": [
+              "horario",
+              "anti_horario"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "sentido": {
+            "const": null
+          }
+        }
+      }
+    },
+    "familia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "versao",
+        "confirmada",
+        "edicoes"
+      ],
+      "properties": {
+        "versao": {
+          "description": "Versao da galeria escolhida pelo DA; null quando ele ainda nao escolheu.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirmada": {
+          "type": "boolean"
+        },
+        "edicoes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edicao"
+          }
+        },
+        "confirmacao": {
+          "description": "Quem confirmou a familia e como (decisoes-v1.md, 167): so o ato Confirmar familia da janela grava; a pagina nunca manda. Some quando a familia muda depois da confirmacao.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "origem",
+            "meio",
+            "em"
+          ],
+          "properties": {
+            "origem": {
+              "enum": [
+                "da",
+                "fixture_de_teste"
+              ]
+            },
+            "meio": {
+              "enum": [
+                "tela",
+                "medicao"
+              ]
+            },
+            "em": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+            },
+            "formatos": {
+              "description": "Os formatos da familia quando o DA confirmou (revisao do M7a): o id da familia e uma posicao na tela, e a confirmacao nao passa para outro conjunto de formatos.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pecas": {
+              "description": "A impressao das pecas da familia quando o DA confirmou (revisao 3 da regra spec_por_confirmar): a medida, as faixas, a area util e a area segura de cada formato e as versoes da galeria. Outra impressao hoje e outra peca, e a confirmacao nao vale para ela.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "confirmada": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "confirmacao"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "confirmacao"
+          ]
+        }
+      }
+    },
+    "edicao": {
+      "description": "Uma edicao do DA no palco, valida para a familia inteira (decisoes-v1.md, 167 e 169). As medidas sao fracoes do lado da peca.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "elemento",
+        "acao"
+      ],
+      "properties": {
+        "elemento": {
+          "$ref": "#/$defs/id"
+        },
+        "acao": {
+          "enum": [
+            "mover",
+            "escalar",
+            "texto",
+            "apagar"
+          ]
+        },
+        "dx": {
+          "type": "number"
+        },
+        "dy": {
+          "type": "number"
+        },
+        "fator": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "texto": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "O texto novo do elemento (decisoes-v1.md, 169 e 171), valido so na familia onde foi editado; a quebra de linha do DA e \n."
+        },
+        "fx": {
+          "description": "Ponto fixo do escalar, em fracao da largura da caixa (0 e a esquerda); sem ele, o meio.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fy": {
+          "description": "Ponto fixo do escalar, em fracao da altura da caixa (0 e o topo); sem ele, o meio.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "acao": {
+                "const": "mover"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dx",
+              "dy"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "acao": {
+                "const": "escalar"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fator"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "acao": {
+                "const": "texto"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "texto"
+            ]
+          }
+        }
+      ]
+    },
+    "funcao": {
+      "enum": [
+        "fundo",
+        "imagem",
+        "sujeito",
+        "veu_de_legibilidade",
+        "grafismo",
+        "titulo",
+        "texto_de_apoio",
+        "cta",
+        "icone_de_cta",
+        "url_ou_contato",
+        "texto_legal",
+        "informacao_de_evento",
+        "destaque_numerico",
+        "logo_principal",
+        "assinatura_institucional",
+        "selo",
+        "logo_de_parceiro",
+        "ajuste_global",
+        "estrutura",
+        "fora_da_peca",
+        "indeterminado"
+      ]
+    },
+    "regra": {
+      "enum": [
+        "largura",
+        "altura",
+        "lado_curto",
+        "lado_longo",
+        "raiz_area",
+        "constante",
+        "contain",
+        "cover"
+      ]
+    },
+    "ancora_x": {
+      "enum": [
+        "esquerda",
+        "centro",
+        "direita"
+      ]
+    },
+    "ancora_y": {
+      "enum": [
+        "topo",
+        "meio",
+        "base"
+      ]
+    },
+    "escolha_funcao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "funcao",
+        "observacao"
+      ],
+      "properties": {
+        "funcao": {
+          "$ref": "#/$defs/funcao"
+        },
+        "observacao": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2000
+        }
+      },
+      "if": {
+        "properties": {
+          "funcao": {
+            "const": "indeterminado"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "observacao": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regra",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "regra": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/regra"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "x": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ancora_x"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "y": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ancora_y"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

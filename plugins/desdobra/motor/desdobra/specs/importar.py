@@ -207,6 +207,8 @@ def montar(pasta, *, modo='c', plat=None, biblioteca=None, agora=None, job_id=No
     perfis = _versoes(anterior, grupos, bib_por_vid)
     doc = modelo.documento(m, perfis=perfis, job_id=job_id, motor_versao=__version__, gerado_em=agora)
     ok, ign = modelo.aplicar_acoes(doc, acoes)
+    # a medida escolhida pelo DA num formato de medida divergente da a chave dele (revisao dos becos, D2)
+    modelo.chaves_depois_das_escolhas(doc)
     doc['resumo'] = modelo.resumo(doc)
     modelo._situacao_das_folhas(doc)
     info.update(acoes_aplicadas=ok + dig_ok, acoes_ignoradas=ign + dig_ign,
@@ -240,7 +242,7 @@ def importar(pasta, *, plat=None, biblioteca=None):
     from desdobra.sugestao import specs as pacote_specs
     pasta = Path(pasta).resolve()
     estado = contratos.ler(pasta / 'estado.json', 'estado/1')
-    modo = mod_pacote.modo_do_job(estado)
+    modo = mod_pacote.modo_do_job(pasta, estado)
     agora = datetime.now().astimezone().isoformat(timespec='seconds')
     rascunho, info = montar(pasta, modo=modo, plat=plat, biblioteca=biblioteca, agora=agora, job_id=estado['job_id'])
     formatos = gravar(pasta, rascunho)

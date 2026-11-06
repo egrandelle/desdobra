@@ -11,6 +11,10 @@ O formato que e a propria mestre propria do DA sai das caixas que o DA desenhou.
 nunca deriva sozinha: pede mestre propria. Camada "fora da peca" nao entra em formato nenhum; camada "indeterminado"
 sem regra de escala escolhida devolve o formato ao DA.
 
+Com as familias confirmadas pelo DA na tela (briefing composicoes, M7a), o formato devolvido por troca de orientacao ou
+proporcao fora da faixa sai da versao da galeria que o DA escolheu, com as edicoes dele, e o derivado recebe as edicoes
+por cima (desdobra.derivacao.proposta); cada elemento leva a origem da geometria.
+
 Grava derivacao/<formato>.json (derivacao/1) e derivacao/devolucoes.json. So le arquivos do job: nao abre PSD, fonte
 nem imagem.
 """
@@ -30,7 +34,16 @@ from desdobra.derivacao import validacao as mod_validacao
 ESQUEMA = 'derivacao/1'
 CASAS_PX = 4  # numero-neutro: casas decimais das caixas em px; tira o ruido de ponto flutuante
 CASAS_ESCALA = 6  # numero-neutro: casas decimais das escalas
+# origem da caixa de cada elemento, pelo caminho do formato (a galeria e as edicoes do DA: desdobra.derivacao.proposta)
+ORIGEM_GEOMETRIA = {'transform': 'transformacao', 'solver': 'regra', 'mestre_propria': 'da'}
 ESQUEMA_DEVOLUCOES = 'devolucoes/1'
+# o formato da folha com um valor que a derivacao le (formatos.CAMPOS_DO_LAYOUT) a espera da confirmacao do DA
+# (revisao dos becos, A1): sem galeria nem proposta
+MOTIVO_SPEC_POR_CONFIRMAR = 'spec_por_confirmar'
+# o formato que deriva de uma mestre propria cujo formato tem valor de spec a espera do DA (revisao dos becos, D3): a
+# base da mestre sairia do valor sem confirmacao, e o formato espera com ela, sem galeria nem proposta
+MOTIVO_MESTRE_POR_CONFIRMAR = 'mestre_por_confirmar'
+MOTIVOS_POR_CONFIRMAR = (MOTIVO_SPEC_POR_CONFIRMAR, MOTIVO_MESTRE_POR_CONFIRMAR)
 PASTA = Path('derivacao')
 ARQUIVO_DEVOLUCOES = PASTA / 'devolucoes.json'
 FASES_DA_DERIVACAO = ('ler', 'fontes', 'laudo-fontes', 'ds', 'specs')
@@ -52,6 +65,12 @@ O_QUE_FAZER = {
     'mestre_propria_incompleta': 'A mestre própria não traz caixa para todos os elementos da mestre do KV.',
     'formato_sem_folha': 'O formato não tem folha de spec no job (a chave não está nas specs). Confira a chave ou '
                          'acrescente a folha; um formato só de medição é marcado sem_folha no briefing.',
+    'spec_por_confirmar': 'Um valor de spec deste formato (a medida, a faixa, a área útil ou a área segura) ainda '
+                          'espera a sua confirmação. Confirme os valores dele em Valores de spec, no passo 1, e o '
+                          'desdobra monta a peça com os valores confirmados.',
+    'mestre_por_confirmar': 'O formato da mestre desta família ainda espera a confirmação de um valor de spec (a '
+                            'medida, a faixa, a área útil ou a área segura). Confirme os valores dele em Valores de '
+                            'spec, no passo 1, e o desdobra monta as peças da família com os valores confirmados.',
     'dimensao_diferente_da_folha': 'A largura e a altura do formato no briefing não são as da folha de spec da chave.',
     'ajuste_global_sem_aplicar': 'Há ajuste global que atua também sobre conteúdo (texto, marca ou sujeito) embaixo dele. '
                                  'O render ainda não aplica ajuste ao formato inteiro; prepare o PSD (decisão 99).',
@@ -100,8 +119,12 @@ def _portao_fontes(pasta):
     return 'decisao_do_da' if codigos else 'passa'
 
 
-def preparar(pasta):
-    """Le e confere o que a derivacao precisa. Devolve o contexto, ou ErroDerivacao."""
+def preparar(pasta, partida=False):
+    """Le e confere o que a derivacao precisa. Devolve o contexto, ou ErroDerivacao.
+    partida: so para a tela (desdobra.tela.estado.montar). No job sem briefing confirmado (ou com o rascunho do motor
+    no lugar dele), o contexto sai do briefing de partida em memoria (briefing.modelo.partida), sem conferencia: a tela
+    mostra o que falta, e a derivacao gravada (derivar) continua pedindo o briefing confirmado. Com o briefing gravado
+    de outra versao dos arquivos do job, o contexto sai da retomada (briefing.modelo.retomada)."""
     from desdobra.job import fases as mod_fases
     from desdobra.job import nucleo
     pasta = Path(pasta).resolve()
@@ -117,6 +140,14 @@ def preparar(pasta):
         briefing = mb.ler(pasta)
     except contratos.ErroContrato as e:
         raise ErroDerivacao('O briefing não segue o contrato: %s' % e, 'briefing_invalido') from None
+    if partida and (briefing is None or briefing['cabecalho']['origem'] == mb.ORIGEM_RASCUNHO or
+                    mb.desatualizado(pasta, briefing)):
+        # o gravado de outra versao dos arquivos do job: a tela parte da retomada (mb.base_da_tela), com o aviso do que
+        # mudou, e nunca do gravado velho (revisao do M7a)
+        laudo = contratos.ler(pasta / mb.ARQUIVO_LAUDO, 'laudo/1')
+        ds_arq = pasta / mb.ARQUIVO_DS
+        return contexto(laudo, mb.base_da_tela(pasta), ds=arquivos.ler_json(ds_arq) if ds_arq.is_file() else None,
+                        job_id=estado['job_id'], pasta=pasta, portao_fontes=_portao_fontes(pasta), da_tela=True)
     if briefing is None:
         raise ErroDerivacao('O job não tem briefing.', 'sem_briefing')
     if briefing['cabecalho']['origem'] == mb.ORIGEM_RASCUNHO:
@@ -138,7 +169,7 @@ def preparar(pasta):
         medidas = medida_quebras.medir(pasta, laudo, briefing, estado)
     return contexto(laudo, briefing, ds=ds, job_id=estado['job_id'], pasta=pasta,
                     briefing_sha256=arquivos.sha256_arquivo(pasta / mb.ARQUIVO), portao_fontes=_portao_fontes(pasta),
-                    medidas_quebras=medidas)
+                    medidas_quebras=medidas, da_tela=partida)
 
 
 def mestre_do_kv(ctx):
@@ -293,6 +324,11 @@ def derivar_formato(ctx, kv, mestres, formato, specs, arquivo_specs, params):
     """Deriva um formato. Devolve o dicionario derivacao/1."""
     W, H = mod_formatos.composicao(formato)
     spec = specs.get(formato['chave'])
+    # a folha tem o formato, e um valor que a derivacao le espera o DA (revisao dos becos, A1): a spec nao vale, nem
+    # com o valor do rascunho nem sem ele (os formatos do job deixam de fora o campo sem confirmacao)
+    por_confirmar = not formato.get('sem_folha') and         formato['chave'] in mod_formatos.chaves_por_confirmar(ctx.get('pasta'))
+    if por_confirmar:
+        spec = None
     areas = mod_formatos.areas(formato, spec, arquivo_specs)
     base = params['base']['valor']
     saida = {'esquema': ESQUEMA, 'job_id': ctx['estado']['job_id'], 'gerado_em': agora(), 'motor_versao': __version__,
@@ -320,6 +356,8 @@ def derivar_formato(ctx, kv, mestres, formato, specs, arquivo_specs, params):
                                            blocos=kv['blocos_partidos']))
     # sem folha, o formato nunca deriva em silencio: so o formato marcado sem_folha (medicao, teste) segue, com registro
     if spec is None:
+        if por_confirmar:
+            return _devolver(saida, _devolucao(MOTIVO_SPEC_POR_CONFIRMAR))
         if not formato.get('sem_folha'):
             return _devolver(saida, _devolucao('formato_sem_folha'))
         saida['registros'].append({'codigo': 'formato_sem_folha'})
@@ -373,6 +411,13 @@ def derivar_formato(ctx, kv, mestres, formato, specs, arquivo_specs, params):
         return _devolver(saida, _devolucao(motivo, fator=fam['fator'], orientacao_mestre=fam['orientacao_mestre'],
                                            orientacao_formato=fam['orientacao_formato']))
     m, fam, bm, bf = min(na_faixa, key=lambda c: (c[1]['fator'], c[0]['id']))
+    if m.get('por_confirmar'):
+        # a mestre propria cujo formato espera um valor de spec: a familia espera com ela (revisao dos becos, D3)
+        saida['mestre'] = {'id': m['id'], 'tipo': m['tipo'], 'largura': m['largura'], 'altura': m['altura']}
+        saida['familia'] = fam
+        return _devolver(saida, _devolucao(MOTIVO_MESTRE_POR_CONFIRMAR, mestre=m['id'],
+                                           formato_da_mestre=m['por_confirmar']['formato'],
+                                           chave_da_mestre=m['por_confirmar']['chave']))
     m, sem_medida = _com_quebras(ctx, m, formato, W, H)
     if sem_medida:
         return _devolver(saida, _devolucao('quebra_sem_medida', camadas=sem_medida))
@@ -418,9 +463,11 @@ def _kv_por_id(kv):
 
 def _esperado(ctx, kv):
     """{id do elemento: (funcao resolvida, regra)} relido do briefing gravado no disco (quando ha job), nunca do
-    layout nem da heranca que o layout usou."""
+    layout nem da heranca que o layout usou. O contexto da tela (da_tela) confere contra o briefing em memoria de onde o
+    layout saiu (o de partida, a retomada ou o gravado com o rascunho da tela por cima): o gravado no disco e outro
+    (o rascunho do motor, ou o de antes da regra que o DA mudou no Design system) e reprovaria a regra nova do DA."""
     briefing = ctx['briefing']
-    if ctx.get('pasta') is not None and (Path(ctx['pasta']) / mb.ARQUIVO).is_file():
+    if not ctx.get('da_tela') and ctx.get('pasta') is not None and (Path(ctx['pasta']) / mb.ARQUIVO).is_file():
         briefing = mb.ler(ctx['pasta'])
     return esperado_do_briefing(ctx['laudo'], briefing, kv['elementos'])
 
@@ -503,7 +550,9 @@ def _fechar(ctx, saida, kv, m, formato, areas, caixas, escalas, base, regras=Non
                 # de onde veio a funcao do elemento: a da raiz dele (no bloco, a do maior membro)
                 'origem_funcao': next((ctx['resolvidas'][x]['por'] for x in e['layer_ids']
                                        if x in ctx['resolvidas'] and ctx['resolvidas'][x]['raiz'] == e['raiz']),
-                                      ctx['resolvidas'][e['layer_ids'][0]]['por'])}
+                                      ctx['resolvidas'][e['layer_ids'][0]]['por']),
+                # de onde veio a caixa (proposta do M7, parametros): escala pura, solver ou a mestre desenhada pelo DA
+                'origem_geometria': ORIGEM_GEOMETRIA[saida['caminho']]}
         if e.get('quebras_camada') is not None:
             item['quebras_camada'] = e['quebras_camada']
         if e['texto'] and m['tipo'] == 'propria' and propria_do_formato and e.get('quebras') is None:
@@ -527,19 +576,22 @@ def _fechar(ctx, saida, kv, m, formato, areas, caixas, escalas, base, regras=Non
 
 
 def contexto(laudo, briefing, *, ds=None, job_id=None, pasta=None, briefing_sha256=None, portao_fontes='passa',
-             medidas_quebras=None):
+             medidas_quebras=None, da_tela=False):
     """Contexto da derivacao em memoria (o mesmo que preparar monta do job; os testes e a medicao usam direto).
     medidas_quebras: a medida das linhas juntadas (derivacao.medida_quebras.medir); sem ela, o formato com quebra
-    aprovada volta ao DA."""
+    aprovada volta ao DA. da_tela: o briefing e o da previa da tela (preparar com partida, desdobra.tela.estado), e a
+    validacao confere contra ele (_esperado)."""
     resolvidas, _e, info = mb.resolver(laudo, briefing)
     return {'pasta': Path(pasta) if pasta else None, 'estado': {'job_id': job_id or briefing['job_id']},
             'briefing': briefing, 'laudo': laudo, 'ds': ds, 'resolvidas': resolvidas, 'info': info,
             'briefing_sha256': briefing_sha256 or '0' * 64, 'portao_fontes': portao_fontes,  # numero-neutro: hash vazio so em memoria
-            'medidas_quebras': dict(medidas_quebras or {})}
+            'medidas_quebras': dict(medidas_quebras or {}), 'da_tela': bool(da_tela)}
 
 
-def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=None):
-    """Deriva os formatos do briefing sem gravar. Devolve {'formatos', 'devolucoes', 'inventario', 'kv'}."""
+def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=None, composicoes=True):
+    """Deriva os formatos do briefing sem gravar. Devolve {'formatos', 'devolucoes', 'inventario', 'kv'}.
+    composicoes: aplica as familias confirmadas na tela (briefing composicoes; desdobra.derivacao.proposta); a tela
+    deriva sem elas, para a previa partir da proposta do motor e levar as edicoes do rascunho por cima."""
     b = ctx['briefing']
     specs = specs or {}
     params = params or mod_formatos.parametros(ctx['pasta'], b)
@@ -551,13 +603,19 @@ def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=N
     # mestres: a do KV e as proprias (cada propria vira mestre da familia dela, na base do formato)
     mestres = [kv]
     proprias = {}
+    pendentes = mod_formatos.chaves_por_confirmar(ctx.get('pasta'))
     for mp in b['mestres']:
         if mp['tipo'] != 'propria':
             continue
         fmt = next(f for f in b['formatos'] if f['id'] == mp['formato'])
         m, faltando = mestre_propria(kv, mp, fmt, mb.camadas_do_laudo(ctx['laudo']))
-        areas = mod_formatos.areas(fmt, specs.get(fmt['chave']), arquivo_specs)
+        # o formato da mestre com valor de spec a espera do DA: a base nunca sai do valor sem confirmacao, e os formatos
+        # que derivam desta mestre esperam com ela (mestre_por_confirmar; revisao dos becos, D3)
+        espera = not fmt.get('sem_folha') and fmt['chave'] in pendentes
+        areas = mod_formatos.areas(fmt, None if espera else specs.get(fmt['chave']), arquivo_specs)
         m['base'] = mod_formatos.base_do_formato(fmt, areas, params['base']['valor'])
+        if espera:
+            m['por_confirmar'] = {'formato': fmt['id'], 'chave': fmt['chave']}
         if not faltando:
             proprias[mp['id']] = m
     n_mestres = 1 + len(proprias)
@@ -580,6 +638,15 @@ def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=N
             # o motivo da orientacao fica; o registro diz que o job ja passou do numero de mestres
             d['devolucao'].setdefault('medidas', {})['mestres_max_atingido'] = True
         resultados[f['id']] = d
+    if composicoes and b.get('composicoes'):
+        from desdobra.derivacao import proposta as mod_proposta
+
+        def derivar_um(f):
+            try:
+                return derivar_formato(ctx, kv, mestres, f, specs, arquivo_specs, params)
+            except Exception as e:  # noqa: BLE001 - como no laco acima
+                return _formato_com_erro(ctx, kv, f, params, e)
+        mod_proposta.aplicar(ctx, kv, resultados, derivar_um, specs=specs, arquivo_specs=arquivo_specs, params=params)
     inventario = _inventario(kv, resultados)
     for d in resultados.values():
         d['inventario_entre_formatos'] = 'igual' if inventario['iguais_entre_formatos'] else 'diferente'
@@ -588,7 +655,9 @@ def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=N
 
 
 def _inventario(kv, resultados):
-    conjuntos = {k: sorted(e['id'] for e in d['elementos']) for k, d in resultados.items() if d['situacao'] == 'derivado'}
+    # o elemento que o DA apagou na familia conta como presente (decisoes-v1.md, 169): a decisao e dele
+    conjuntos = {k: sorted([e['id'] for e in d['elementos']] + [a['elemento'] for a in d.get('apagados_pelo_da') or []])
+                 for k, d in resultados.items() if d['situacao'] == 'derivado'}
     return {'mestre': sorted(e['id'] for e in kv['elementos']),
             'iguais_entre_formatos': len({tuple(v) for v in conjuntos.values()}) <= 1, 'formatos': len(conjuntos)}
 

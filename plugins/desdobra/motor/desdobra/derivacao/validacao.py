@@ -55,11 +55,12 @@ def _sobrepoe(a, b, tol):
     return min(a[2], b[2]) - max(a[0], b[0]) > tol and min(a[3], b[3]) - max(a[1], b[1]) > tol
 
 
-def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado):
+def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado, apagados=()):
     """Lista de validacoes. formato: (largura, altura) da composicao; areas: de formatos.areas; elementos: os do
     layout (com funcao, regra e classe aplicadas); caixas e escalas: do layout; kv_elementos: os da mestre do KV
     (caixa na mestre do KV), por id; esperado: {id do elemento: (funcao resolvida, regra do briefing)} relido do
-    briefing."""
+    briefing; apagados: ids dos elementos que o DA tirou da familia no palco (decisoes-v1.md, 169): saem da conta do
+    inventario, que os registra."""
     W, H = (float(v) for v in formato)
     tol = limites.valor('derivacao.enquadramento_tolerancia_px')
     tol_col = limites.valor('derivacao.colisao_tolerancia_px')
@@ -183,10 +184,13 @@ def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado):
     saida.append(_item('cena_cobre_conteudo', 'reprova' if cobre else 'ok',
                        {'tipo': 'limite', 'ref': 'derivacao.cobertura_nova_cena_sobre_conteudo_max'},
                        sorted({x for par in cobre for x in par}), pares=cobre))
-    inv_kv, inv = sorted(kv_elementos), sorted(por_id)
+    tirados = sorted(set(apagados) & set(kv_elementos))
+    inv_kv, inv = sorted(set(kv_elementos) - set(tirados)), sorted(por_id)
+    medidas_inv = {'faltando': sorted(set(inv_kv) - set(inv)), 'sobrando': sorted(set(inv) - set(inv_kv))}
+    if tirados:
+        medidas_inv['apagados_pelo_da'] = tirados
     saida.append(_item('inventario', 'ok' if inv == inv_kv else 'reprova', FONTE_MESTRE,
-                       sorted(set(inv_kv) ^ set(inv)), faltando=sorted(set(inv_kv) - set(inv)),
-                       sobrando=sorted(set(inv) - set(inv_kv))))
+                       sorted(set(inv_kv) ^ set(inv)), **medidas_inv))
     return saida
 
 

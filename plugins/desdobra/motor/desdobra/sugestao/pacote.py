@@ -17,7 +17,6 @@ Tambem daqui: conteudo_para_resultado(laudo), que monta o Resultado.conteudo que
 from pathlib import Path
 
 from desdobra import contratos
-from desdobra.resultado import modo_mais_fechado
 from desdobra.sugestao import segredos
 
 CONTRATO = 'pacote-modelo/1'
@@ -120,8 +119,11 @@ def montar_pacote(laudo, modo, *, job_id=None, detector=None):
     return pacote, achados
 
 
-def modo_do_job(estado):
-    return modo_mais_fechado(estado.get('modo_dados') or 'c', estado.get('teto_modo_dados'))
+def modo_do_job(pasta_job, estado):
+    """O modo do job: o escolhido pelo DA na tela (desdobra.job.modo_dados, fonte unica; decisoes-v1.md, 170),
+    limitado pelo teto do estado.json; sem escolha, c. O modo_dados do estado.json nao vale como fonte."""
+    from desdobra.job import modo_dados
+    return modo_dados.efetivo(pasta_job, estado.get('teto_modo_dados'))
 
 
 def gravar_pacote(pasta_job, *, detector=None):
@@ -130,7 +132,7 @@ def gravar_pacote(pasta_job, *, detector=None):
     pasta_job = Path(pasta_job)
     estado = contratos.ler(pasta_job / 'estado.json', 'estado/1')
     laudo = contratos.ler(pasta_job / 'laudo' / 'laudo.json', 'laudo/1')
-    pacote, achados = montar_pacote(laudo, modo_do_job(estado), job_id=estado.get('job_id'), detector=detector)
+    pacote, achados = montar_pacote(laudo, modo_do_job(pasta_job, estado), job_id=estado.get('job_id'), detector=detector)
     destino = pasta_job / ARQUIVO_PACOTE
     contratos.gravar(destino, pacote, CONTRATO)
     segredos.gravar_bloqueios(pasta_job, achados, comando='pacote')

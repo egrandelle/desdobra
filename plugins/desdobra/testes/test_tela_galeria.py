@@ -109,8 +109,12 @@ def test_formato_devolvido_chega_com_a_galeria_no_modelo(conteudo):
         assert 'escolha' not in dv.lower()  # quem pede a escolha e a nota da galeria, uma vez so
         assert not IDS_DO_MOTOR.search(dv)
     # faltam N: o formato devolvido continua na lista, pedindo a escolha de uma versao
-    itens = [f for f in estado['faltam'] if f['ir'].get('formato') in DEVOLVIDOS]
+    # (a familia sem confirmacao tem o item dela, que leva ao primeiro formato: fatia 5)
+    itens = [f for f in estado['faltam']
+             if f['ir'].get('formato') in DEVOLVIDOS and f['texto'] != te.FAMILIA_SEM_CONFIRMACAO]
     assert len(itens) == len(DEVOLVIDOS)
+    familias = [g['id'] for o in estado['orientacoes'] for g in o['grupos']]
+    assert len([f for f in estado['faltam'] if f['texto'] == te.FAMILIA_SEM_CONFIRMACAO]) == len(familias)
     assert all('versões' in f['texto'] and 'Sem proposta' not in f['texto'] for f in itens)
     json.dumps(estado)
     json.dumps(previas)

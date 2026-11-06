@@ -73,10 +73,14 @@ def test_envelope_sem_job_e_modo_c_e_corta_conteudo(capsys, monkeypatch):
 
 
 def test_teto_limita_o_modo_do_job(tmp_path, kv_psd):
+    from conftest import escolher_modo_do_da
     from desdobra.job import nucleo
     job = tmp_path / 'job'
     nucleo.criar(job, kv_psd, 'a')
     r = Resultado(comando='job estado', pasta_job=job)
+    # o modo do job criar nao vale como fonte (decisoes-v1.md, 170): sem a escolha do DA na tela, c
+    assert cli._modo_do_resultado(r, None) == 'c'
+    escolher_modo_do_da(job, 'a')
     assert cli._modo_do_resultado(r, None) == 'a'
     assert cli._modo_do_resultado(r, 'b') == 'b'
     assert cli._modo_do_resultado(Resultado(comando='x'), 'a') == 'c'

@@ -323,6 +323,30 @@ def test_linkado_confirmado_de_outro_kv_nao_vale(tmp_path, pessoa):
     assert mc.montar(job)[1]
 
 
+def test_linkado_confirmado_no_modo_de_teste_bloqueia_o_render(tmp_path, pessoa, monkeypatch):
+    # revisao do M7a: a confirmacao do modo de teste da tela (origem fixture_de_teste) nunca chega ao master, nem a
+    # confirmacao sem origem gravada; a acao de spec do modo de teste tambem bloqueia
+    from desdobra.entrega import portao
+    from desdobra.specs import importar
+    psd, campanha, _dados = rap.linkado_com_campanha(tmp_path / 'origem')
+    job = _job(tmp_path, psd, campanha=campanha, fontes=False)
+    linkados.confirmar(job, 'uuid-linkado-sintetico', 'entrada/campanha/arte-linkada.png',
+                       disparo=pessoa.exigir('linkado confirmar'))
+    assert not mc.montar(job)[1] and portao.confirmacao_de_teste(job) is None
+    arq = job / mc.ARQUIVO_LINKADOS
+    d = json.loads(arq.read_text(encoding='utf-8'))
+    for mexer in (lambda q: q.update(origem='fixture_de_teste'), lambda q: q.pop('origem')):
+        mexer(d['linkados'][0]['confirmado_por'])
+        arq.write_text(json.dumps(d), encoding='utf-8')
+        assert 'linkado_confirmado_no_modo_de_teste' in {b['codigo'] for b in mc.montar(job)[1]}
+        assert portao.confirmacao_de_teste(job) == 'confirmacao_de_fixture_de_teste'
+    d['linkados'][0]['confirmado_por']['origem'] = 'da'
+    arq.write_text(json.dumps(d), encoding='utf-8')
+    assert not mc.montar(job)[1]
+    monkeypatch.setattr(importar, 'ler_confirmacoes', lambda p: {'acoes': [{'por': 'fixture_de_teste'}]})
+    assert 'spec_confirmada_no_modo_de_teste' in {b['codigo'] for b in mc.montar(job)[1]}
+
+
 def test_linkado_em_formato_sem_suporte_bloqueia_e_cmyk_renderiza(tmp_path, pessoa):
     base = tmp_path / 'origem'
     campanha = base / 'campanha'

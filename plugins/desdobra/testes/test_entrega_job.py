@@ -57,6 +57,12 @@ def _cli(python, *args):
 def _mudar_briefing(job, **cabecalho):
     b = contratos.ler(job / mb.ARQUIVO, 'briefing/1')
     b['cabecalho'].update(cabecalho)
+    if b['cabecalho']['origem'] == 'da' and 'composicoes' not in b:
+        # o briefing do DA sai do gravador da tela, sempre com as familias confirmadas na janela (revisao do M7a)
+        b['composicoes'] = [{'familia': 'familia-%s' % f['id'], 'formatos': [f['id']], 'versao': None, 'edicoes': [],
+                             'confirmada': True,
+                             'confirmacao': {'origem': 'da', 'meio': 'tela', 'em': '2026-11-05T10:00:00'}}
+                            for f in b['formatos']]
     contratos.gravar(job / mb.ARQUIVO, b, 'briefing/1')
 
 

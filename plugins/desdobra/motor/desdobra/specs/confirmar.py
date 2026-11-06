@@ -21,6 +21,7 @@ from desdobra.specs import importar, modelo
 
 O_QUE_FAZER_TERMINAL = ('A confirmação das specs é do DA: rode "desdobra spec confirmar --job <pasta>" num terminal '
                         'interativo, fora do Claude.')
+COMANDO = 'spec confirmar'  # o comando humano do Disparo (desdobra.humano.COMANDOS), no terminal e na tela
 SAIR = ('s', 'sair')
 QUEM_MAPEOU = {'rotulo_da_folha': 'pelo rótulo da própria folha', 'proposta_do_modelo': 'por proposta do Claude',
                'biblioteca': 'pela curadoria da biblioteca de specs', 'da': 'pelo DA'}
@@ -196,3 +197,59 @@ def sessao(pasta, *, disparo, entrada=None, saida=print, filtro_formato=None, fi
         nucleo.registrar_evento(pasta, 'specs_confirmadas', n_acoes=len(s.novas),
                                 n_confirmados=rascunho['resumo']['valores_confirmados'])
     return s.novas, rascunho, formatos, info
+
+
+def pendencias_gravadas(pasta):
+    """As pendencias do rascunho de spec gravado do job ([] sem rascunho legivel). So le."""
+    arq = Path(pasta) / 'specs' / 'rascunho.json'
+    if not arq.is_file():
+        return []
+    try:
+        doc = contratos.ler(arq, 'spec/1')
+    except (contratos.ErroContrato, OSError, ValueError):
+        return []
+    return pendencias(doc)
+
+
+def confirmar_da_tela(pasta, valor_id, leitura=None, *, disparo):
+    """O botao do passo 1 da tela (decisoes-v1.md, 159): confirma um valor em rascunho (leitura None) ou escolhe uma
+    leitura de um campo com fontes divergentes. disparo: o da tela (humano.exigir_tela com o comando da confirmacao de
+    spec), gasto aqui. A acao grava o meio do Disparo (tela, ou medicao no modo de teste) e por fixture_de_teste no
+    modo de teste. Devolve a acao gravada, ou None quando o valor nao e mais pendencia (a folha mudou) ou a leitura nao
+    confere.
+
+    A acao e entrada da fase specs, e a fase e refeita aqui mesmo (importar): quando a fase estava em dia antes do ato,
+    ela fica gravada em dia de novo (job.nucleo.renovar_fase), e a tela e a derivacao seguem sem passo no terminal
+    (revisao do M7a). A fase que ja estava desatualizada por outro motivo (uma folha trocada) fica como estava."""
+    from desdobra import humano
+    from desdobra.job import nucleo
+    humano.conferir(disparo, COMANDO, consumir=True)
+    pasta = Path(pasta).resolve()
+    with nucleo.Trava(pasta):
+        em_dia = nucleo.fase_valida(pasta, 'specs')
+        rascunho, _formatos, _info = importar.importar(pasta)
+        if em_dia:
+            # importar regrava as saidas da fase (com a hora): a fase segue em dia mesmo quando o ato nao grava nada
+            nucleo.renovar_fase(pasta, 'specs')
+        alvo = next(((r, c, v) for r, c, v in pendencias(rascunho) if v['id'] == valor_id), None)
+        if alvo is None:
+            return None
+        v = alvo[2]
+        divergente = bool(v.get('leituras')) and v['valor'] is None
+        if divergente != (leitura is not None):
+            return None
+        acao = {'valor_id': v['id'], 'impressao': modelo.impressao(v), 'por': disparo.origem, 'meio': disparo.meio,
+                'em': _agora()}
+        if divergente:
+            if not isinstance(leitura, int) or isinstance(leitura, bool) or not 0 <= leitura < len(v['leituras']):
+                return None
+            acao.update(acao='escolher_leitura', leitura=leitura)
+        else:
+            acao['acao'] = 'confirmar'
+        gravar_acoes(pasta, [acao])
+        rascunho, _formatos, _info = importar.importar(pasta)
+        if em_dia:
+            nucleo.renovar_fase(pasta, 'specs')
+        nucleo.registrar_evento(pasta, 'specs_confirmadas', n_acoes=1,
+                                n_confirmados=rascunho['resumo']['valores_confirmados'])
+    return acao

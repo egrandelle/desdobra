@@ -68,7 +68,7 @@ def medir(pasta, laudo, briefing, estado):
                 pares[ps] = casamento.casar(ps, faces)[0]
     prefixo = 'dsd-%s' % estado['job_id'][:8]  # numero-neutro: prefixo curto do job no nome da familia
     pagina, plano = medicao.montar(textos, pares, faces, prefixo)
-    larguras, motivo = {}, None
+    larguras, tintas, motivo = {}, {}, None
     if not servidos:
         motivo = 'sem_face_servivel'
     else:
@@ -78,6 +78,7 @@ def medir(pasta, laudo, briefing, estado):
                 resposta = navegador.conferir(srv.url_entrada, perfil, [medicao.familia_css(prefixo, i) for i in servidos],
                                               [])
             larguras = resposta.get('larguras') or {}
+            tintas = resposta.get('tintas') or {}
         except navegador.ErroNavegador:
             motivo = 'chromium_nao_mediu'
         finally:
@@ -98,4 +99,11 @@ def medir(pasta, laudo, briefing, estado):
             continue
         saida[ch] = {'largura_texto_mestre': round(sm, 4), 'largura_texto': round(sj, 4),
                      'linhas': len(juntado['linhas'])}
+        just = (camadas[lid].get('texto') or {}).get('justificacao')
+        tm = medicao.tinta_do_bloco(mestre, larguras, tintas, just)
+        tj = medicao.tinta_do_bloco(juntado, larguras, tintas, just)
+        if tm is not None and tj is not None:
+            # a tinta de cada linha, para a caixa seguir a do render (derivacao.quebras.caixa_medida)
+            saida[ch]['tinta_mestre'] = {k: round(v, 4) for k, v in tm.items()}
+            saida[ch]['tinta'] = {k: round(v, 4) for k, v in tj.items()}
     return saida

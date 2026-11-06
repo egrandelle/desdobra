@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 import test_fontes_apoio as ap
-from conftest import psd_minimo
+from conftest import escolher_modo_do_da, psd_minimo
 from desdobra import arquivos, cli, contratos
 from desdobra.chromium import navegador, servidor
 from desdobra.fontes import casamento, conferencia, medicao
@@ -263,9 +263,7 @@ def test_zero_byte_ou_caminho_de_fonte_no_envelope_log_e_pacote(job_fontes, pyth
     fontes = _bytes_das_fontes(job)
     nomes = list(FONTES) + ['colecao.ttc', str(job / 'entrada' / 'fontes')]
     for modo in ('a', 'b', 'c'):
-        estado = json.loads((job / 'estado.json').read_text(encoding='utf-8'))
-        estado['modo_dados'] = modo
-        (job / 'estado.json').write_text(json.dumps(estado), encoding='utf-8')
+        escolher_modo_do_da(job, modo)  # a escolha do DA na tela e a fonte do modo (decisoes-v1.md, 170)
         for cmd in (['fontes', 'conferir'], ['fontes', 'laudo']):
             p = subprocess.run([python, '-I', '-B', '-m', 'desdobra', '--envelope', *cmd, '--job', str(job)],
                                capture_output=True)

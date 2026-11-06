@@ -18,6 +18,10 @@ ARQUIVOS = (('/', 'tela.html', 'text/html; charset=utf-8'), ('/tela.js', 'tela.j
             ('/tela.css', 'tela.css', 'text/css; charset=utf-8'))
 
 PREFIXO_FAMILIA = 'dsd-'
+# o icone da aba, servido da memoria (a CSP img-src 'self' recusa data:)
+ICONE = ('/icone.svg', b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="11" '
+                       b'height="11" rx="2" fill="none" stroke="#27272a" stroke-width="1.5"/><rect x="7.5" y="7.5" '
+                       b'width="11" height="11" rx="2" fill="#27272a"/></svg>', 'image/svg+xml')
 
 
 def familia_css(ident):
@@ -33,4 +37,6 @@ def folha_das_fontes(ids):
 
 def arquivos():
     """{rota: (bytes, tipo)} da pagina, do script e da folha, lidos da pasta tela/ do plugin."""
-    return {rota: ((PASTA_TELA / nome).read_bytes(), tipo) for rota, nome, tipo in ARQUIVOS}
+    saida = {rota: ((PASTA_TELA / nome).read_bytes(), tipo) for rota, nome, tipo in ARQUIVOS}
+    saida[ICONE[0]] = (ICONE[1], ICONE[2])
+    return saida

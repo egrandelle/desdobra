@@ -85,6 +85,9 @@ DESCRICOES = {
                                           'texto: não há como saber de qual texto são as posições.',
     'quebra_aprovada_invalida': 'A quebra aprovada por família (quebras_por_familia) cita camada que não é texto com '
                                 'quebra gravada, ou índice de quebra que o texto não tem.',
+    'composicao_com_formato_inexistente': 'Uma família confirmada na tela (composicoes) cita formato que o briefing não '
+                                          'tem.',
+    'formato_em_duas_composicoes': 'Um formato está em duas famílias confirmadas na tela (composicoes).',
     'formato_id_reservado': 'O id do formato é um nome que o motor ou o Windows já usam (devolucoes, origem, con, prn, '
                             'aux, nul, com1 a com9, lpt1 a lpt9).',
 }
@@ -401,6 +404,15 @@ def conferir(laudo, briefing, job_id=None):
     for k, ident in enumerate(ids):
         if ident.lower() in IDS_DO_MOTOR + IDS_DO_WINDOWS:
             erros.append(_erro('formato_id_reservado', '/formatos/%d/id' % k))
+    # as familias da tela (decisoes-v1.md, 167): cada formato numa familia so, e so formatos do briefing
+    vistos = set()
+    for k, comp in enumerate(briefing.get('composicoes') or []):
+        onde = '/composicoes/%d' % k
+        if any(f not in ids for f in comp['formatos']):
+            erros.append(_erro('composicao_com_formato_inexistente', onde))
+        if vistos & set(comp['formatos']) or len(set(comp['formatos'])) != len(comp['formatos']):
+            erros.append(_erro('formato_em_duas_composicoes', onde))
+        vistos.update(comp['formatos'])
     if sum(1 for m in briefing['mestres'] if m['tipo'] == 'kv') != 1:
         erros.append(_erro('mestre_invalida', '/mestres'))
     for k, m in enumerate(briefing['mestres']):
@@ -452,18 +464,44 @@ def importar_teste(pasta, arquivo):
         if velho['cabecalho']['origem'] == ORIGEM_DA:
             raise ErroBriefing('O job já tem briefing confirmado pelo DA. O importar --teste nunca grava por cima dele.',
                                codigo='recusado')
-        hist = pasta / PASTA_HISTORICO
-        hist.mkdir(parents=True, exist_ok=True)
-        arquivos.gravar_bytes_atomico(hist / ('%s.json' % arquivos.sha256_arquivo(atual)), atual.read_bytes())
-    contratos.gravar(atual, dados, ESQUEMA)
+    gravar_com_historico(pasta, dados)
     return dados
+
+
+def gravar_com_historico(pasta, dados, *, disparo=None):
+    """Grava o briefing confirmado; a versao anterior, quando ha, fica em briefing/historico/<sha256>.json (proposta do
+    M7, parametros: toda gravacao guarda a anterior). Devolve o caminho da versao guardada, ou None.
+    disparo: o do "briefing confirmar" (da tela ou do terminal), de uso unico, gasto aqui; a origem do cabecalho tem
+    de ser a dele. Sem disparo, so o briefing de teste (origem fixture_de_teste, o importar --teste) e gravado
+    (revisao do M7a): ErroBriefing para o resto, humano.ErroHumano com disparo sem conferencia."""
+    origem = (dados.get('cabecalho') or {}).get('origem')
+    if disparo is None:
+        if origem != ORIGEM_FIXTURE:
+            raise ErroBriefing('O briefing confirmado só é gravado com a confirmação do DA.', codigo='recusado')
+    else:
+        from desdobra import humano
+        if getattr(disparo, 'origem', None) != origem:
+            raise humano.ErroHumano('disparo_de_outra_origem')
+        humano.conferir(disparo, 'briefing confirmar', consumir=True)
+    atual = Path(pasta) / ARQUIVO
+    guardada = None
+    if atual.is_file():
+        hist = Path(pasta) / PASTA_HISTORICO
+        hist.mkdir(parents=True, exist_ok=True)
+        guardada = hist / ('%s.json' % arquivos.sha256_arquivo(atual))
+        arquivos.gravar_bytes_atomico(guardada, atual.read_bytes())
+    contratos.gravar(atual, dados, ESQUEMA)
+    return guardada
 
 
 def conferir_para_entrega(pasta):
     """(pode, motivo). O entregar (M6) recusa todo job cujo briefing seja fixture de teste (arquitetura-v1.md, 5.3) ou
     rascunho, sem briefing, com briefing desatualizado ou com briefing que nao passa na conferencia (pendente
-    obrigatorio, camada sem funcao e o resto de conferir). A prova de que o arquivo saiu de um disparo humano entra
-    com o "briefing confirmar" (M7); ate la, o portao confere origem, hashes e conteudo."""
+    obrigatorio, camada sem funcao e o resto de conferir). O arquivo nao carrega prova de quem o gravou (o cabecalho e
+    dado sem segredo): o portao confere origem, hashes e conteudo, e a familia so vale com a confirmacao do DA na
+    janela (desdobra.entrega.portao.conferir_familia). O que impede o Claude de gravar o arquivo e o gancho
+    (scripts/gancho_confirmacoes.py); o arquivo escrito a mao por outro caminho e risco residual declarado (revisao do
+    M7a)."""
     try:
         b = ler(pasta)
     except contratos.ErroContrato:
@@ -538,3 +576,115 @@ def rascunho(pasta):
              'modo_dados': dict(pend)}
     contratos.validar(dados, ESQUEMA)
     return dados, {'decisoes_de_funcao': len(funcoes), 'grupos': len(grupos), 'cobertas': len(cobertas)}
+
+
+def _id_do_formato(chave, vistos):
+    """O id do formato na pasta do job a partir da chave da folha (veiculador|circuito|LxA): minusculas, letras e
+    digitos, o resto vira hifen. O id repetido, ou um nome que o motor ou o Windows ja usam, ganha -2, -3..."""
+    import re
+    base = re.sub('-+', '-', re.sub('[^a-z0-9]+', '-', chave.lower())).strip('-') or 'formato'
+    ident, n = base, 1
+    while ident in vistos or ident in IDS_DO_MOTOR + IDS_DO_WINDOWS:
+        n += 1
+        ident = '%s-%d' % (base, n)
+    vistos.add(ident)
+    return ident
+
+
+def formatos_das_specs(pasta, ids_de_antes=None):
+    """Os formatos do briefing que saem das specs do job, na ordem da folha: cada formato com chave e dimensao em px,
+    com a largura e a altura da folha. ids_de_antes: {chave: id} do briefing gravado (a retomada): a chave que ele ja
+    tem fica com o id dele, e o id de uma chave que saiu da folha nunca vai para outra (revisao da correcao dos
+    becos: as mestres, as quebras e as familias seguem pelo id). A lista sai do rascunho das specs, que tem todos os formatos da folha: os
+    formatos do job (formatos-do-job.json) so tem os confirmados, e confirmar a medida de um formato tiraria os outros
+    do briefing (revisao do M7a). A rotacao fica de fora: a folha a traz em texto, e o giro e decisao do DA (o rascunho
+    da tela, desdobra.briefing.salvar.escolhas_do_passo_1)."""
+    arq = Path(pasta) / ARQUIVO_RASCUNHO_SPECS
+    if not arq.is_file():
+        arq = Path(pasta) / ARQUIVO_FORMATOS
+    try:
+        dados = arquivos.ler_json(arq) if arq.is_file() else {}
+    except (OSError, ValueError):
+        dados = {}
+    saida, vistos = [], set()
+    for f in (dados or {}).get('formatos') or []:
+        chave = f.get('chave')
+        dim = (f.get('campos') or {}).get('dimensao') or {}
+        v = dim.get('valor') if isinstance(dim, dict) else None
+        if not isinstance(chave, str) or not chave or (dim.get('unidade') or 'px') != 'px' or not isinstance(v, dict):
+            continue
+        try:
+            largura, altura = int(round(float(v['largura']))), int(round(float(v['altura'])))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if largura < 1 or altura < 1:
+            continue
+        partes = chave.split('|')
+        tem_nivel = len(partes) > 2  # numero-neutro: veiculador|circuito|LxA
+        saida.append({'id': None, 'chave': chave,
+                      'veiculador': partes[0] if tem_nivel else None, 'circuito': partes[1] if tem_nivel else None,
+                      'largura': largura, 'altura': altura})
+    # o id do briefing de antes vale primeiro; o resto sai na ordem da chave exata, e nunca na da folha: as chaves que
+    # dao o mesmo id base (maiuscula ou pontuacao) ficam com o mesmo sufixo se a folha mudar de ordem (revisao dos
+    # becos, A3)
+    antes = {k: v for k, v in (ids_de_antes or {}).items() if isinstance(k, str) and isinstance(v, str) and v}
+    vistos.update(v for v in antes.values() if v not in IDS_DO_MOTOR + IDS_DO_WINDOWS)
+    for f in saida:
+        if antes.get(f['chave']) in vistos:
+            f['id'] = antes[f['chave']]
+    for f in sorted(saida, key=lambda f: f['chave']):
+        if f['id'] is None:
+            f['id'] = _id_do_formato(f['chave'], vistos)
+    return saida
+
+
+def partida(pasta, ids_de_antes=None):
+    """O briefing de partida da tela no job sem briefing confirmado (M7a): o rascunho do motor (tudo pendente, sem valor
+    inicial; rascunho) com os formatos das specs do job (formatos_das_specs) e a mestre do KV. Nada e gravado: a tela
+    parte dele, e "Salvar e seguir" grava o primeiro briefing confirmado por cima do que o DA escolheu. O quadro fica
+    pendente: so o DA escolhe de qual prancheta a peca sai (decisao 1)."""
+    dados, _contagem = rascunho(pasta)
+    dados['formatos'] = formatos_das_specs(pasta, ids_de_antes)
+    contratos.validar(dados, ESQUEMA)
+    return dados
+
+
+def retomada(pasta, gravado):
+    """O briefing de partida com o que ainda vale do briefing gravado de outra versao do laudo, das specs, do design
+    system ou das fontes (revisao do M7a): a tela abre dele e "Salvar e seguir" grava por cima, sem passo no terminal.
+    Os formatos sao sempre os das specs de agora (formatos_das_specs), com o id que o gravado ja dava a cada chave, e o
+    giro que o DA ja decidiu segue o formato pela chave da folha. Com o mesmo laudo, as decisoes das camadas (prancheta, funcoes, cobertas, regras, ancoras, blocos e
+    quebras) e as mestres continuam, menos o que cita formato que as specs nao tem mais; com outro laudo, nenhuma
+    decisao das camadas volta (os ids sao de outra leitura do PSD). As familias confirmadas ficam so no rascunho da
+    tela. O cabecalho e o do rascunho do motor: o briefing gravado continua o de antes ate o DA salvar. Nao grava."""
+    import copy
+    dados = partida(pasta, {f['chave']: f['id'] for f in gravado.get('formatos') or [] if f.get('chave')})
+    giro = {f['chave']: f['rotacao'] for f in gravado.get('formatos') or [] if f.get('rotacao') is not None}
+    for f in dados['formatos']:
+        if f['chave'] in giro:
+            f['rotacao'] = copy.deepcopy(giro[f['chave']])
+    if gravado['cabecalho'].get('laudo_sha256') == dados['cabecalho']['laudo_sha256']:
+        ids = {f['id'] for f in dados['formatos']}
+        for k in ('quadro', 'funcoes', 'cobertas', 'regras_escala', 'regras_indeterminado', 'ancoras', 'regras_bloco',
+                  'familias'):
+            if k in gravado:
+                dados[k] = copy.deepcopy(gravado[k])
+        dados['mestres'] = [copy.deepcopy(m) for m in gravado['mestres']
+                            if m['tipo'] != 'propria' or m.get('formato') in ids]
+        if 'quebras_por_familia' in gravado:
+            dados['quebras_por_familia'] = [copy.deepcopy(q) for q in gravado['quebras_por_familia']
+                                            if all(f in ids for f in q.get('formatos') or ())]
+    contratos.validar(dados, ESQUEMA)
+    return dados
+
+
+def base_da_tela(pasta):
+    """O briefing de onde a tela e o gravador partem: o gravado (confirmado pelo DA ou de teste); sem ele ou com o
+    rascunho do motor gravado no lugar, o de partida; com o gravado de outra versao dos arquivos do job, a retomada
+    (o de partida com o que ainda vale dele). ErroContrato quando o gravado nao segue o contrato."""
+    b = ler(pasta)
+    if b is None or b['cabecalho']['origem'] == ORIGEM_RASCUNHO:
+        return partida(pasta)
+    if desatualizado(pasta, b):
+        return retomada(pasta, b)
+    return b

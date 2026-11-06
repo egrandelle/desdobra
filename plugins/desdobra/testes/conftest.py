@@ -40,3 +40,19 @@ def pessoa(monkeypatch):
     from desdobra import humano
     monkeypatch.setattr(humano, 'console_interativo', lambda: (True, None))
     return humano
+
+
+def escolher_modo_do_da(job, modo, teto=None):
+    """A escolha do modo de dados como o DA a deixa na tela (briefing/modo-dados.json com origem da; decisoes-v1.md,
+    170), gravada direto, para os testes que precisam do job num modo aberto. O caminho da tela tem teste proprio
+    (test_tela_lido.py)."""
+    import json as _json
+
+    from desdobra import contratos
+    from desdobra.job import modo_dados
+    estado = _json.loads((Path(job) / 'estado.json').read_text(encoding='utf-8'))
+    contratos.gravar(Path(job) / modo_dados.ARQUIVO,
+                     {'esquema': modo_dados.ESQUEMA, 'job_id': estado['job_id'], 'valor': modo, 'teto': teto,
+                      'origem': 'da', 'escolhido_por': {'usuario': None, 'maquina': None, 'meio': 'tela',
+                                                        'quando': '2026-11-05T10:00:00-03:00'}},
+                     modo_dados.ESQUEMA)

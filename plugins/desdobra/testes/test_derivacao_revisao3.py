@@ -302,8 +302,11 @@ def test_a1_largura_juntada_medida_no_chromium(job_quebras, python):
     w1 = fam['caixa_doc'][2] - fam['caixa_doc'][0]
     juntada = fap.largura('iiiiiiii WWW', 20.0, avancos=AVANCOS)
     mestre = fap.largura('WWW', 20.0, avancos=AVANCOS)
-    # a medida: a linha juntada contra a mais larga da mestre (a de 'W'); a contagem de caracteres daria 12 / 8
-    assert w1 / w0 == pytest.approx(juntada / mestre, rel=0.03)
+    # a medida: a linha juntada contra a mais larga da mestre (a de 'W'); a contagem de caracteres daria 12 / 8. Com a
+    # tinta de cada linha medida no Chromium (M7a, fatia 4), a borda direita anda o quanto a tinta da linha juntada
+    # passa da tinta da mestre, na escala da matriz: o espaco lateral do ultimo glifo e o mesmo nas duas e se cancela
+    sx = mq.escala_x(tinta)
+    assert w1 - w0 == pytest.approx((juntada - mestre) * sx, abs=1.0)
     assert abs(w1 / w0 - 12 / 8.0) > 0.1
 
 

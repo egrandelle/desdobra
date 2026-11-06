@@ -8,7 +8,7 @@ Criterios de pronto cobertos aqui (proposta do M7, secao 4, fatia a3; secao 3, l
   - abas por orientacao e, dentro dela, uma miniatura por grupo de composicoes de proporcao parecida (revisao da 163 em
     05/11), desenhada do mesmo modelo do palco, com os arquivos de saida como fichas; a escala pura e o formato
     devolvido levam o selo deles, e o devolvido aparece com o motivo em portugues, sem pedir mestre propria (n 164);
-  - nenhum identificador do motor no texto da moldura (redesenho de 05/11); os botoes do M7a ("Confirmar composicao",
+  - nenhum identificador do motor no texto da moldura (redesenho de 05/11); os botoes do M7a ("Confirmar familia",
     "Salvar e seguir") aparecem desligados, com a dica de que chegam na proxima versao;
   - o palco desenha a derivacao do motor em pixel real: cada camada pelo asset por id ou pelo texto com a fonte do job
     (@font-face pela rota da fonte, sem local()), com a tinta medida no Chromium; a primeira tentativa do solver leva
@@ -236,8 +236,11 @@ def test_textos_da_tela_sem_travessao_e_sem_html_de_cliente():
         assert 'local(' not in texto, nome
     js = arqs['tela.js']
     for proibido in ('innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function',
-                     'setAttribute(\'on', 'srcdoc', 'method: \'POST\'', 'method:\'POST\''):
+                     'setAttribute(\'on', 'srcdoc', 'method:\'POST\''):
         assert proibido not in js, proibido
+    # M7a, fatia 1: um POST so, o de enviar(), sempre com o cabecalho do token CSRF (test_tela_escrita.py)
+    assert js.count('method: \'POST\'') == 1 and js.count('fetch(') == 2  # numero-neutro: pedir e enviar
+    assert re.search(r"method: 'POST'[^}]*\n[^}]*'X-Desdobra-CSRF': csrf", js)
     html = arqs['tela.html']
     assert '<script src="/tela.js"' in html and '<style' not in html
     assert not re.search(r'<[^>]+\son[a-z]+=', html)
@@ -253,7 +256,8 @@ def test_montar_no_job_sintetico_sem_gravar_nada(job_palco):
     assert e['somente_leitura'] is True
     # passo 1: o que o motor leu
     lido = e['lido']
-    assert lido['modo_dados'] == {'job': 'c', 'teto': None, 'briefing': 'c'}
+    # o modo vem so da escolha do DA na tela (decisoes-v1.md, 170): nada marcado antes dela
+    assert lido['modo_dados'] == {'escolhido': None, 'teto': None, 'opcoes': ['a', 'b', 'c']}
     assert isinstance(lido['bloqueios'], list) and lido['linkados'] == []
     assert set(lido['specs']) >= {'confirmados', 'rascunhos', 'divergentes', 'registros', 'formatos'}
     assert [f['id'] for f in lido['fontes']] == ['f01'] and lido['fontes_que_faltam'] == []
@@ -392,15 +396,18 @@ def test_palco_no_chromium_sem_janela(job_palco):
                 pass
             pg.goto(srv.url_pagina, wait_until='load')
             _esperar(pg, JS_PRONTO)
-            # contador unico
-            n = len(conteudo['estado']['faltam'])
+            # contador unico: o do motor mais o que falta no passo 2 e no Design system, sem rascunho (fatia 3)
+            from desdobra import contratos
+            from desdobra.tela import funcoes as tf
+            laudo = contratos.ler(job_palco / 'laudo' / 'laudo.json', 'laudo/1')
+            n = len(conteudo['estado']['faltam']) + len(tf.pendencias(laudo, {}))
             assert pg.evaluate('() => document.getElementById("faltam").textContent') == \
                 ('Falta 1' if n == 1 else 'Faltam %d' % n)
             # passo 2: os nomes hostis aparecem como texto, sem virar elemento
             pg.evaluate('() => document.querySelector("#passos [data-passo=funcoes]").click()')
             corpo = pg.evaluate('() => document.body.innerText')
             assert NOME_FORM in corpo and NOME_IMG in corpo and NOME_APOIO in corpo
-            assert 'do grupo' in corpo
+            assert 'grupo' not in corpo  # a pasta do PSD (M7a, fatia 3: a palavra saiu da tela)
             assert pg.evaluate('() => document.querySelectorAll("form, b, [onerror]").length') == 0
             assert pg.evaluate('() => document.title') != '1'
             assert pg.evaluate('() => document.querySelectorAll("#palco-kv .peca").length') > 0
@@ -409,10 +416,11 @@ def test_palco_no_chromium_sem_janela(job_palco):
             corpo = pg.evaluate('() => document.body.innerText')
             assert not [r for r in escala.REGRAS if re.search(r'(?<![\w-])%s(?![\w-])' % r, corpo)], corpo
             assert not re.search(r'smart_|cor_solida', corpo)
-            # o passo Design system: o resumo so de leitura das regras e ancoras (decisoes-v1.md, 161)
+            # o passo Design system: sem escolha no rascunho, so o convite para o passo 2 (M7a, fatia 3: a funcao do
+            # briefing de teste nunca aparece como escolha)
             pg.evaluate('() => document.querySelector("#passos [data-passo=design]").click()')
-            assert pg.evaluate('() => document.querySelectorAll("#resumo-design tr").length') == \
-                len(conteudo['estado']['funcoes']['resumo']) + 1
+            assert pg.evaluate('() => document.querySelectorAll("#resumo-design .funcao-ds").length') == 0
+            assert pg.evaluate('() => document.querySelectorAll("#resumo-design .vazio-design").length') == 1
             assert not pg.evaluate('() => document.getElementById("passo-design").hidden')
             # as abas: orientacao e uma miniatura por grupo de proporcao, do mais largo ao mais perto do quadrado
             pg.evaluate('() => document.querySelector("#passos [data-passo=pecas]").click()')
@@ -487,12 +495,12 @@ def test_palco_no_chromium_sem_janela(job_palco):
             pg.evaluate('() => document.getElementById("faltam").click()')
             assert not IDENTIFICADOR.findall(pg.evaluate(JS_TEXTO_DA_MOLDURA))
             # os botoes do M7a: presentes, desligados, com a dica; a tela continua so de leitura
-            for bid in ('confirmar-composicao', 'salvar-seguir'):
+            for bid in ('confirmar-familia', 'salvar-seguir'):
                 assert pg.evaluate('i => document.getElementById(i).disabled', bid) is True, bid
-            assert pg.evaluate('() => document.getElementById("dica-acoes").textContent').lower() == \
-                'disponível na próxima versão'
+            assert pg.evaluate('() => document.getElementById("dica-acoes").textContent') == \
+                'Nesta janela nada é gravado.'
             pg.evaluate('() => { document.getElementById("salvar-seguir").click();'
-                        ' document.getElementById("confirmar-composicao").click(); }')
+                        ' document.getElementById("confirmar-familia").click(); }')
         finally:
             nav.close()
         contagem, origem = dict(srv.contagem), srv.origem

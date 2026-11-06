@@ -15,6 +15,7 @@ from PIL import Image
 from psd_tools import PSDImage
 
 import sinteticos
+from conftest import escolher_modo_do_da
 from desdobra import contratos, plataforma
 
 pytestmark = pytest.mark.skipif(plataforma.obter().nome in ('sem-suporte', 'mac'), reason='sem isolador neste sistema')
@@ -56,6 +57,7 @@ def job_b(tmp_path_factory):
     codigo, saida, _ = rodar('--envelope', '--teto-modo-dados', 'b', 'job', 'criar', str(job), '--kv', str(psd),
                              '--modo-dados', 'b')
     assert codigo == 0, saida
+    escolher_modo_do_da(job, 'b')  # a escolha do DA na tela e a fonte do modo (decisoes-v1.md, 170)
     codigo, saida, erro = rodar('--envelope', '--teto-modo-dados', 'b', 'job', 'proxima', str(job))
     return {'job': job, 'psd': psd, 'codigo': codigo, 'saida': saida, 'erro': erro, 'pasta': pasta}
 

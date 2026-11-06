@@ -19,7 +19,7 @@ import json
 import sys
 
 from desdobra import __version__
-from desdobra.resultado import MODOS_DADOS, Codigo, Resultado, modo_mais_fechado
+from desdobra.resultado import MODOS_DADOS, Codigo, Resultado
 
 # modulo -> subcomandos que ele registra (usados so para o aviso de "nao disponivel" se o modulo faltar)
 COMPONENTES = (
@@ -89,20 +89,16 @@ def montar_analisador():
 
 
 def _modo_do_resultado(resultado, teto):
-    """Modo de dados do envelope: o do job (se houver) limitado pelo teto; sem job, 'c'."""
-    modo_job = None
-    if resultado.pasta_job is not None:
-        try:
-            with open(resultado.pasta_job / 'estado.json', encoding='utf-8') as f:
-                estado = json.load(f)
-            modo_job = estado.get('modo_dados')
-            tetos = [t for t in (teto, estado.get('teto_modo_dados')) if t is not None]
-            teto = modo_mais_fechado(*tetos) if tetos else None
-        except (OSError, ValueError):
-            modo_job = None
-    if modo_job is None:
+    """Modo de dados do envelope: o escolhido pelo DA na tela (desdobra.job.modo_dados, fonte unica; decisoes-v1.md,
+    170), limitado pelo teto da linha de comando e pelo do estado.json; sem job ou sem escolha, 'c'. O modo_dados do
+    estado.json nao vale mais como fonte."""
+    if resultado.pasta_job is None:
         return 'c'
-    return modo_mais_fechado(modo_job, teto)
+    try:
+        from desdobra.job import modo_dados
+        return modo_dados.efetivo(resultado.pasta_job, modo_dados.teto_do_job(resultado.pasta_job, teto))
+    except (OSError, ValueError):
+        return 'c'
 
 
 def envelope_minimo(resultado, modo):

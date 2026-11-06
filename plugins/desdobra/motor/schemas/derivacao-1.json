@@ -37,7 +37,7 @@
     "fora_do_quadro": {"type": "integer", "minimum": 0},
     "mestre": {"type": ["object", "null"]},
     "familia": {"type": ["object", "null"]},
-    "caminho": {"enum": ["transform", "solver", "mestre_propria", "devolvido"]},
+    "caminho": {"enum": ["transform", "solver", "mestre_propria", "galeria", "devolvido"], "description": "galeria: a versao da galeria que o DA escolheu e confirmou na familia (decisoes-v1.md, 164 e 167)"},
     "situacao": {"enum": ["derivado", "devolvido"]},
     "elementos": {
       "type": "array",
@@ -52,7 +52,9 @@
           "caixa_mestre": {"$ref": "#/$defs/caixa"},
           "escala": {"type": "number", "exclusiveMinimum": 0},
           "regra_aplicada": {"type": "object", "required": ["funcao", "regra", "caminho", "classe"]},
-          "transformacao": {"type": "object", "required": ["s", "origem_doc", "destino", "recorte_doc"]}
+          "transformacao": {"type": "object", "required": ["s", "origem_doc", "destino", "recorte_doc"]},
+          "origem_geometria": {"enum": ["da", "regra", "transformacao", "sugestao_citada", "galeria"], "description": "De onde veio a caixa: da (editada ou desenhada pelo DA), regra (solver), transformacao (escala pura), sugestao_citada, galeria (versao da galeria sem edicao)"},
+          "texto_editado": {"type": "string", "description": "O texto que o DA editou no palco, so na familia dele (decisoes-v1.md, 169 e 171)"}
         }
       }
     },
@@ -63,12 +65,22 @@
         "type": "object",
         "required": ["motivo", "o_que_fazer", "restricao", "elementos"],
         "properties": {
-          "motivo": {"enum": ["troca_forte_de_orientacao", "troca_de_orientacao_quadrado", "fora_da_faixa_de_familia", "acima_do_numero_de_mestres", "restricao_obrigatoria_nao_fecha", "validacao_obrigatoria_reprovou", "indeterminado_sem_regra", "mestre_propria_incompleta", "formato_sem_folha", "dimensao_diferente_da_folha", "erro_no_formato", "ajuste_global_sem_aplicar", "bloco_partido_na_pilha", "bloco_com_regras_diferentes", "quebra_sem_medida"]},
+          "motivo": {"enum": ["troca_forte_de_orientacao", "troca_de_orientacao_quadrado", "fora_da_faixa_de_familia", "acima_do_numero_de_mestres", "restricao_obrigatoria_nao_fecha", "validacao_obrigatoria_reprovou", "indeterminado_sem_regra", "mestre_propria_incompleta", "formato_sem_folha", "spec_por_confirmar", "mestre_por_confirmar", "dimensao_diferente_da_folha", "erro_no_formato", "ajuste_global_sem_aplicar", "bloco_partido_na_pilha", "bloco_com_regras_diferentes", "quebra_sem_medida"]},
           "restricao": {"anyOf": [{"type": "null"}, {"type": "object", "required": ["nome", "forca", "fonte"]}]}
         }
       }]
     },
     "registros": {"type": "array", "items": {"type": "object", "required": ["codigo"]}},
-    "inventario_entre_formatos": {"enum": ["igual", "diferente"]}
+    "inventario_entre_formatos": {"enum": ["igual", "diferente"]},
+    "proposta": {
+      "type": "object",
+      "description": "A familia confirmada de que o formato faz parte (briefing composicoes): versao, numero de edicoes e a confirmacao. O entregar recusa proposta sem confirmacao.",
+      "required": ["familia", "versao", "edicoes", "confirmada", "confirmacao"]
+    },
+    "apagados_pelo_da": {
+      "type": "array",
+      "description": "Elementos que o DA tirou da familia no palco (decisoes-v1.md, 169): saem do formato e nao reprovam o inventario.",
+      "items": {"type": "object", "required": ["elemento", "layer_ids", "origem"], "properties": {"origem": {"enum": ["da", "fixture_de_teste"]}}}
+    }
   }
 }

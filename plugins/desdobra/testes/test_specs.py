@@ -8,7 +8,7 @@ import shutil
 import pytest
 
 import test_specs_apoio as apoio
-from conftest import psd_minimo
+from conftest import escolher_modo_do_da, psd_minimo
 from desdobra import cli, contratos, limites
 from desdobra.job import fases as mod_fases
 from desdobra.job import nucleo
@@ -35,6 +35,8 @@ def _job(base, arquivos, modo='b'):
         p.write_bytes(dados if isinstance(dados, bytes) else dados.encode('utf-8'))
     (base / 'kv.psd').write_bytes(psd_minimo())
     nucleo.criar(base / 'job', base / 'kv.psd', modo, specs=origem)
+    if modo != 'c':
+        escolher_modo_do_da(base / 'job', modo)  # a escolha do DA na tela e a fonte do modo (decisoes-v1.md, 170)
     return base / 'job'
 
 

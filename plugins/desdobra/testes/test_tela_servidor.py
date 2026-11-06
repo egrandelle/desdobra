@@ -240,7 +240,8 @@ def test_sem_host_e_com_origem_de_fora_e_recusado(srv):
 
 
 @pytest.mark.parametrize('metodo', ['POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'])
-def test_so_get_nenhuma_rota_de_escrita(srv, metodo):
+def test_servidor_so_de_leitura_nao_tem_rota_de_escrita(srv, metodo):
+    # sem a pasta do job o servidor e so de leitura: POST tambem da 404 (a escrita: testes/test_tela_escrita.py)
     biscoito = _entrar(srv)
     for rota in ('/api/estado', '/api/aprovar', '/api/briefing', '/api/rascunho', '/fonte/f01'):
         codigo = _pedir(srv, rota, metodo=metodo, cookie=biscoito,
@@ -248,7 +249,7 @@ def test_so_get_nenhuma_rota_de_escrita(srv, metodo):
                         corpo=b'{}' if metodo in ('POST', 'PUT', 'PATCH') else b'')[0]
         assert codigo == 404, (metodo, rota)
     assert srv.contagem['metodo_recusado'] == 5
-    assert set(ts.METODOS) == {'GET'}
+    assert set(ts.METODOS) == {'GET', 'POST'} and not srv.escreve and srv.csrf is None
 
 
 # ------------------------------------------------------------------ cabecalhos e conteudo

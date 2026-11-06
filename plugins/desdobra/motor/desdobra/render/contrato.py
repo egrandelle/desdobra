@@ -52,6 +52,11 @@ DESCRICOES_BLOQUEIO = {
     'linkado_sem_confirmacao': 'Há smart object linkado visível sem o arquivo casado e confirmado pelo DA. Rode '
                                '"desdobra linkado confirmar --job <pasta>" num terminal interativo.',
     'linkado_confirmado_mudou': 'O arquivo confirmado para um linkado mudou ou saiu de entrada/campanha/.',
+    'linkado_confirmado_no_modo_de_teste': 'O linkado foi confirmado no modo de teste da tela, ou antes de a '
+                                           'confirmação gravar quem confirmou. Confirme o arquivo do linkado de novo '
+                                           'na tela de briefing.',
+    'spec_confirmada_no_modo_de_teste': 'Um valor de spec foi confirmado no modo de teste da tela. Confirme o valor '
+                                        'de novo na tela de briefing.',
     'largura_divergente': 'A conferência de fontes achou divergência de largura numa camada de texto. É decisão do DA, '
                           'que confirma no terminal antes do render.',
     'fases_desatualizadas': 'Uma fase de que o render depende (leitura, fontes, segunda passada do laudo ou design '
@@ -71,6 +76,9 @@ DESCRICOES_BLOQUEIO = {
 }
 FASES_DO_RENDER = ('ler', 'fontes', 'laudo-fontes', 'ds')
 FORMATOS_LINKADO = ('image/png', 'image/jpeg')
+# a origem do Disparo nas confirmacoes (desdobra.humano): so a do DA vale para o render
+ORIGEM_DA = 'da'
+ORIGEM_FIXTURE = 'fixture_de_teste'
 
 
 class ErroContrato(Exception):
@@ -289,6 +297,14 @@ def montar(pasta_job, *, funcoes=None, formato=FORMATO_ORIGEM):
     if kv_atual != laudo['origem']['sha256']:
         bloqueios.append(_bloqueio('laudo_de_outro_kv'))
     laudo_sha = arquivos.sha256_arquivo(laudo_arq)
+    from desdobra.specs import importar
+    try:
+        acoes_spec = importar.ler_confirmacoes(pasta_job)['acoes']
+    except (contratos.ErroContrato, OSError, ValueError):
+        acoes_spec = []
+    if any(a.get('por') == ORIGEM_FIXTURE for a in acoes_spec):
+        # o valor de spec confirmado no modo de teste da tela nunca chega ao master (revisao do M7a)
+        bloqueios.append(_bloqueio('spec_confirmada_no_modo_de_teste'))
     doc_l = laudo['documento']
     if any(r.get('etapa') == 'composicao' for r in laudo.get('recusas') or []):
         bloqueios.append(_bloqueio('composicao_acima_do_orcamento'))
@@ -404,6 +420,10 @@ def montar(pasta_job, *, funcoes=None, formato=FORMATO_ORIGEM):
             c = confirmados.get(so.get('unique_id'))
             if c is None:
                 bloqueios.append(_bloqueio('linkado_sem_confirmacao', layer_id=lid))
+                continue
+            if (c.get('confirmado_por') or {}).get('origem') != ORIGEM_DA:
+                # so a confirmacao do DA vale; a do modo de teste e a sem origem gravada, nao (revisao do M7a)
+                bloqueios.append(_bloqueio('linkado_confirmado_no_modo_de_teste', layer_id=lid))
                 continue
             reg_entrada = estado['entradas'].get(c['arquivo'])
             if not c['arquivo'].startswith('entrada/campanha/') or reg_entrada is None or \

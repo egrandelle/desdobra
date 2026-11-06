@@ -50,7 +50,7 @@
         "ds_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
         "conferencia_sha256": {"$ref": "#/$defs/sha_ou_nulo"},
         "origem": {"enum": ["da", "fixture_de_teste", "rascunho"], "description": "rascunho: sem valor, so para o DA preencher; o derivar e a entrega recusam"},
-        "meio": {"enum": ["tela", "terminal", "importar_teste", "rascunho"]},
+        "meio": {"enum": ["tela", "terminal", "importar_teste", "rascunho", "medicao"], "description": "medicao: o modo de teste da tela (proposta do M7, 159c), com a origem fixture_de_teste"},
         "por": {
           "type": "object",
           "additionalProperties": false,
@@ -225,6 +225,28 @@
     },
     "opcoes_texto": {"type": "object"},
     "modo_dados": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"enum": ["a", "b", "c", null]}}}]},
-    "sugestoes_ref": {"type": ["string", "null"]}
+    "sugestoes_ref": {"type": ["string", "null"]},
+    "composicoes": {
+      "description": "As familias da tela confirmadas pelo DA (decisoes-v1.md, 167): a versao da galeria escolhida e as edicoes no palco (mover, escalar, texto, apagar, em fracao do lado da peca), que valem para todos os formatos da familia. Gravado so por 'Salvar e seguir' (desdobra.briefing.salvar), com todas as familias confirmadas; o derivar parte delas, e o entregar recusa formato de familia sem confirmacao.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["familia", "formatos", "versao", "edicoes", "confirmada", "confirmacao"],
+        "properties": {
+          "familia": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+          "formatos": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "versao": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]*$"},
+          "edicoes": {"type": "array", "items": {"type": "object", "required": ["elemento", "acao"], "properties": {"elemento": {"type": "string", "pattern": "^el[0-9]+$"}, "acao": {"enum": ["mover", "escalar", "texto", "apagar"]}}}},
+          "confirmada": {"type": "boolean"},
+          "confirmacao": {
+            "oneOf": [
+              {"type": "null"},
+              {"type": "object", "additionalProperties": false, "required": ["origem", "meio", "em"], "properties": {"origem": {"enum": ["da", "fixture_de_teste"]}, "meio": {"enum": ["tela", "medicao"]}, "em": {"type": "string"}}}
+            ]
+          }
+        }
+      }
+    }
   }
 }

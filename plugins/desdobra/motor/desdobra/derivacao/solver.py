@@ -25,6 +25,9 @@ dentro da forca (perturbacao), para o otimo ser unico; o vertice e refeito pelas
 quadrados) e arredondado no nucleo, para o resultado ser o mesmo em todo processo.
 """
 import itertools
+import queue
+import threading
+from concurrent.futures import Future
 
 from desdobra import limites
 
@@ -183,11 +186,50 @@ def _matrizes(obrigatorias, n, extra=0):
     return A_ub, b_ub, A_eq, b_eq
 
 
-def _linprog(c, A_ub, b_ub, A_eq, b_eq, limites_vars):
+# O HiGHS (scipy 1.18.1, HiGHS 1.12.0, Windows) guarda um executor por fio do sistema que o chama, com 5 fios de
+# trabalho, e o desmonta num callback TLS quando esse fio termina, com o loader lock do Windows preso. Sob carga, um fio
+# de trabalho gira para sempre nesse callback (100% de um nucleo) e nenhum fio do processo nasce nem termina mais; as
+# vezes o desmonte acaba em access violation. A tela roda cada pedido HTTP num fio novo, que termina depois de derivar:
+# era o travamento intermitente do Salvar e seguir (o pedido seguinte preso no Thread.start, o parar no shutdown). Por
+# isso todo programa linear roda num unico fio dedicado, daemon, que nunca termina (morre com o processo, sem desmonte).
+_PEDIDOS_HIGHS = queue.Queue()
+_TRAVA_FIO_HIGHS = threading.Lock()
+_fio_highs = None
+
+
+def _servir_highs():
+    while True:
+        futuro, funcao, args = _PEDIDOS_HIGHS.get()
+        if not futuro.set_running_or_notify_cancel():
+            continue
+        try:
+            futuro.set_result(funcao(*args))
+        except BaseException as e:  # o erro volta inteiro para quem chamou; o fio continua vivo
+            futuro.set_exception(e)
+
+
+def _no_fio_do_highs(funcao, *args):
+    global _fio_highs
+    if _fio_highs is not None and threading.get_ident() == _fio_highs.ident:
+        return funcao(*args)
+    with _TRAVA_FIO_HIGHS:
+        if _fio_highs is None or not _fio_highs.is_alive():
+            _fio_highs = threading.Thread(target=_servir_highs, name='desdobra-highs', daemon=True)
+            _fio_highs.start()
+    futuro = Future()
+    _PEDIDOS_HIGHS.put((futuro, funcao, args))
+    return futuro.result()
+
+
+def _linprog_aqui(c, A_ub, b_ub, A_eq, b_eq, limites_vars):
     import numpy as np
     from scipy.optimize import linprog
     return linprog(np.asarray(c, float), A_ub=np.asarray(A_ub) if A_ub else None, b_ub=b_ub or None,
                    A_eq=np.asarray(A_eq) if A_eq else None, b_eq=b_eq or None, bounds=limites_vars, method='highs')
+
+
+def _linprog(c, A_ub, b_ub, A_eq, b_eq, limites_vars):
+    return _no_fio_do_highs(_linprog_aqui, c, A_ub, b_ub, A_eq, b_eq, limites_vars)
 
 
 def _cabe(obrigatorias, n):

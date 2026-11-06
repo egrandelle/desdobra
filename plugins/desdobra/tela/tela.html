@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
+<meta name="dsd-csrf" content="">
+<link rel="icon" href="/icone.svg" type="image/svg+xml">
 <title>desdobra: briefing</title>
 <link rel="stylesheet" href="/tela.css">
 <link rel="stylesheet" href="/fontes.css">
@@ -24,7 +25,7 @@
   <nav id="passos" class="passos" role="tablist" aria-label="Passos do briefing">
     <button type="button" role="tab" data-passo="lido">O que eu li</button>
     <button type="button" role="tab" data-passo="funcoes">Funções</button>
-    <button type="button" role="tab" data-passo="pecas">Composições</button>
+    <button type="button" role="tab" data-passo="pecas">Famílias</button>
     <button type="button" role="tab" data-passo="design">Design system</button>
   </nav>
   <div class="topo-direita">
@@ -35,10 +36,11 @@
 <section id="lista-faltam" class="lista-faltam" aria-label="O que falta" hidden>
   <div class="lista-faltam-topo">
     <h2>O que falta</h2>
-    <p class="nota">Nesta versão a tela mostra o que falta; as decisões ainda são tomadas fora dela.</p>
+    <p class="nota">Cada item leva ao lugar da tela onde ele se resolve.</p>
   </div>
   <ol id="itens-faltam"></ol>
 </section>
+<div id="avisos-tela" class="avisos-tela" role="status" aria-live="polite" hidden></div>
 <main>
   <section id="passo-lido" class="passo passo-lido" aria-label="O que eu li">
     <div class="lido-grade">
@@ -46,12 +48,14 @@
         <header class="cabeca-passo">
           <p class="sobretitulo">Passo 1</p>
           <h1>O que eu li no arquivo</h1>
-          <p class="nota">Antes de desdobrar, confira o que o desdobra encontrou no PSD, nas specs e nas fontes.</p>
+          <p class="nota">Antes de desdobrar, escolha o modo de dados e confira o que o desdobra encontrou no PSD, nas specs e nas fontes.</p>
         </header>
+        <section class="bloco" aria-labelledby="t-modo"><h2 id="t-modo">Modo de dados</h2><div id="lido-modo"></div></section>
+        <section id="bloco-quadros" class="bloco" aria-labelledby="t-quadros" hidden><h2 id="t-quadros">Prancheta da peça</h2><p class="nota bloco-nota">O PSD tem mais de uma prancheta. Escolha de qual delas a peça sai; as outras ficam de fora.</p><div id="lido-quadros" class="quadros" role="group" aria-labelledby="t-quadros"></div></section>
         <section class="bloco" aria-labelledby="t-bloqueios"><h2 id="t-bloqueios">Bloqueios</h2><div id="lido-bloqueios"></div></section>
         <section class="bloco" aria-labelledby="t-linkados"><h2 id="t-linkados">Arquivos linkados</h2><div id="lido-linkados"></div></section>
-        <section class="bloco" aria-labelledby="t-specs"><h2 id="t-specs">Valores de spec</h2><div id="lido-specs"></div></section>
-        <section class="bloco" aria-labelledby="t-modo"><h2 id="t-modo">Modo de dados</h2><div id="lido-modo"></div></section>
+        <section class="bloco" aria-labelledby="t-specs"><h2 id="t-specs">Valores de spec</h2><div id="lido-specs"></div><div id="lido-specs-pendentes" class="pendentes"></div></section>
+        <section class="bloco" aria-labelledby="t-giro"><h2 id="t-giro">Formatos e giro</h2><p class="nota bloco-nota">Escolha o giro de cada formato, como ele vai para o veículo. Nada vem marcado: a folha de spec aparece só como referência.</p><div id="lido-formatos"></div></section>
       </div>
       <section class="lido-fontes" aria-labelledby="t-fontes">
         <h2 id="t-fontes">Fontes do job</h2>
@@ -60,17 +64,17 @@
     </div>
   </section>
   <section id="passo-funcoes" class="passo passo-funcoes" aria-label="Funções" hidden>
-    <nav id="arvore" class="arvore" aria-label="Grupos e camadas"></nav>
+    <nav id="arvore" class="arvore" aria-label="Pastas e camadas"></nav>
     <div class="mesa">
-      <div class="mesa-topo"><span class="selo selo-neutro">Mestre do KV</span></div>
+      <div class="mesa-topo"><span class="selo selo-neutro">Mestre do KV</span><span class="medida">A camada escolhida fica marcada</span></div>
       <div id="palco-kv" class="area-palco" aria-label="KV"></div>
     </div>
     <aside id="detalhe" class="detalhe" aria-live="polite"></aside>
   </section>
-  <section id="passo-pecas" class="passo passo-pecas" aria-label="Composições" hidden>
-    <aside class="trilho" aria-label="Composições do job">
+  <section id="passo-pecas" class="passo passo-pecas" aria-label="Famílias" hidden>
+    <aside class="trilho" aria-label="Famílias do job">
       <div id="orientacoes" class="segmentos" role="tablist" aria-label="Orientação"></div>
-      <div id="composicoes" class="miniaturas" role="tablist" aria-label="Composições" aria-orientation="vertical"></div>
+      <div id="composicoes" class="miniaturas" role="tablist" aria-label="Famílias" aria-orientation="vertical"></div>
     </aside>
     <div class="mesa">
       <div class="mesa-topo">
@@ -92,16 +96,46 @@
           <button type="button" id="ver-limpo" class="botao-vista" aria-pressed="false">Ver limpo</button>
         </div>
       </div>
-      <div id="fichas" class="fichas" aria-label="Arquivos desta composição"></div>
+      <div id="fichas" class="fichas" aria-label="Arquivos desta família"></div>
       <p id="devolucao" class="devolucao" hidden></p>
+      <p id="aviso-passo-2" class="devolucao" role="status" hidden>As funções ou o Design system mudaram depois que a tela abriu. As famílias abaixo ainda mostram o que estava antes e passam a seguir o que você escolheu assim que as funções e o Design system estiverem completos.</p>
       <div class="mesa-corpo">
         <div class="mesa-palco">
           <div id="variante-palco" class="variante-palco" aria-live="polite" hidden></div>
           <div id="palco" class="area-palco" aria-label="Palco"></div>
+          <div id="barra-edicao" class="barra-edicao" role="toolbar" aria-label="Edição do elemento escolhido" hidden>
+            <p id="elemento-escolhido" class="elemento-escolhido">Clique num elemento do palco para mexer nele.</p>
+            <div class="barra-grupo">
+              <button type="button" id="ed-diminuir" class="botao-vista" disabled>Diminuir</button>
+              <button type="button" id="ed-aumentar" class="botao-vista" disabled>Aumentar</button>
+              <button type="button" id="ed-texto" class="botao-vista" disabled>Editar texto</button>
+              <button type="button" id="ed-apagar" class="botao-vista" disabled>Apagar</button>
+              <span class="controles-divisor" aria-hidden="true"></span>
+              <button type="button" id="ed-desfazer" class="botao-vista" disabled>Desfazer</button>
+            </div>
+            <p id="ed-mensagem" class="ed-mensagem" role="status" aria-live="polite"></p>
+          </div>
+          <div id="editor-texto" class="editor-texto" hidden>
+            <label for="ed-campo-texto" class="editor-rotulo">Texto deste elemento, só nesta família</label>
+            <textarea id="ed-campo-texto" rows="3" spellcheck="false"></textarea>
+            <p class="nota">As quebras de linha que você fizer ficam; as outras a tela refaz na largura da caixa, com a fonte do job.</p>
+            <p id="ed-erro-texto" class="erro-campo" role="alert"></p>
+            <div class="editor-acoes">
+              <button type="button" id="ed-texto-cancelar" class="botao">Cancelar</button>
+              <button type="button" id="ed-texto-aplicar" class="botao botao-primario">Aplicar texto</button>
+            </div>
+          </div>
+          <section id="membros" class="membros" aria-labelledby="t-membros" hidden>
+            <div class="membros-topo">
+              <h2 id="t-membros">Como fica em cada arquivo da família</h2>
+              <p id="resumo-edicao" class="resumo-edicao"></p>
+            </div>
+            <div id="membros-lista" class="membros-lista"></div>
+          </section>
         </div>
         <aside id="galeria" class="galeria" aria-labelledby="t-galeria" hidden>
           <div class="galeria-topo">
-            <h2 id="t-galeria">Versões do motor</h2>
+            <h2 id="t-galeria">Versões do desdobra</h2>
             <p id="motivo-galeria" class="motivo-galeria"></p>
             <p id="nota-galeria" class="nota">Escolha uma versão para começar. Nada é gravado nesta versão da tela.</p>
           </div>
@@ -111,16 +145,31 @@
     </div>
   </section>
   <section id="passo-design" class="passo passo-design" aria-label="Design system" hidden>
-    <div id="resumo-design" class="resumo"></div>
+    <div id="resumo-design" class="resumo design-lista"></div>
+    <div class="mesa">
+      <div class="mesa-topo"><span class="selo selo-neutro">Mestre do KV</span><span class="medida">O ponto mostra a âncora escolhida</span></div>
+      <div id="palco-ds" class="area-palco" aria-label="KV com a função escolhida"></div>
+    </div>
   </section>
 </main>
 <footer class="acoes" aria-label="Ações do briefing">
-  <p id="passo-atual" class="passo-atual"></p>
+  <div class="acoes-esquerda">
+    <p id="passo-atual" class="passo-atual"></p>
+    <p id="salvo" class="salvo" role="status" tabindex="-1" hidden></p>
+  </div>
   <div class="acoes-direita">
-    <p id="dica-acoes" class="dica-acoes">Disponível na próxima versão</p>
-    <button type="button" id="confirmar-composicao" class="botao" disabled aria-describedby="dica-acoes">Confirmar composição</button>
+    <p id="dica-acoes" class="dica-acoes" aria-live="polite"></p>
+    <button type="button" id="confirmar-familia" class="botao" disabled>Confirmar família</button>
     <button type="button" id="salvar-seguir" class="botao botao-primario" disabled aria-describedby="dica-acoes">Salvar e seguir</button>
   </div>
 </footer>
+<dialog id="confirmacao" class="confirmacao" aria-labelledby="confirmacao-titulo" aria-describedby="confirmacao-texto">
+  <h2 id="confirmacao-titulo" tabindex="-1"></h2>
+  <p id="confirmacao-texto" class="confirmacao-texto"></p>
+  <div class="confirmacao-acoes">
+    <button type="button" class="botao" data-resposta="nao"></button>
+    <button type="button" class="botao" data-resposta="sim"></button>
+  </div>
+</dialog>
 </body>
 </html>

@@ -469,6 +469,39 @@
    "nota": "O processo de fundo monta o conteudo do job (preparar da derivacao, que pode medir as quebras no Chromium sem janela, e a derivacao em memoria), sobe o servidor e abre a janela antes de avisar. Estourado, o comando encerra o fundo e devolve tela_nao_respondeu ao Claude. Origem: valor escolhido na implementacao do M7a2, sem medicao: uma vez e meia chromium.tempo_max_s, para caber a medida das quebras e a abertura da janela; o job sintetico dos testes abre em poucos segundos."
   },
   {
+   "id": "tela.parar_max_s",
+   "valor": 30,
+   "unidade": "segundos que o parar do servidor da tela espera o serve_forever terminar",
+   "fonte": null,
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "O shutdown() do socketserver espera sem teto; com o serve_forever preso (um Thread.start que nao volta, o caso do HiGHS em fio curto de 06/11), o processo da tela ou o pytest ficava parado para sempre. Estourado, o parar fecha o socket e levanta erro. Origem: valor escolhido na correcao, sem medicao; o serve_forever sai em ate meio segundo (poll_interval do socketserver) quando nao esta preso."
+  },
+  {
+   "id": "tela.corpo_max_bytes",
+   "valor": 2097152,
+   "unidade": "bytes do corpo de uma escrita na tela (POST)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 159 (toda escrita pede cookie e token da pagina); proposta do M7, secao 3, linha Teto do corpo da requisicao"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Acima do teto, o servidor da tela recusa (403, sem corpo) sem ler o corpo. Origem: os 2 MiB da proposta do M7 (INFERENCIA, sem medicao do maior rascunho de um job do corpus)."
+  },
+  {
+   "id": "tela.rascunho_espera_ms",
+   "valor": 500,
+   "unidade": "milissegundos sem mudanca antes de a tela gravar o rascunho",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 167 (escolhas e edicoes num rascunho salvo sozinho); proposta do M7, secao 3, linha Gravacao do rascunho, e 164"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A pagina grava o rascunho quando o DA para de mexer por este tempo (cada mudanca nova recomeca a espera), e o servidor entrega o valor na rota de leitura do rascunho. Origem: os 500 ms da proposta do M7 (INFERENCIA, sem medicao)."
+  },
+  {
    "id": "leitor.filhos_paralelos",
    "valor": 4,
    "unidade": "processos filhos de smart object ao mesmo tempo",
@@ -836,6 +869,30 @@
    "situacao": "a_calibrar",
    "efeito": "registra",
    "nota": "A tela calcula os grupos sozinha, dentro de cada orientacao, por ligacao completa: a amplitude do grupo inteiro fica ate o limite, e a cadeia de vizinhos nao passa dele. Exemplos do Duda: 960x192 (5,00) com 1248x250 (4,99); 1280x720 (1,778) com 960x576 (1,667). Revisa o 0,2 da 163 original."
+  },
+  {
+   "id": "derivacao.alinhamento_intencao_tolerancia",
+   "valor": 0.01,
+   "unidade": "fracao do lado maior da peca: diferenca de borda ou de centro entre dois elementos abaixo da qual a edicao do DA vira alinhamento",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 168 (o motor entende a intencao de alinhamento e normaliza; tolerancia proporcional ao tamanho da peca, a calibrar)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Depois de cada edicao no palco, as bordas (esquerda, direita, topo, base) e os centros de dois elementos de conteudo que ficam a menos disto viram o mesmo valor (desdobra.tela.edicao.normalizar); acima disto a diferenca e intencao do DA e fica. Origem: INFERENCIA sobre o exemplo do Duda (x=40 e x=43 ficam iguais; numa peca de 1920 a tolerancia e de 19,2 px, e 30 px de diferenca ficam), sem medicao."
+  },
+  {
+   "id": "tela.previa_latencia_alvo_ms",
+   "valor": 1000,
+   "unidade": "milissegundos para o motor refazer o encaixe de todos os membros de uma familia depois de uma edicao no palco",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 167 (cada edicao levada a cada formato da familia, com o encaixe refeito e a miniatura de cada um); proposta do M7, secao 3, linha Alvo de latencia da previa"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O teste de desempenho confere uma edicao numa familia de 5 membros abaixo deste tempo, e a resposta da previa registra o tempo gasto. Origem: o 1 s por familia proposto no M7 (INFERENCIA), a medir com e sem quebras na fatia a6d."
   },
   {
    "id": "derivacao.galeria_variantes_max",

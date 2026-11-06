@@ -11,9 +11,11 @@ Le da entrada padrao o JSON do evento (tool_name e tool_input) e nega (permissio
     Python do motor), que
     mexe na conferencia do disparo humano, ou que escreve num arquivo que so o DA grava;
   - nas ferramentas que gravam arquivo (Write, Edit, MultiEdit, NotebookEdit), arquivo que so o DA grava ou que so o
-    motor grava: os .json de briefing/ (a aprovacao inclusive) e de derivacao/, specs/confirmacoes.json, master,
-    render.json e contrato de render/, o que esta em entrega/, o manifesto e o relatorio da entrega e
-    parametros/entrega.json;
+    motor grava: tudo em briefing/** (o briefing confirmado, o rascunho da tela briefing/rascunho.json, o historico e
+    a aprovacao inclusive) e em derivacao/**, o estado.json do job, specs/confirmacoes.json, master, render.json e
+    contrato de render/, o que esta em entrega/, o manifesto e o relatorio da entrega e parametros/entrega.json
+    (decisoes-v1.md, 159; proposta do M7, 160c). O codigo-fonte do pacote (desdobra/briefing/<modulo>.py,
+    desdobra/derivacao/<modulo>.py, desdobra/entrega/<modulo>.py) continua editavel;
   - a ferramenta do painel de terminal do app do Claude (mcp__terminal__run_in_terminal), sempre, como pede a
     decisoes-v1.md, 160, com o motivo MOTIVO_PAINEL: o painel roda no shell do DA, onde o Claude tira as marcas de
     ambiente e, com um salto (explorer.exe abrindo um script), a cadeia de pais que o motor confere;
@@ -23,7 +25,8 @@ Le da entrada padrao o JSON do evento (tool_name e tool_input) e nega (permissio
     sessao e as fontes ficam na memoria do processo de fundo) e teclas ou cliques simulados (TECLAS_SIMULADAS: a
     janela da tela tem DevTools); nas ferramentas de arquivo, escrita no perfil da tela; nas de leitura (Read, Glob,
     Grep), caminho ou padrao no perfil da tela; nas de navegador (mcp__claude-in-chrome__*, mcp__Claude_Browser__*,
-    WebFetch), as rotas da tela, o cookie dela (COOKIE_DA_TELA) e o perfil. O "desdobra tela abrir" passa: quem abre a
+    WebFetch), as rotas da tela, o cookie dela (COOKIE_DA_TELA), o cabecalho e a meta do token CSRF das escritas
+    (CSRF_DA_TELA; o Claude nunca chega as rotas de escrita da tela) e o perfil. O "desdobra tela abrir" passa: quem abre a
     tela e o Claude (decisoes-v1.md, 159), e o token da entrada nunca sai do processo de fundo;
   - escrita no aval do download do Chromium com janela (aval-chromium-janela.json, decisoes-v1.md, 158), que so o DA
     da.
@@ -35,6 +38,9 @@ caminho das ferramentas de arquivo tambem e normalizado.
 Com a negacao, o Claude recebe o motivo: quem roda isso e o DA, num terminal proprio, fora do Claude. Sem negacao, o
 gancho nao imprime nada e o Claude Code segue o fluxo normal de permissao. O codigo de saida e sempre 0.
 
+Desde a revisao do M7a, o codigo que cita o desdobra e chama os gravadores de baixo do motor (contratos.gravar,
+arquivos.gravar_*_atomico) e negado sempre, e a escrita com caminho do DA pela constante de um modulo (mb.ARQUIVO) ou
+montado por partes entre aspas (Path(j, 'briefing', 'x.json')) tambem.
 Este gancho cobre o caminho direto do Claude, pelo texto do comando e pelo caminho do arquivo: nao le o conteudo de um
 script gravado antes nem resolve caminho montado por partes ou nome de modulo partido, entao barra o engano e nao o
 desvio feito de proposito (docs/m1-interfaces.md, M6). O motor confere o console de novo (desdobra.humano) so no
@@ -86,16 +92,43 @@ CODIGO = re.compile(r'renderizar\s*\(|linkados\s*\.\s*(confirmar|sessao)|confirm
                     r'from\s+desdobra\s*\.\s*entrega\s+import\s+[^\n;]*\b(aprovacao|validar|parametros)\b|'
                     r'from\s+desdobra\s+import\s+[^\n;]*\bentrega\b|'
                     r'aprovacao\s*\.\s*(registro|gravar|selo|ARQUIVO)\b|validar\s*\.\s*(gravar|_trocar|selo|relatorio)\s*\(|'
-                    r'\b_(aprovar|entregar|parametros_entrega)\s*\(', re.IGNORECASE)
+                    r'\b_(aprovar|entregar|parametros_entrega)\s*\(|'
+                    # os gravadores do M7 (revisao do M7a): o briefing confirmado (desdobra.briefing.salvar e a gravacao
+                    # com historico), o rascunho da tela e os atos da janela (desdobra.tela.rascunho e .atos) e o modo
+                    # de dados (desdobra.job.modo_dados, decisoes-v1.md, 170), pelo modulo ou pela funcao
+                    r'desdobra\s*\.\s*briefing\s*\.\s*salvar\b|from\s+desdobra\s*\.\s*briefing\s+import\s+[^\n;]*\bsalvar\b|'
+                    r'desdobra\s*\.\s*tela\s*\.\s*(?:rascunho|atos)\b|'
+                    r'from\s+desdobra\s*\.\s*tela\s+import\s+[^\n;]*\b(?:rascunho|atos)\b|'
+                    r'desdobra\s*\.\s*job\s*\.\s*modo_dados\b|from\s+desdobra\s*\.\s*job\s+import\s+[^\n;]*\bmodo_dados\b|'
+                    r'gravar_com_historico|confirmar_familia|confirmar_da_tela|'
+                    # a fase gravada em dia no proprio processo (desdobra.job.nucleo.renovar_fase, so do ato de spec da
+                    # tela) e o estado.json pelo codigo (gravar_estado): carimbariam como em dia uma saida de fase escrita
+                    # a mao, como specs/formatos-do-job.json (revisao do M7a)
+                    r'\brenovar_fase\b|\bgravar_estado\b|'
+                    r'\btela\s*\.\s*(?:rascunho|atos)\b|\bbriefing\s*\.\s*salvar\b|\bjob\s*\.\s*modo_dados\b|'
+                    # os gravadores do motor por baixo de todos os outros (revisao do M7a): contratos.gravar e os
+                    # gravar_*_atomico de desdobra.arquivos gravam qualquer arquivo do DA com o caminho que receberem
+                    r'\bcontratos\s*\.\s*gravar\b|\bgravar_(?:bytes|texto|json)_atomico\b', re.IGNORECASE)
+# caminho de arquivo do DA pela constante de um modulo do motor (mb.ARQUIVO, mc.ARQUIVO_LINKADOS, PASTA_HISTORICO):
+# nega junto com uma escrita no comando que cita o desdobra (revisao do M7a)
+CONSTANTE_DE_CAMINHO = re.compile(r'\b\w+\s*\.\s*(?:ARQUIVO|PASTA)\w*\b')
+# caminho montado por partes, com a pasta do DA como parte entre aspas (Path(j, 'briefing', 'x.json'),
+# Path(j) / 'briefing' / 'x.json'): nega junto com uma escrita, no comando como chegou
+PARTE_DO_DA = re.compile(r'[\'"](?:briefing|derivacao|entrega|specs|render|parametros)[\'"]\s*[,/)]', re.IGNORECASE)
 # entrega/** (menos o codigo-fonte do pacote: desdobra/entrega/<modulo>.py e o __pycache__ dele), o manifesto e o
 # relatorio da entrega e os parametros de entrega do job (sentido da rotacao, decisoes-v1.md, 139) tambem sao do DA ou
 # do motor. A excecao do codigo-fonte vale so logo depois de desdobra/ e para um nome de modulo inteiro, que termina o
 # caminho (nada de aprovados/x.py, {a.jpg,x.py}, a.jpg,x.py, kv.py.jpg nem x.md)
 FONTE_DO_PACOTE = r'(?:__pycache__/)?\w+(?:\.[\w-]+)?\.pyc?(?![\w.\\/{},-])'
-ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])(briefing[\\/][\w.-]+\.json\b|derivacao[\\/][\w.-]+\.json\b|specs[\\/]confirmacoes\.json|render[\\/][^\\/]+[\\/]'
+# briefing/** e derivacao/** inteiros (M7a, fatia 1: o rascunho da tela, o historico e subpastas), com a mesma excecao
+# do codigo-fonte do pacote; e o estado.json do job (decisoes-v1.md, 170: o modo de dados sai da tela, nunca do Claude)
+ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])((?<!skills[\\/])(?:(?<!desdobra[\\/])briefing[\\/]|briefing[\\/](?!%(f)s))|'
+                            r'(?<!skills[\\/])(?:(?<!desdobra[\\/])derivacao[\\/]|derivacao[\\/](?!%(f)s))|'
+                            r'estado\.json\b|'
+                            r'specs[\\/]confirmacoes\.json|render[\\/][^\\/]+[\\/]'
                             r'(master\.png|render\.json|contrato\.json)|linkados-confirmados\.json|'
-                            r'(?<!desdobra[\\/])entrega[\\/]|entrega[\\/](?!%s)|manifesto-licenca\.json|relatorio-entrega\.json|'
-                            r'parametros[\\/]entrega\.json|aval-chromium-janela\.json)' % FONTE_DO_PACOTE,
+                            r'(?<!desdobra[\\/])entrega[\\/]|entrega[\\/](?!%(f)s)|manifesto-licenca\.json|relatorio-entrega\.json|'
+                            r'parametros[\\/]entrega\.json|aval-chromium-janela\.json)' % {'f': FONTE_DO_PACOTE},
                             re.IGNORECASE)
 # tela de briefing (M7a2; decisoes-v1.md, 159; proposta do M7, 160c): o Claude abre a tela ("desdobra tela abrir"
 # passa), mas nao pede as rotas do servidor dela no loopback (a entrada, a api, a fonte, os assets e o controle), nao
@@ -106,6 +139,8 @@ ROTA_DA_TELA = re.compile(r'(?:127\.0\.0\.1|localhost|\[?::1\]?)(?::[^/\s]*)?/+(
 # o perfil pelo nome, ou por curinga logo depois do prefixo dsd- (dsd-t*, dsd-*)
 PERFIL_DA_TELA = re.compile(r'(?<![\w-])dsd-(?:tela|nasce)-|dsd-dono\.json|(?<![\w-])dsd-[\w-]*[*?\[]', re.IGNORECASE)
 COOKIE_DA_TELA = re.compile(r'dsd_tela', re.IGNORECASE)
+# o cabecalho do token CSRF das escritas da tela e a meta da pagina que o entrega (desdobra.tela.servidor)
+CSRF_DA_TELA = re.compile(r'x-desdobra-csrf|dsd-csrf', re.IGNORECASE)
 # despejo da memoria de um processo (rundll32 comsvcs.dll MiniDump, procdump, createdump do .NET)
 DESPEJO_DE_MEMORIA = re.compile(r'minidump|procdump|createdump', re.IGNORECASE)
 # teclas e cliques simulados numa janela (SendKeys do Windows Forms e do WScript.Shell, AppActivate, SendInput)
@@ -154,7 +189,7 @@ def decidir_navegador(entrada):
     perfil."""
     texto = _texto_da_entrada(entrada)
     for t in (texto, _caminhos(texto)):
-        if ROTA_DA_TELA.search(t) or COOKIE_DA_TELA.search(t) or PERFIL_DA_TELA.search(t):
+        if ROTA_DA_TELA.search(t) or COOKIE_DA_TELA.search(t) or PERFIL_DA_TELA.search(t) or CSRF_DA_TELA.search(t):
             return 'deny'
     return None
 
@@ -174,7 +209,11 @@ def decidir(evento):
         return None
     if ferramenta in FERRAMENTAS_DE_COMANDO:
         bruto = str(entrada.get('command') or '')
+        if PARTE_DO_DA.search(bruto) and ESCRITA.search(bruto):
+            return 'deny'
         for comando in (bruto, normalizar(bruto)):
+            if 'desdobra' in comando and CONSTANTE_DE_CAMINHO.search(comando) and ESCRITA.search(comando):
+                return 'deny'
             if SUBCOMANDO.search(comando) or SUBCOMANDO_EM_VARIAVEL.search(comando):
                 return 'deny'
             if 'desdobra' in comando and CODIGO.search(comando):
@@ -182,6 +221,8 @@ def decidir(evento):
             if ARQUIVOS_DO_DA.search(comando) and ESCRITA.search(comando):
                 return 'deny'
             if ROTA_DA_TELA.search(comando) or PERFIL_DA_TELA.search(comando) or CODIGO_DA_TELA.search(comando):
+                return 'deny'
+            if CSRF_DA_TELA.search(comando):
                 return 'deny'
             if DESPEJO_DE_MEMORIA.search(comando) or TECLAS_SIMULADAS.search(comando):
                 return 'deny'

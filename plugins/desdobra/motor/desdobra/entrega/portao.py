@@ -12,6 +12,9 @@ conferir() devolve, por formato do briefing, as falhas que impedem entregar (ou 
     todo formato e comparado com os mesmos valores do job, os formatos ficam coerentes entre si;
   - contrato refeito (nº 86): o contrato do formato e montado de novo, como o render faz (no derivado, a derivacao
     tambem e refeita), e tem de sair sem bloqueio, igual ao gravado e com as mesmas decisoes que o DA aceitou;
+  - familia e proposta (so o entregar; decisoes-v1.md, 167): no briefing com as familias da tela (composicoes), o
+    formato fora de uma familia confirmada recusa; a proposta da galeria (derivacao/<formato>.json com o caminho
+    galeria) sem a confirmacao da familia recusa;
   - aprovacao (so o entregar, nº 138): o registro do formato em briefing/aprovacao.json, com os hashes de agora e o
     arquivo final que o encoder da agora.
 
@@ -49,6 +52,8 @@ DESCRICOES = {
     'contrato_desatualizado': 'O contrato montado de novo, com os arquivos de agora, não é o que o render usou: rode o '
                               'render do formato de novo.',
     'aceites_diferentes': 'As decisões que o contrato de agora pede ao DA não são as que ele aceitou no render.',
+    'familia_sem_confirmacao': 'O formato não está numa família confirmada pelo DA na tela ("Confirmar família").',
+    'proposta_sem_confirmacao': 'O formato sai de uma proposta do motor que o DA não confirmou na tela.',
     'sem_aprovacao': 'O formato não tem aprovação do DA ("desdobra aprovar" num terminal interativo).',
     'aprovacao_invalida': 'briefing/aprovacao.json não segue o contrato aprovacao/1.',
     'aprovacao_de_outro_job': 'briefing/aprovacao.json é de outro job.',
@@ -86,6 +91,54 @@ def conferir_rotacao(formato, parametros):
     if rot.get('sentido') is not None and rot['sentido'] != confirmado:
         return [_falha('rotacao_sentido_divergente', graus=rot['graus'])]
     return []
+
+
+def conferir_familia(pasta, briefing, formato):
+    """Falhas da familia do formato (decisoes-v1.md, 167): o formato tem de estar numa familia confirmada, e a proposta
+    da galeria gravada tem de ser de familia confirmada. O gravador do briefing (desdobra.briefing.salvar, da tela e do
+    terminal) sempre grava as composicoes: briefing sem elas nao passou pela confirmacao das familias e o formato
+    falha (revisao do M7a)."""
+    from desdobra.derivacao import nucleo as nd
+    falhas = []
+    comps = briefing.get('composicoes')
+    if comps is None:
+        falhas.append(_falha('familia_sem_confirmacao'))
+    else:
+        comp = next((c for c in comps if formato in c['formatos']), None)
+        # so a confirmacao do DA na janela da tela vale (a do modo de teste, fixture_de_teste e medicao, nao)
+        conf = (comp or {}).get('confirmacao') or {}
+        if comp is None or not comp['confirmada'] or conf.get('origem') != 'da' or conf.get('meio') != 'tela':
+            falhas.append(_falha('familia_sem_confirmacao'))
+    arq = Path(pasta) / nd.PASTA / ('%s.json' % formato)
+    try:
+        d = contratos.ler(arq, nd.ESQUEMA) if arq.is_file() else None
+    except contratos.ErroContrato:
+        d = None
+    if d is not None and d.get('caminho') == 'galeria' and not (d.get('proposta') or {}).get('confirmada'):
+        falhas.append(_falha('proposta_sem_confirmacao'))
+    return falhas
+
+
+def confirmacao_de_teste(pasta):
+    """'confirmacao_de_fixture_de_teste' quando o job tem confirmacao de linkado ou de spec do modo de teste da tela
+    (origem fixture_de_teste, proposta do M7, 159c), ou None. O modo de teste roda tambem em job com briefing de
+    fixture, e a confirmacao dele nunca chega a entrega (revisao do M7a)."""
+    from desdobra.render import contrato as mod_contrato
+    from desdobra.specs import importar
+    try:
+        linkados = mod_contrato.linkados_confirmados(pasta)
+    except contratos.ErroContrato:
+        linkados = {}
+    # a confirmacao de linkado sem origem gravada (a de antes da revisao do M7a) tambem nao conta como do DA
+    if any((x.get('confirmado_por') or {}).get('origem') != mb.ORIGEM_DA for x in linkados.values()):
+        return 'confirmacao_de_fixture_de_teste'
+    try:
+        acoes = importar.ler_confirmacoes(pasta)['acoes']
+    except (contratos.ErroContrato, OSError, ValueError):
+        acoes = []
+    if any(a.get('por') == mb.ORIGEM_FIXTURE for a in acoes):
+        return 'confirmacao_de_fixture_de_teste'
+    return None
 
 
 def kv_atual(pasta):
@@ -165,6 +218,8 @@ def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True):
         pode, motivo = mb.conferir_para_entrega(pasta)
         if not pode:
             saida['briefing'] = motivo
+        else:
+            saida['briefing'] = confirmacao_de_teste(pasta)
     if saida['briefing'] is not None:
         for fid in ids:
             saida['formatos'][fid] = {'falhas': [_falha(saida['briefing'])], 'atual': {}, 'final': None}
@@ -187,6 +242,8 @@ def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True):
             continue
         falhas = [erro_params] if erro_params else []
         falhas += conferir_rotacao(do_briefing[fid], params.get(fid))
+        if origem:
+            falhas += conferir_familia(pasta, b, fid)
         atual, _rel, f_render = _render_do_formato(pasta, fid, job_id, kv, briefing_sha)
         falhas += f_render
         arq_final, recusa = None, None

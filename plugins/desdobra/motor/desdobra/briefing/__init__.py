@@ -4,6 +4,7 @@
     desdobra briefing importar --teste <arquivo.json> --job <pasta>
     desdobra briefing rascunho --job <pasta> [--saida <arquivo.json>]
     desdobra briefing funcoes --job <pasta>
+    desdobra briefing confirmar --job <pasta>
 
 "importar --teste" grava em briefing/briefing-confirmado.json um briefing escrito a mao (por exemplo o fixture do
 M5), com a origem fixture_de_teste e o cabecalho (hashes do laudo, das specs, do design system e da conferencia de
@@ -16,6 +17,11 @@ sugestao citada da regra da decisao 10 nas cobertas: e o ponto de partida da rot
 padrao rotulagem/briefing-rascunho.json; dentro do job, so em rotulagem/). O rascunho tem a
 origem "rascunho": o derivar e a entrega recusam.
 
+"confirmar" grava o briefing confirmado a partir do rascunho da tela (as familias confirmadas na janela, o passo 2, o
+Design system e o modo de dados escolhido na tela) e deriva, pelo mesmo gravador do "Salvar e seguir" da tela
+(desdobra.briefing.salvar). O DA nunca usa o terminal (decisoes-v1.md, 159): o comando fica para os testes e para a
+Trezion, so num terminal interativo, com a pergunta no console.
+
 "funcoes" mostra as contagens da heranca (camadas por funcao, de onde veio a funcao), sem texto de peca.
 """
 from pathlib import Path
@@ -24,8 +30,13 @@ from desdobra.resultado import Codigo, Resultado
 
 O_QUE_FAZER_IMPORTADO = ('O briefing de teste está em briefing/briefing-confirmado.json, com a origem fixture_de_teste. '
                          'Rode "desdobra derivar --job <pasta>". O entregar recusa job com briefing de teste.')
-O_QUE_FAZER_SEM_TESTE = ('Sem --teste, o importar não grava: o briefing confirmado pelo DA sai da tela ou do "desdobra '
-                         'briefing confirmar" num terminal interativo. Para teste, use --teste.')
+O_QUE_FAZER_SEM_TESTE = ('Sem --teste, o importar não grava: o briefing confirmado pelo DA sai da tela ("Salvar e '
+                         'seguir"). Para teste, use --teste.')
+PERGUNTA_CONFIRMAR = 'Gravar o briefing confirmado com as famílias confirmadas na tela? Digite sim para gravar: '
+O_QUE_FAZER_CONFIRMADO = ('O briefing confirmado está em briefing/briefing-confirmado.json, a versão anterior em '
+                          'briefing/historico/ e a derivação em derivacao/.')
+O_QUE_FAZER_PENDENTE = ('O briefing não foi gravado: falta confirmar alguma coisa na tela (as famílias, o modo de dados, '
+                        'as funções ou o design system).')
 
 
 def registrar(subparsers):
@@ -41,6 +52,10 @@ def registrar(subparsers):
     r.add_argument('--saida', default=None, help='Arquivo onde gravar (padrão: rotulagem/briefing-rascunho.json do job; '
                                                   'dentro do job, só em rotulagem/)')
     r.set_defaults(executar=_rascunho, nome_comando='briefing rascunho')
+    c = sub.add_parser('confirmar', help='Grava o briefing confirmado a partir do rascunho da tela (só num terminal '
+                                         'interativo; para teste e para a Trezion)')
+    c.add_argument('--job', required=True, help='Pasta do job')
+    c.set_defaults(executar=_confirmar, nome_comando='briefing confirmar')
     f = sub.add_parser('funcoes', help='Contagens da herança de funções do briefing gravado')
     f.add_argument('--job', required=True, help='Pasta do job')
     f.set_defaults(executar=_funcoes, nome_comando='briefing funcoes')
@@ -86,6 +101,45 @@ def _importar(args):
                      contagens={'funcoes': len(dados['funcoes']), 'formatos': len(dados['formatos']),
                                 'mestres': len(dados['mestres'])},
                      linhas_humanas=['Briefing de teste gravado (origem fixture_de_teste).'])
+
+
+def _confirmar(args):
+    from desdobra import humano
+    from desdobra.briefing import salvar
+    from desdobra.tela import estado
+    pasta = _pasta(args)
+    nome = salvar.COMANDO
+    try:
+        disparo = humano.exigir(nome)
+    except humano.ErroHumano as e:
+        return Resultado(comando=nome, codigo=int(Codigo.RECUSADO), situacao='recusado',
+                         o_que_fazer=humano.O_QUE_FAZER, pasta_job=pasta, contagens={'recusa_%s' % e: 1},
+                         linhas_humanas=['Este comando só roda num terminal interativo.'])
+    if not (pasta / 'estado.json').is_file():
+        return _erro(nome, pasta, 'A pasta não é um job do desdobra.')
+    try:
+        conteudo = estado.montar(pasta)
+    except estado.ErroTela as e:
+        return _erro(nome, pasta, 'O job não tem o que a tela mostra: %s' % e, Codigo.RECUSADO,
+                     {'recusa_%s' % e.motivo: 1})
+    pend = salvar.pendencias(pasta, conteudo, disparo.origem)
+    if pend:
+        cont = {}
+        for p in pend:
+            cont[p['codigo']] = cont.get(p['codigo'], 0) + 1
+        return _erro(nome, pasta, O_QUE_FAZER_PENDENTE, Codigo.RECUSADO, cont,
+                     [O_QUE_FAZER_PENDENTE] + ['  %s' % p['codigo'] for p in pend])
+    if humano.ler(PERGUNTA_CONFIRMAR).strip().lower() != 'sim':
+        return _erro(nome, pasta, 'Nada foi gravado.', Codigo.RECUSADO, {'sem_confirmacao': 1})
+    try:
+        r = salvar.salvar(pasta, conteudo, disparo)
+    except salvar.ErroSalvar as e:
+        return _erro(nome, pasta, O_QUE_FAZER_PENDENTE, Codigo.RECUSADO, {p['codigo']: 1 for p in e.pendencias})
+    return Resultado(comando=nome, situacao='ok' if r['derivado'] else 'ok_com_bloqueio', pasta_job=pasta,
+                     o_que_fazer=O_QUE_FAZER_CONFIRMADO,
+                     contagens={'familias': len(r['briefing']['composicoes']), 'derivado': int(r['derivado']),
+                                'devolvidos': r['devolucoes'] or 0},
+                     linhas_humanas=['Briefing confirmado gravado (origem %s).' % r['briefing']['cabecalho']['origem']])
 
 
 def _rascunho(args):

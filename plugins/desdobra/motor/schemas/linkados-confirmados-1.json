@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:desdobra:schema:linkados-confirmados:1",
   "title": "Linkados confirmados pelo DA (linkados-confirmados/1)",
-  "description": "briefing/linkados-confirmados.json, gravado so pelo \"desdobra linkado confirmar\" num terminal interativo (arquitetura-v1.md, 7.2). Para cada smart object linkado, o arquivo de entrada/campanha/ que o DA confirmou e o sha256 congelado dele. O render usa so este arquivo; no M7 a confirmacao passa para o briefing confirmado.",
+  "description": "briefing/linkados-confirmados.json, gravado so pelo \"desdobra linkado confirmar\" num terminal interativo (arquitetura-v1.md, 7.2) ou pelo botao do passo 1 da tela (decisoes-v1.md, 159: meio tela; no modo de teste, meio medicao e origem fixture_de_teste). Para cada smart object linkado, o arquivo de entrada/campanha/ que o DA confirmou e o sha256 congelado dele. O render usa so este arquivo; no M7 a confirmacao passa para o briefing confirmado.",
   "type": "object",
   "additionalProperties": false,
   "required": ["esquema", "laudo_sha256", "kv_sha256", "linkados"],
@@ -24,7 +24,8 @@
           "registro_no_psd": {"type": ["object", "null"]},
           "confirmado_por": {"type": "object", "required": ["meio", "quando"],
                              "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
-                                            "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}}
+                                            "meio": {"enum": ["terminal", "tela", "medicao"]}, "quando": {"type": "string"},
+                                            "origem": {"enum": ["da", "fixture_de_teste"]}}}
         }
       }
     }

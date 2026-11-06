@@ -803,6 +803,32 @@ class Montagem:
 
 
 # ------------------------------------------------------------------ acoes do DA
+def chaves_depois_das_escolhas(doc):
+    """A chave do formato que so ganha medida pela acao do DA (revisao dos becos, D2): a medida divergente (duas
+    leituras, valor nulo) deixa o formato sem chave em fechar_chaves, e a escolha da leitura (aplicar_acoes) vem
+    depois. Aqui a chave e montada da medida escolhida. As chaves que ja existiam nunca mudam: a nova que repete uma
+    delas leva o sufixo do id do formato (como chave_repetida em fechar_chaves), so ela. A repeticao conta tambem a
+    chave que fechar_chaves ja sufixou (K#<id> repete K). Devolve quantas montou."""
+    existentes = set()
+    for f in doc['formatos']:
+        if f.get('chave'):
+            existentes |= {f['chave'], f['chave'].split('#', 1)[0]}
+    novas = 0
+    for fmt in doc['formatos']:
+        if fmt.get('chave'):
+            continue
+        chave = chave_do_formato(fmt['veiculador'], fmt['circuito'].split(':', 1)[1], fmt['campos'].get('dimensao'))
+        if chave is None:
+            continue
+        if chave in existentes:
+            fmt['alertas'] = sorted(set(fmt.get('alertas') or []) | {'chave_repetida'})
+            chave = '%s#%s' % (chave, fmt['id'])
+        fmt['chave'] = chave
+        existentes.add(chave)
+        novas += 1
+    return novas
+
+
 def completar_documento(doc):
     """O perfil da biblioteca guarda so os campos que a folha traz (o registro sem valor fica implicito, para o arquivo
     nao repetir centenas de campos vazios). Ao ler, o campo que falta volta como registro sem valor."""
@@ -853,7 +879,8 @@ def aplicar_digitados(montagem, acoes):
 
 
 def aplicar_acoes(doc, acoes):
-    """Aplica as acoes do DA (specs/confirmacoes.json, gravado so pelo "spec confirmar" no terminal):
+    """Aplica as acoes do DA (specs/confirmacoes.json, gravado so pelo "spec confirmar" no terminal e pelo botao do
+    passo 1 da tela):
       - confirmar: o valor com a mesma impressao vira confirmado;
       - escolher_leitura: num campo com fontes divergentes, a leitura escolhida vira o valor confirmado.
     Acao que nao bate mais (a folha mudou e a impressao e outra) fica de fora e conta como ignorada."""
@@ -867,7 +894,9 @@ def aplicar_acoes(doc, acoes):
             ignoradas += 1
             continue
         reg, campo, v = alvo
-        conf = {'por': 'da', 'meio': 'terminal', 'em': acao['em'], 'leitura': None}
+        # quem e o meio vem da acao: o terminal (por da, meio terminal) ou o botao da tela (meio tela; no modo de
+        # teste da tela, por fixture_de_teste e meio medicao)
+        conf = {'por': acao.get('por', 'da'), 'meio': acao.get('meio', 'terminal'), 'em': acao['em'], 'leitura': None}
         if acao['acao'] == 'confirmar' and v.get('valor') is not None:
             v.update(situacao='confirmado', confirmacao=conf)
         elif acao['acao'] == 'escolher_leitura' and v.get('leituras') and 0 <= acao['leitura'] < len(v['leituras']):

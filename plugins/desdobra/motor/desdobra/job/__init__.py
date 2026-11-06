@@ -16,7 +16,8 @@ def registrar(subparsers):
     c.add_argument('pasta', help='Pasta nova (ou vazia) do job')
     c.add_argument('--kv', '--psd', dest='psd', required=True, help='O PSD ou PSB do KV')
     c.add_argument('--modo-dados', required=True, choices=MODOS_DADOS,
-                   help='O que o Claude pode ver deste job: a (com miniaturas), b (sem imagens) ou c (sem conteúdo)')
+                   help='Só fica registrado no estado do job: o modo que vale é o que o DA escolhe no passo 1 da tela, '
+                        'e até essa escolha o job fica no modo c (decisoes-v1.md, 170)')
     # SUPPRESS: sem a opcao aqui, vale o --teto-modo-dados global (antes do subcomando)
     c.add_argument('--teto-modo-dados', choices=MODOS_DADOS, default=argparse.SUPPRESS,
                    help='Teto autorizado pela agência (vem da configuração do plugin)')

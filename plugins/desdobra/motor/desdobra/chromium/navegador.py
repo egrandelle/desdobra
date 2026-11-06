@@ -82,6 +82,20 @@ JS_POSICOES = """() => { const o = {}; document.querySelectorAll('text[id]').for
   a.push([s.x, s.y, e.x]); } o[t.id] = a; }); return o; }"""
 JS_LARGURAS = """() => { const o = {}; document.querySelectorAll('.l').forEach(d => {
   const r = document.createRange(); r.selectNodeContents(d); o[d.id] = r.getBoundingClientRect().width; }); return o; }"""
+# tinta de cada linha (M7a, fatia 4): [esquerda, direita, subida, descida] em px da pagina, a partir do inicio da
+# linha e da linha de base, pela caixa de tinta do canvas com a fonte de cada trecho ja carregada
+JS_TINTAS = """() => { const o = {}; const g = document.createElement('canvas').getContext('2d');
+  document.querySelectorAll('.l').forEach(d => { const x0 = d.getBoundingClientRect().left; let t = null;
+    d.querySelectorAll('span').forEach(s => { const cs = getComputedStyle(s);
+      g.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+      g.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+      g.fontKerning = cs.fontKerning === 'none' ? 'none' : 'normal';
+      const m = g.measureText(s.textContent); const x = s.getBoundingClientRect().left - x0;
+      const c = [x - m.actualBoundingBoxLeft, x + m.actualBoundingBoxRight, m.actualBoundingBoxAscent,
+                 m.actualBoundingBoxDescent];
+      if (!(c[1] > c[0])) return;
+      t = t ? [Math.min(t[0], c[0]), Math.max(t[1], c[1]), Math.max(t[2], c[2]), Math.max(t[3], c[3])] : c; });
+    if (t) o[d.id] = t; }); return o; }"""
 
 
 class ErroNavegador(Exception):
@@ -97,7 +111,7 @@ def versao_playwright():
 
 
 def conferir(url_entrada, perfil, familias, ids_cdp):
-    """Abre a pagina, mede e consulta o CDP. Devolve {'chromium', 'playwright', 'status', 'larguras', 'cdp'}.
+    """Abre a pagina, mede e consulta o CDP. Devolve {'chromium', 'playwright', 'status', 'larguras', 'tintas', 'cdp'}.
 
     familias: nomes de familia do @font-face para esperar; ids_cdp: ids de elemento para o CDP."""
     perfil = Path(perfil)
@@ -121,6 +135,7 @@ def conferir(url_entrada, perfil, familias, ids_cdp):
                 pg.goto(url_entrada, wait_until='load')
                 status = pg.evaluate(JS_CARREGAR, list(familias))
                 larguras = pg.evaluate(JS_LARGURAS)
+                tintas = pg.evaluate(JS_TINTAS)
                 cdp = ctx.new_cdp_session(pg)
                 cdp.send('DOM.enable')
                 cdp.send('CSS.enable')
@@ -140,7 +155,7 @@ def conferir(url_entrada, perfil, familias, ids_cdp):
     except ErroPlaywright:
         raise ErroNavegador('O Chromium do Playwright não abriu ou não respondeu a tempo.') from None
     return {'chromium': versao, 'playwright': versao_playwright(),
-            'status': {f: s for f, s in status}, 'larguras': larguras, 'cdp': fontes_por_id}
+            'status': {f: s for f, s in status}, 'larguras': larguras, 'tintas': tintas, 'cdp': fontes_por_id}
 
 
 def imprimir_pdf(cdp, largura, altura):

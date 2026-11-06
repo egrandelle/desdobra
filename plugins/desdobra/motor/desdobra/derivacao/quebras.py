@@ -9,7 +9,8 @@ A largura das linhas juntadas vem de medida (revisao 3 do M5): a pagina da confe
 as linhas juntadas, no Chromium, com a fonte servida pelo motor (derivacao.medida_quebras). O processo principal nao
 le a fonte. A caixa nova e a da tinta da mestre, com a largura na proporcao medida (linha juntada mais larga contra a
 linha mais larga da mestre) e a altura menos uma entrelinha por quebra tirada; a posicao segue a justificacao (o
-ponto de ancora do texto nao muda). A caixa nunca e cortada no canvas da mestre.
+ponto de ancora do texto nao muda). Com a tinta de cada linha medida no Chromium (M7a, fatia 4), as bordas seguem a
+tinta, como o render a desenha. A caixa nunca e cortada no canvas da mestre.
 
 Funcao pura do laudo, do briefing e da medida.
 """
@@ -100,15 +101,50 @@ def entrelinha_px(camada):
     return max(v) if v else 0.0
 
 
+def escala_x(camada):
+    """Escala do espaco de texto para o documento no eixo x (a matriz do texto), ou None sem matriz."""
+    import math
+    m = (camada.get('texto') or {}).get('matriz')
+    if not isinstance(m, (list, tuple)) or len(m) < 2:  # numero-neutro: a e b da matriz
+        return None
+    sx = math.hypot(float(m[0]), float(m[1]))
+    return sx if sx > 0 else None
+
+
+def escala_y(camada):
+    """Escala do espaco de texto para o documento no eixo y (c e d da matriz do texto), ou None sem matriz. Difere da
+    escala x na camada transformada com escala diferente em x e y (revisao do M7a)."""
+    import math
+    m = (camada.get('texto') or {}).get('matriz')
+    if not isinstance(m, (list, tuple)) or len(m) < 4:  # numero-neutro: c e d da matriz
+        return None
+    sy = math.hypot(float(m[2]), float(m[3]))
+    return sy if sy > 0 else None
+
+
 def caixa_medida(camada, caixa, manter, medida):
     """Caixa da tinta do texto (espaco do documento) com so as quebras de indice em manter, pela medida
-    {'largura_texto', 'largura_texto_mestre'} (no espaco de texto da pagina de medida)."""
+    {'largura_texto', 'largura_texto_mestre'} (no espaco de texto da pagina de medida).
+
+    Com a tinta medida no Chromium (medida['tinta_mestre'] e medida['tinta']: {'esq', 'dir', 'sobe', 'desce'} do
+    bloco, no espaco de texto) e a matriz do texto, a caixa segue a tinta como o render a desenha: as bordas da tinta
+    da mestre andam o quanto a tinta medida anda, na escala da matriz (topo pela subida da primeira linha, base pela
+    descida da ultima, menos uma entrelinha por quebra tirada). Sem ela, a conta de antes: a largura na proporcao
+    medida e a altura menos as entrelinhas, o que deixava a caixa menor que a tinta do render quando a linha juntada
+    ganha acento, descendente ou o espaco lateral dos glifos (uns 21 px num titulo do corpus, revisao do M7a0)."""
     x0, y0, x1, y1 = (float(v) for v in caixa)
-    fator = (x1 - x0) / float(medida['largura_texto_mestre'])
-    w = float(medida['largura_texto']) * fator
     tiradas = len(juntadas(camada, manter))
     h = max((y1 - y0) - tiradas * entrelinha_px(camada), 1.0)  # numero-neutro: altura minima de um px
     just = ((camada.get('texto') or {}).get('justificacao') or 'LEFT').upper()
+    tm, tj, sx, sy = medida.get('tinta_mestre'), medida.get('tinta'), escala_x(camada), escala_y(camada)
+    if isinstance(tm, dict) and isinstance(tj, dict) and sx is not None and sy is not None:
+        nx0 = x0 + (float(tj['esq']) - float(tm['esq'])) * sx
+        nx1 = x1 + (float(tj['dir']) - float(tm['dir'])) * sx
+        ny0 = y0 + (float(tm['sobe']) - float(tj['sobe'])) * sy
+        ny1 = y0 + h + (float(tj['desce']) - float(tm['desce'])) * sy
+        return [nx0, ny0, nx1, max(ny1, ny0 + 1.0)]  # numero-neutro: altura minima de um px
+    fator = (x1 - x0) / float(medida['largura_texto_mestre'])
+    w = float(medida['largura_texto']) * fator
     if just.startswith('CENTER'):
         cx = (x0 + x1) / 2.0  # numero-neutro: centro
         nx0, nx1 = cx - w / 2.0, cx + w / 2.0  # numero-neutro: metade para cada lado

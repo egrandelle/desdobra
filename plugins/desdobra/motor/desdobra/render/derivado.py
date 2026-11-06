@@ -32,6 +32,8 @@ DESCRICOES = {
     'formato_sem_derivacao': 'O formato não tem derivacao/<formato>.json. Rode "desdobra derivar --job <pasta>".',
     'formato_devolvido': 'A derivação devolveu este formato ao DA (veja derivacao/devolucoes.json): não há layout '
                          'para renderizar.',
+    'texto_editado_sem_render': 'O DA editou o texto de um elemento na tela, e o render do texto novo chega na próxima '
+                                'versão: o render não desenha o texto antigo no lugar.',
     'derivacao_desatualizada': 'A derivação gravada não é a que o briefing, as specs, os parâmetros e os limites de agora '
                                'dão (arquivo mexido ou entrada mudada). Rode "desdobra derivar" de novo.',
     'briefing_desatualizado': 'O briefing é de outra versão do laudo, das specs, do design system ou das fontes.',
@@ -210,6 +212,10 @@ def montar(pasta_job, formato):
         return None, [_bloqueio('formato_sem_derivacao')], []
     if d['situacao'] != 'derivado':
         return None, [_bloqueio('formato_devolvido', motivo=d['devolucao']['motivo'])], []
+    editados = [e['id'] for e in d['elementos'] if e.get('texto_editado') is not None]
+    if editados:
+        # o texto editado no palco (decisoes-v1.md, 169 e 171) ainda nao vai ao render (M7b): nunca o texto velho calado
+        return None, [_bloqueio('texto_editado_sem_render', elementos=editados)], []
     briefing = mb.ler(pasta)
     bloqueios, confirmar = [], []
     if briefing is None or mb.desatualizado(pasta, briefing):

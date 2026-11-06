@@ -511,10 +511,10 @@
               ],
               "properties": {
                 "por": {
-                  "const": "da"
+                  "enum": ["da", "fixture_de_teste"]
                 },
                 "meio": {
-                  "const": "terminal"
+                  "enum": ["terminal", "tela", "medicao"]
                 },
                 "em": {
                   "type": "string"
