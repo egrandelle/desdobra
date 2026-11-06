@@ -2,7 +2,7 @@
  "esquema": "spec/1",
  "tipo": "perfil",
  "gerado_em": "2026-10-31",
- "motor_versao": "0.6.0",
+ "motor_versao": "0.7.0",
  "job_id": null,
  "perfis": [
   {
