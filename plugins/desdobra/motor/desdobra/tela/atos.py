@@ -9,7 +9,11 @@ confere os dados antes do dialogo (validar), monta o texto do dialogo com o que 
   - linkado: o arquivo de entrada/campanha/ que vale para um smart object linkado, so entre os candidatos que o leitor
     propos para ele (desdobra.render.linkados.confirmar);
   - spec_valor: confirmar um valor de spec em rascunho, ou escolher a leitura de um campo com fontes divergentes, so
-    entre as pendencias do rascunho gravado (desdobra.specs.confirmar.confirmar_da_tela).
+    entre as pendencias do rascunho gravado (desdobra.specs.confirmar.confirmar_da_tela);
+  - render: o render dos formatos afetados, com uma confirmacao e um selo por formato (desdobra.tela.ato_render; M7b,
+    B2);
+  - aprovar: a aprovacao dos formatos marcados, com o arquivo final de cada um na janela e o sentido do giro que falta
+    gravado pela mesma confirmacao (desdobra.tela.ato_aprovar; M7b, B4).
 Os textos sao do motor, em portugues para o DA, sem comando nem identificador; o que vem do cliente (nome de camada,
 nome de arquivo, texto da folha) a pagina poe so por textContent.
 """
@@ -79,6 +83,7 @@ def atos_do_job(pasta, teto=None, conteudo=None):
     from desdobra.job import modo_dados
     from desdobra.render import linkados
     from desdobra.specs import confirmar
+    from desdobra.tela import ato_aprovar, ato_render
     from desdobra.tela.servidor import Ato
     pasta = Path(pasta).resolve()
 
@@ -134,6 +139,10 @@ def atos_do_job(pasta, teto=None, conteudo=None):
                        validar=lambda d: _linkado(pasta, d) is not None),
         'spec_valor': Ato(comando=confirmar.COMANDO, titulo='Confirmar o valor da spec', texto=spec_texto, sim=SIM,
                           nao=NAO, executar=spec_executar, validar=lambda d: _spec(pasta, d) is not None),
+        # o render dos formatos afetados (M7b, B2): ato longo, com preparo e um selo por formato
+        'render': ato_render.ato_de_render(pasta),
+        # a aprovacao dos formatos marcados, com o sentido do giro que falta (M7b, B4): ato longo, com preparo
+        'aprovar': ato_aprovar.ato_de_aprovar(pasta),
     })
 
 

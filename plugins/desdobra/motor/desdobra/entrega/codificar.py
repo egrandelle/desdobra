@@ -264,6 +264,27 @@ def build_difere(atual=None):
     return sorted(k for k, v in build_de_referencia().items() if atual.get(k) != v)
 
 
+def _parametros_comuns(teto, graus, sentido, achatamento, borda):
+    """Os parametros do encoder que nao dependem do tipo escolhido nem dos bytes (o teto, o giro, o achatamento, a borda,
+    perfil, exif e as versoes)."""
+    return {'teto': teto, 'rotacao': {'graus': int(graus or 0), 'sentido': sentido if graus and graus != MEIA_VOLTA else None},
+            'achatamento': achatamento, 'borda': dict(borda) if borda else None, 'perfil_embutido': False, 'exif': False,
+            'versoes': versoes()}
+
+
+def _parametros_do_tipo(tipo):
+    """Os parametros do encoder do tipo escolhido que vem dos limites do pacote e nao dependem dos bytes (o nivel do
+    png; a subamostragem, o progressivo, o optimize e o buffer do jpg). A qualidade do jpg depende do master e fica de
+    fora. {} para outro tipo."""
+    if tipo == 'png':
+        return {'nivel_png': int(limites.valor('entrega.png_nivel_compressao'))}
+    if tipo == 'jpg':
+        return {'subamostragem': limites.valor('entrega.jpeg_subamostragem'),
+                'progressivo': _sim('entrega.jpeg_progressivo'), 'optimize': _sim('entrega.jpeg_optimize'),
+                'buffer_bytes': int(limites.valor('entrega.jpeg_buffer_bytes'))}
+    return {}
+
+
 def codificar(img, *, tipos_aceitos, teto=None, graus=0, sentido=None, cor_de_achatamento=None, borda=None):
     """ArquivoFinal de uma imagem (o master aberto). tipos_aceitos: MIMEs da folha confirmada; teto: o de
     teto_estrito (None sem peso na folha); graus e sentido: o giro de entrega ja conferido; borda: a de
@@ -273,9 +294,7 @@ def codificar(img, *, tipos_aceitos, teto=None, graus=0, sentido=None, cor_de_ac
     rgb, achatamento = _rgb(img, cor_de_achatamento)
     rgb = desenhar_borda(girar(rgb, graus, sentido), borda)
     alvo = teto['alvo_bytes'] if teto else None
-    comum = {'teto': teto, 'rotacao': {'graus': int(graus or 0), 'sentido': sentido if graus and graus != MEIA_VOLTA else None},
-             'achatamento': achatamento, 'borda': dict(borda) if borda else None, 'perfil_embutido': False, 'exif': False,
-             'versoes': versoes()}
+    comum = _parametros_comuns(teto, graus, sentido, achatamento, borda)
     medidas = {'largura': rgb.width, 'altura': rgb.height, 'alvo_bytes': alvo,
                'piso_qualidade': limites.obter('entrega.jpeg_qualidade_piso_aviso').citacao()}
     png = None
@@ -286,7 +305,7 @@ def codificar(img, *, tipos_aceitos, teto=None, graus=0, sentido=None, cor_de_ac
             cabe = alvo is None or len(png) <= alvo
             medidas.update(escolha='png_sem_perda' if cabe else 'png_fora_do_teto_sem_jpeg_aceito', cabe_no_teto=cabe,
                            bytes=len(png))
-            parametros = dict(comum, tipo='png', nivel_png=int(limites.valor('entrega.png_nivel_compressao')))
+            parametros = dict(comum, tipo='png', **_parametros_do_tipo('png'))
             return ArquivoFinal(dados=png, extensao='png', parametros=parametros, medidas=medidas)
     q, dados, tentativas, cabe = buscar_qualidade(rgb, alvo)
     piso = limites.obter('entrega.jpeg_qualidade_piso_aviso').valor
@@ -294,10 +313,7 @@ def codificar(img, *, tipos_aceitos, teto=None, graus=0, sentido=None, cor_de_ac
                    tentativas={str(k): v for k, v in sorted(tentativas.items())},
                    abaixo_do_piso_de_qualidade=(piso is not None and q < piso),
                    sugestao_qualidade=(q if cabe else None))
-    parametros = dict(comum, tipo='jpg', qualidade=q, subamostragem=limites.valor('entrega.jpeg_subamostragem'),
-                      progressivo=_sim('entrega.jpeg_progressivo'),
-                      optimize=_sim('entrega.jpeg_optimize'),
-                      buffer_bytes=int(limites.valor('entrega.jpeg_buffer_bytes')))
+    parametros = dict(comum, tipo='jpg', qualidade=q, **_parametros_do_tipo('jpg'))
     return ArquivoFinal(dados=dados, extensao='jpg', parametros=parametros, medidas=medidas)
 
 
@@ -325,14 +341,11 @@ def parametros_de_cor(pasta):
     return ds.parametros_do_job(dados)
 
 
-def arquivo_final(pasta, formato):
-    """ArquivoFinal do formato, a partir de render/<formato>/master.png, do briefing, das specs confirmadas e dos
-    parametros do job. ErroCodificar quando nao sai."""
-    from PIL import Image
+def _entradas(pasta, formato, sentido=None):
+    """O que decide o arquivo final do formato alem do master: {'fmt', 'params', 'sentido', 'tipos', 'teto', 'borda'}
+    (o briefing, os parametros de entrega, a rotacao conferida, a cor do job e a folha confirmada). ErroCodificar."""
     from desdobra.briefing import modelo as mb
-    from desdobra.derivacao import formatos as mod_formatos
     from desdobra.entrega import portao
-    pasta = Path(pasta).resolve()
     b = mb.ler(pasta)
     fmt = next((f for f in (b or {}).get('formatos') or [] if f['id'] == formato), None)
     if fmt is None:
@@ -341,11 +354,11 @@ def arquivo_final(pasta, formato):
         params = portao.parametros_de_entrega(pasta).get(formato) or {}
     except contratos.ErroContrato:
         raise ErroCodificar('parametros_de_entrega_invalidos') from None
+    if sentido is not None:
+        params = dict(params, rotacao_sentido={'valor': sentido})
     falhas = portao.conferir_rotacao(fmt, params)
     if falhas:
         raise ErroCodificar(falhas[0]['codigo'], falhas[0].get('medidas'))
-    rot = fmt['rotacao']
-    sentido = (params.get('rotacao_sentido') or {}).get('valor')
     if parametros_de_cor(pasta).perfil_embutido_na_saida:
         raise ErroCodificar('perfil_embutido_sem_perfil_fixo')
     spec = spec_confirmada(pasta, fmt.get('chave'))
@@ -354,8 +367,41 @@ def arquivo_final(pasta, formato):
     tipos = (spec.get('campos') or {}).get('tipos_aceitos')
     if tipos is None or tipos.get('situacao') != 'confirmado' or not tipos.get('valor'):
         raise ErroCodificar('sem_tipos_aceitos_confirmados')
-    teto = teto_estrito(spec, (params.get('condicao') or {}).get('valor'))
-    borda = borda_declarada(spec, params)
+    return {'fmt': fmt, 'params': params, 'sentido': (params.get('rotacao_sentido') or {}).get('valor'),
+            'tipos': tipos, 'teto': teto_estrito(spec, (params.get('condicao') or {}).get('valor')),
+            'borda': borda_declarada(spec, params)}
+
+
+def parametros_sem_o_master(pasta, formato, achatado, tipo=None):
+    """Os parametros do encoder que o arquivo final do formato teria agora e que nao dependem dos bytes do master (o
+    teto, o giro, o achatamento, a borda, perfil, exif e as versoes e, com o tipo aprovado, os do tipo que vem dos
+    limites do pacote), sem abrir o master nem codificar: o painel da tela os compara com os da aprovacao
+    (desdobra.entrega.nucleo_aprovar.situacao; revisao do M7b, fase B). achatado: o master aprovado foi achatado (tem
+    transparencia); com o mesmo master, so a cor de agora decide o achatamento. tipo: o tipo do arquivo aprovado (png ou
+    jpg; a escolha depende dos bytes e fica de fora). ErroCodificar quando o arquivo final nao sai (o portao recusa com o
+    mesmo codigo)."""
+    e = _entradas(Path(pasta).resolve(), formato)
+    achatamento = None
+    if achatado:
+        cor = (e['params'].get('cor_de_achatamento') or {}).get('valor')
+        if cor is None:
+            raise ErroCodificar('cor_de_achatamento_nao_definida')
+        achatamento = {'cor': cor}
+    return dict(_parametros_comuns(e['teto'], e['fmt']['rotacao']['graus'], e['sentido'], achatamento, e['borda']),
+                **_parametros_do_tipo(tipo))
+
+
+def arquivo_final(pasta, formato, sentido=None):
+    """ArquivoFinal do formato, a partir de render/<formato>/master.png, do briefing, das specs confirmadas e dos
+    parametros do job. ErroCodificar quando nao sai. sentido: o sentido do giro que o DA escolheu na janela de aprovar
+    da tela e que ainda nao esta em parametros/entrega.json (M7b, B4: a janela mostra o arquivo ja girado; a mesma
+    confirmacao grava o sentido e a aprovacao). Quem chama confere antes que o formato pede o sentido e nao tem um."""
+    from PIL import Image
+    from desdobra.derivacao import formatos as mod_formatos
+    pasta = Path(pasta).resolve()
+    e = _entradas(pasta, formato, sentido)
+    fmt, tipos, teto, borda, params = e['fmt'], e['tipos'], e['teto'], e['borda'], e['params']
+    rot, sentido = fmt['rotacao'], e['sentido']
     arq = pasta / 'render' / formato / 'master.png'
     if not arq.is_file():
         raise ErroCodificar('sem_master')

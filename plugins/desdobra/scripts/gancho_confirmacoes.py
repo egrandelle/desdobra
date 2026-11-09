@@ -41,6 +41,10 @@ gancho nao imprime nada e o Claude Code segue o fluxo normal de permissao. O cod
 Desde a revisao do M7a, o codigo que cita o desdobra e chama os gravadores de baixo do motor (contratos.gravar,
 arquivos.gravar_*_atomico) e negado sempre, e a escrita com caminho do DA pela constante de um modulo (mb.ARQUIVO) ou
 montado por partes entre aspas (Path(j, 'briefing', 'x.json')) tambem.
+Desde a segunda revisao do M7b, fase B, o comando que importa um modulo de teste do plugin (MODULO_DE_TESTE: os testes
+da tela trazem o servidor, os atos e os ajudantes HTTP), que cita o servidor ou os atos da tela pelo nome
+(ServidorTela, atos_do_job, em CODIGO_DA_TELA) ou que tira do ambiente uma marca do Claude (MARCA_DO_CLAUDE com
+TIRA_DO_AMBIENTE, ou o ambiente zerado) tambem e negado, cite o desdobra ou nao. Rodar e ler os testes seguem.
 Este gancho cobre o caminho direto do Claude, pelo texto do comando e pelo caminho do arquivo: nao le o conteudo de um
 script gravado antes nem resolve caminho montado por partes ou nome de modulo partido, entao barra o engano e nao o
 desvio feito de proposito (docs/m1-interfaces.md, M6). O motor confere o console de novo (desdobra.humano) so no
@@ -93,6 +97,12 @@ CODIGO = re.compile(r'renderizar\s*\(|linkados\s*\.\s*(confirmar|sessao)|confirm
                     r'from\s+desdobra\s+import\s+[^\n;]*\bentrega\b|'
                     r'aprovacao\s*\.\s*(registro|gravar|selo|ARQUIVO)\b|validar\s*\.\s*(gravar|_trocar|selo|relatorio)\s*\(|'
                     r'\b_(aprovar|entregar|parametros_entrega)\s*\(|'
+                    # o nucleo comum da aprovacao (desdobra.entrega.nucleo_aprovar, M7b B4), os atos longos da tela
+                    # (desdobra.tela.ato_aprovar e ato_render), o humano lido como atributo de outro modulo do motor
+                    # (portao.humano, execucao.humano) e as funcoes que abrem a sessao e emitem o Disparo da tela
+                    # (revisao do M7b, fase B). O nome de arquivo .py do nucleo segue livre (git diff, sed no fonte)
+                    r'\bnucleo_aprovar\b(?!\.py)|\.\s*humano\b(?!\.py)|\babrir_sessao_tela\b|\bexigir_tela\b|'
+                    r'desdobra\s*\.\s*tela\s*\.\s*ato_\w+|from\s+desdobra\s*\.\s*tela\s+import\s+[^\n;]*\bato_\w+|'
                     # os gravadores do M7 (revisao do M7a): o briefing confirmado (desdobra.briefing.salvar e a gravacao
                     # com historico), o rascunho da tela e os atos da janela (desdobra.tela.rascunho e .atos) e o modo
                     # de dados (desdobra.job.modo_dados, decisoes-v1.md, 170), pelo modulo ou pela funcao
@@ -135,7 +145,7 @@ ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])((?<!skills[\\/])(?:(?<!desdobra[\\/])bri
 # chama o processo de fundo nem o servidor pelo codigo e nao toca no perfil temporario do navegador da tela (pastas
 # dsd-, o arquivo do dono)
 ROTA_DA_TELA = re.compile(r'(?:127\.0\.0\.1|localhost|\[?::1\]?)(?::[^/\s]*)?/+(?:entrar|api|fonte|asset|controle|'
-                          r'tela\.(?:js|css)|fontes\.css)\b', re.IGNORECASE)
+                          r'render|final|tela\.(?:js|css)|fontes\.css)\b', re.IGNORECASE)
 # o perfil pelo nome, ou por curinga logo depois do prefixo dsd- (dsd-t*, dsd-*)
 PERFIL_DA_TELA = re.compile(r'(?<![\w-])dsd-(?:tela|nasce)-|dsd-dono\.json|(?<![\w-])dsd-[\w-]*[*?\[]', re.IGNORECASE)
 COOKIE_DA_TELA = re.compile(r'dsd_tela', re.IGNORECASE)
@@ -147,8 +157,30 @@ DESPEJO_DE_MEMORIA = re.compile(r'minidump|procdump|createdump', re.IGNORECASE)
 TECLAS_SIMULADAS = re.compile(r'sendkeys|sendwait|sendinput|keybd_event|mouse_event|appactivate|setcursorpos',
                               re.IGNORECASE)
 CODIGO_DA_TELA = re.compile(r'desdobra\s*\.\s*tela\s*\.\s*(?:processo|servidor)\b|'
-                            r'from\s+desdobra\s*\.\s*tela\s+import\s+[^\n;]*\b(?:processo|servidor)\b',
+                            r'from\s+desdobra\s*\.\s*tela\s+import\s+[^\n;]*\b(?:processo|servidor)\b|'
+                            # o servidor e os atos da tela pelo nome, lidos como atributo de qualquer modulo (segunda
+                            # revisao do M7b, fase B: test_tela_ato_render.ts.ServidorTela, test_tela_ato_aprovar.ta)
+                            r'\bServidorTela\b|\batos_do_job\b',
                             re.IGNORECASE)
+# modulo de teste do plugin importado num comando (segunda revisao do M7b, fase B): os testes da tela trazem o servidor,
+# os atos e os ajudantes HTTP com cookie e CSRF (_entrar, _pedir, _confirmar), e uma linha comum subiria a tela e
+# aprovaria pelo caminho do clique do DA. Rodar e ler os testes seguem (pytest testes/test_x.py, cat, git diff): so o
+# import do modulo pelo nome e negado
+MODULO_DE_TESTE = re.compile(r'\bimport[ \t]+[\w \t,.]*?\b(?:test_\w+|conftest)\b(?!\.py)|'
+                             r'\bfrom[ \t]+[\w.]*?\b(?:test_\w+|conftest)[ \t]+import\b|'
+                             r'(?:import_module|__import__|run_module|run_path|spec_from_file_location|SourceFileLoader)'
+                             r'\s*\([^)]*\b(?:test_\w+|conftest)\b', re.IGNORECASE)
+# as marcas do Claude tiradas do ambiente (desdobra.humano.VARIAVEIS_DO_CLAUDE e as do painel): o processo da tela so
+# confere essas marcas (ambiente_da_tela), e sem elas o Disparo sairia com meio tela e origem da. Nega a remocao ou a troca
+# de uma marca pelo nome (o nome em maiusculas, como o ambiente o tem) e o ambiente zerado (segunda revisao do M7b,
+# fase B). Ler o ambiente segue
+MARCA_DO_CLAUDE = re.compile(r'\b(?:CLAUDE\w*|AI_AGENT|TERM_PROGRAM)\b')
+TIRA_DO_AMBIENTE = re.compile(r'environ\s*\.\s*(?:pop|popitem|clear|update|setdefault|__delitem__)\b|'
+                              r'\bdel\s+os\s*\.\s*environ|environ\s*\[[^\]]*\]\s*=(?!=)|\b(?:un|put)setenv\b|'
+                              r'\bunset\b|\benv\s+(?:-\w*u\b|--unset)|Remove-Item\b[^\n|;]*\benv:|'
+                              r'\$env:\w+\s*=(?!=)|SetEnvironmentVariable|\bset\s+\w+=', re.IGNORECASE)
+AMBIENTE_ZERADO = re.compile(r'\benv\s+(?:-\w*i\b|--ignore-environment)|environ\s*\.\s*clear\b|UseNewEnvironment',
+                             re.IGNORECASE)
 ESCRITA = re.compile(r'(>|\btee\b|Set-Content|Out-File|Add-Content|\bcp\b|\bmv\b|copy|move|New-Item|\bsed\s+-i|'
                      r'write_text|write_bytes|open\s*\(|os\s*\.\s*(replace|rename|link|symlink)|shutil\s*\.|'
                      r'Rename-Item|\bren\b|\brename\b|Move-Item|Copy-Item|--saida)', re.IGNORECASE)
@@ -222,7 +254,10 @@ def decidir(evento):
                 return 'deny'
             if ROTA_DA_TELA.search(comando) or PERFIL_DA_TELA.search(comando) or CODIGO_DA_TELA.search(comando):
                 return 'deny'
-            if CSRF_DA_TELA.search(comando):
+            if CSRF_DA_TELA.search(comando) or MODULO_DE_TESTE.search(comando):
+                return 'deny'
+            if AMBIENTE_ZERADO.search(comando) or \
+                    (MARCA_DO_CLAUDE.search(comando) and TIRA_DO_AMBIENTE.search(comando)):
                 return 'deny'
             if DESPEJO_DE_MEMORIA.search(comando) or TECLAS_SIMULADAS.search(comando):
                 return 'deny'

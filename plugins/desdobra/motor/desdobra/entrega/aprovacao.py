@@ -9,9 +9,10 @@ sha256 (registro_sha256): registro mexido a mao cai. O selo e um sha256 sem segr
 falsificacao (quem refaz o registro refaz o selo); contra o Claude, quem segura e o gancho PreToolUse e o Disparo, que o
 registro() e o gravar() conferem.
 
-So grava com o Disparo que desdobra.humano.exigir('aprovar') emite depois de conferir o console, e com a trava do
-job (quem chama e o "desdobra aprovar"). Um "aprovar" com varios formatos pede uma confirmacao so e grava um registro
-por formato; os registros dos outros formatos ficam.
+So grava com o Disparo do "aprovar" (o do terminal, humano.exigir, ou o da janela da tela, humano.exigir_tela; M7b,
+B4) e com a trava do job (quem chama e o nucleo comum, desdobra.entrega.nucleo_aprovar). Um "aprovar" com varios
+formatos pede uma confirmacao so e grava um registro por formato; os registros dos outros formatos ficam. aprovado_por
+leva o meio e a origem do Disparo: o portao da entrega recusa a aprovacao do modo de teste da tela (meio medicao).
 
 O arquivo fica em briefing/, mas o briefing nao muda com ele: o cabecalho do briefing guarda so os hashes do laudo,
 das specs, do design system e da conferencia (desdobra.briefing.modelo.hashes_atuais), e nenhuma fase do job tem
@@ -49,7 +50,8 @@ def registro(formato, job_id, atual, final, disparo):
     reg.update({k: atual[k] for k in HASHES})
     reg['arquivo_entregue'] = {'sha256': final.sha256, 'bytes': len(final.dados), 'extensao': final.extensao}
     reg['parametros_encoder'] = json.loads(json.dumps(final.parametros, sort_keys=True))
-    reg['aprovado_por'] = disparo.registro()
+    # a origem vai junto (M7b, B4): a aprovacao do modo de teste da tela (fixture_de_teste) o portao da entrega recusa
+    reg['aprovado_por'] = dict(disparo.registro(), origem=disparo.origem)
     reg['registro_sha256'] = selo(reg)
     return reg
 

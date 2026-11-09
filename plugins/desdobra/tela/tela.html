@@ -27,6 +27,7 @@
     <button type="button" role="tab" data-passo="funcoes">Funções</button>
     <button type="button" role="tab" data-passo="pecas">Famílias</button>
     <button type="button" role="tab" data-passo="design">Design system</button>
+    <button type="button" role="tab" data-passo="formatos">Render e aprovação</button>
   </nav>
   <div class="topo-direita">
     <p id="selo" class="selo-leitura">Só para ver, nada é gravado</p>
@@ -152,6 +153,40 @@
       <div id="palco-ds" class="area-palco" aria-label="KV com a função escolhida"></div>
     </div>
   </section>
+  <section id="passo-formatos" class="passo passo-formatos" aria-label="Render e aprovação" hidden>
+    <div class="painel-coluna">
+      <header class="painel-cabeca">
+        <div class="painel-titulo">
+          <p class="sobretitulo">Passo 5</p>
+          <h1>Render e aprovação</h1>
+          <p id="painel-resumo" class="nota"></p>
+        </div>
+        <div class="painel-acoes">
+          <button type="button" id="renderizar-afetados" class="botao" disabled>Renderizar os afetados</button>
+          <button type="button" id="aprovar-marcados" class="botao botao-primario" disabled>Aprovar</button>
+        </div>
+      </header>
+      <div id="tarefa-painel" class="tarefa" role="status" aria-live="polite" hidden>
+        <div class="tarefa-topo">
+          <p id="tarefa-texto" class="tarefa-texto"></p>
+          <button type="button" id="tarefa-cancelar" class="botao botao-vista">Cancelar</button>
+        </div>
+        <div class="tarefa-trilho" aria-hidden="true"><span id="tarefa-barra" class="tarefa-barra"></span></div>
+        <p id="tarefa-detalhe" class="tarefa-detalhe"></p>
+      </div>
+      <p id="painel-mensagem" class="painel-mensagem" role="status" aria-live="polite" hidden></p>
+      <div class="lista-formatos-topo" aria-hidden="true">
+        <span>Formato</span><span>Situação</span>
+      </div>
+      <div id="lista-formatos" class="lista-formatos" role="list" aria-label="Formatos do job"></div>
+      <section class="historico" aria-labelledby="t-historico">
+        <h2 id="t-historico">Versões do briefing</h2>
+        <p class="nota historico-nota">Só para consulta. Cada versão diz quando foi salva e quais formatos ela mudou.</p>
+        <ol id="historico-versoes" class="historico-versoes"></ol>
+      </section>
+    </div>
+    <aside id="formato-detalhe" class="formato-detalhe" aria-label="Formato escolhido" aria-live="polite"></aside>
+  </section>
 </main>
 <footer class="acoes" aria-label="Ações do briefing">
   <div class="acoes-esquerda">
@@ -167,9 +202,19 @@
 <dialog id="confirmacao" class="confirmacao" aria-labelledby="confirmacao-titulo" aria-describedby="confirmacao-texto">
   <h2 id="confirmacao-titulo" tabindex="-1"></h2>
   <p id="confirmacao-texto" class="confirmacao-texto"></p>
+  <div id="confirmacao-extra" class="confirmacao-extra" hidden></div>
   <div class="confirmacao-acoes">
     <button type="button" class="botao" data-resposta="nao"></button>
     <button type="button" class="botao" data-resposta="sim"></button>
+  </div>
+</dialog>
+<dialog id="sentido" class="confirmacao confirmacao-larga" aria-labelledby="sentido-titulo" aria-describedby="sentido-texto">
+  <h2 id="sentido-titulo" tabindex="-1">Para que lado o formato gira?</h2>
+  <p id="sentido-texto" class="confirmacao-texto"></p>
+  <div id="sentido-formatos" class="sentido-formatos"></div>
+  <div class="confirmacao-acoes">
+    <button type="button" class="botao" data-resposta="nao">Cancelar</button>
+    <button type="button" class="botao" data-resposta="sim" disabled>Seguir</button>
   </div>
 </dialog>
 </body>

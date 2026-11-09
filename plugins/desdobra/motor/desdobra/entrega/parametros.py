@@ -15,7 +15,9 @@ Campos (decisoes-v1.md, 137 e 139, e o bloco de parametros do M6):
 
 So parte do DA, como o aprovar: o handler (desdobra.entrega) pede o Disparo de desdobra.humano.exigir
 ('parametros-entrega'), mostra o antes e o depois de cada campo e pede o sim digitado; gravar() confere o Disparo e
-grava com a trava do job, com confirmado_por do Disparo (meio terminal). O gancho PreToolUse nega o comando e a escrita
+grava com a trava do job, com confirmado_por do Disparo (meio terminal). O sentido do giro tambem sai da janela de
+aprovar da tela (M7b, B4: desdobra.tela.ato_aprovar), com o Disparo da tela do parametros-entrega e a mesma
+confirmacao do DA que aprova (gravar_formatos; meio tela, ou medicao com origem fixture_de_teste no modo de teste). O gancho PreToolUse nega o comando e a escrita
 direta do arquivo pelo Claude; ler() so confere o contrato, e confirmado_por nao prova quem gravou (risco residual
 declarado em docs/m1-interfaces.md, M6).
 
@@ -158,21 +160,30 @@ def plano(pasta, formato, valores, limpar):
 def gravar(pasta, formato, valores, limpar, *, disparo):
     """Grava os valores pedidos do formato e tira os campos de limpar, por cima do arquivo (os outros formatos e campos
     ficam). humano.ErroHumano sem o disparo do "parametros-entrega"; ErroParametros quando o pedido nao confere."""
+    return gravar_formatos(pasta, {formato: (valores, limpar)}, disparo=disparo)
+
+
+def gravar_formatos(pasta, pedidos, *, disparo):
+    """O gravar de varios formatos com um Disparo so ({formato: (valores, limpar)}): a janela de aprovar da tela grava
+    o sentido do giro de cada formato marcado com a mesma confirmacao do DA (M7b, B4). Tudo e conferido antes de gravar:
+    um formato recusado (ErroParametros) nao grava nenhum. confirmado_por leva o meio e a origem do Disparo (o do modo de
+    teste da tela, fixture_de_teste, o portao da entrega recusa)."""
     humano.conferir(disparo, 'parametros-entrega', consumir=True)
     pasta = Path(pasta).resolve()
     dados = ler(pasta)
-    novos = conferir(pasta, formato, valores)
-    do_formato = dict(dados['formatos'].get(formato) or {})
-    for campo in limpar:
-        do_formato.pop(campo, None)
-    for campo, valor in novos.items():
-        if (do_formato.get(campo) or {}).get('valor') != valor:
-            do_formato[campo] = {'valor': valor, 'confirmado_por': disparo.registro()}
+    conferidos = {formato: conferir(pasta, formato, valores) for formato, (valores, _limpar) in pedidos.items()}
     formatos = dict(dados['formatos'])
-    if do_formato:
-        formatos[formato] = dict(sorted(do_formato.items()))
-    else:
-        formatos.pop(formato, None)
+    for formato, (_valores, limpar) in pedidos.items():
+        do_formato = dict(formatos.get(formato) or {})
+        for campo in limpar:
+            do_formato.pop(campo, None)
+        for campo, valor in conferidos[formato].items():
+            if (do_formato.get(campo) or {}).get('valor') != valor:
+                do_formato[campo] = {'valor': valor, 'confirmado_por': dict(disparo.registro(), origem=disparo.origem)}
+        if do_formato:
+            formatos[formato] = dict(sorted(do_formato.items()))
+        else:
+            formatos.pop(formato, None)
     saida = {'esquema': ESQUEMA, 'formatos': dict(sorted(formatos.items()))}
     contratos.gravar(pasta / ARQUIVO, saida, ESQUEMA)
     return saida

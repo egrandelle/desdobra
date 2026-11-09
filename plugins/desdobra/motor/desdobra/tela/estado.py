@@ -1323,6 +1323,292 @@ def palco_do_documento(laudo, base, resolvidas, quadro):
                          _nomes(laudo))
 
 
+# ------------------------------------------------------------------ painel de situacao por formato (M7b, B5)
+# a situacao de cada formato, como a tela a nomeia (o codigo nunca vai a tela)
+ROTULOS_DA_SITUACAO = {
+    'sem_derivacao': 'Sem layout',
+    'derivado': 'Layout pronto',
+    'pede_render': 'Render interrompido',
+    'desatualizado': 'Render desatualizado',
+    'renderizado': 'Renderizado',
+    'aprovado': 'Aprovado',
+    'aprovacao_caida': 'Aprovação caiu',
+}
+# o motivo de cada situacao numa frase simples para o DA
+MOTIVOS_DO_PAINEL = {
+    'sem_derivacao': 'Este formato ainda não tem layout. Ele espera uma decisão sua em Famílias.',
+    'derivado': 'O layout está pronto. Falta o render.',
+    'pede_render': 'O render deste formato foi interrompido. Ele pede render de novo.',
+    'desatualizado': 'O briefing mudou depois do último render. Este formato pede render de novo.',
+    'renderizado': 'O render está em dia. Confira o arquivo final e aprove.',
+    'aprovado': 'O arquivo final está aprovado.',
+    'aprovacao_caida': 'A aprovação deste formato caiu.',
+}
+PEDE_RENDER_DEPOIS_DA_QUEDA = 'Ele pede render antes de uma nova aprovação.'
+APROVE_DE_NOVO = 'Confira o arquivo final e aprove de novo.'
+RENDER_PAROU_POR_PROBLEMA = 'O último render deste formato parou por um problema. Ele pede render de novo.'
+SEM_AFETADOS_REGISTRADOS = 'Esta versão não registrou os formatos afetados.'
+NENHUM_AFETADO = 'Nenhum formato mudou.'
+# de onde veio cada versao do briefing (o cabecalho: origem e meio)
+ORIGENS_DA_VERSAO = {'tela': 'Salva por você na tela', 'fora': 'Salva fora da tela', 'teste': 'Versão de teste',
+                     'sem_registro': 'Sem registro de origem'}
+PARADAS_CORTADAS = ('parado', 'janela_fechada')  # o DA cancelou ou a janela fechou no meio (Q14)
+PEDEM_RENDER = ('derivado', 'pede_render', 'desatualizado')
+FORMATO_DA_DATA = '%d/%m/%Y, %H:%M'
+
+
+def _data(quando):
+    """A data do carimbo ISO como a tela mostra (o fuso do carimbo), ou None."""
+    import datetime
+    try:
+        return datetime.datetime.fromisoformat(quando)
+    except (TypeError, ValueError):
+        return None
+
+
+def _data_texto(quando):
+    d = _data(quando)
+    return d.strftime(FORMATO_DA_DATA) if d is not None else None
+
+
+def origem_da_versao(entrada):
+    """A origem de uma versao do historico em palavras (ORIGENS_DA_VERSAO)."""
+    origem, meio = entrada.get('origem'), entrada.get('meio')
+    if origem == 'fixture_de_teste' or meio in ('medicao', 'importar_teste'):
+        return ORIGENS_DA_VERSAO['teste']
+    if origem == 'da' and meio == 'tela':
+        return ORIGENS_DA_VERSAO['tela']
+    if origem == 'da':
+        return ORIGENS_DA_VERSAO['fora']
+    return ORIGENS_DA_VERSAO['sem_registro']
+
+
+def _nomes_dos_formatos(fs):
+    """{id: nome para o DA}: a medida, como no ato de render (tela.ato_render); duas medidas iguais levam o id."""
+    medidas = ['%sx%s' % (f.get('largura'), f.get('altura')) for f in fs]
+    return {f['id']: m if medidas.count(m) == 1 else '%s (%s)' % (m, f['id']) for f, m in zip(fs, medidas)}
+
+
+def _entradas_do_historico(pasta):
+    from desdobra import contratos
+    from desdobra.briefing import historico
+    try:
+        dados = historico.ler(pasta)
+    except (contratos.ErroContrato, OSError, ValueError):
+        return []
+    return list((dados or {}).get('entradas') or [])
+
+
+def _mudancas_por_formato(pasta, entradas):
+    """{formato: {'versao', 'quando', 'quando_texto', 'itens'}}: os itens da versao mais nova do historico que mexeu
+    em cada formato (briefing/historico/mudancas/<seq>.json, esquema historico-mudancas/1). O arquivo ilegivel, fora do
+    esquema ou com outro seq dentro que o do nome fica de fora; a data e a da entrada do indice com o mesmo seq e o
+    mesmo sha novo."""
+    from desdobra import contratos
+    from desdobra.briefing import salvar
+    pasta_m = Path(pasta) / salvar.PASTA_MUDANCAS
+    if not pasta_m.is_dir():
+        return {}
+    por_seq = {e.get('seq'): e for e in entradas}
+    arquivos_ = sorted(((int(a.stem), a) for a in pasta_m.glob('*.json') if re.fullmatch(r'[1-9][0-9]*', a.stem)),
+                       reverse=True)
+    saida = {}
+    for seq, arq in arquivos_:
+        try:
+            dados = contratos.ler(arq, salvar.ESQUEMA_MUDANCAS)
+        except (contratos.ErroContrato, OSError, ValueError):
+            continue
+        if dados['seq'] != seq:
+            continue
+        e = por_seq.get(seq)
+        quando = e.get('quando') if e is not None and e.get('sha_novo') == dados['sha_novo'] else None
+        for fid, itens in dados['formatos'].items():
+            saida.setdefault(fid, {'versao': seq, 'quando': quando, 'quando_texto': _data_texto(quando),
+                                   'itens': itens})
+    return saida
+
+
+def _historico_na_tela(entradas, nomes):
+    """As versoes do briefing, da mais nova para a mais antiga, so para leitura (Q12): numero, data, origem e os
+    formatos afetados pela medida (None quando a gravacao nao os calculou)."""
+    saida = []
+    for e in reversed(entradas):
+        afetados = e.get('formatos_afetados')
+        ns = None if afetados is None else [nomes.get(f, f) for f in afetados]
+        if ns is None:
+            texto = SEM_AFETADOS_REGISTRADOS
+        elif not ns:
+            texto = NENHUM_AFETADO
+        else:
+            texto = ('Mudou o formato %s.' if len(ns) == 1 else 'Mudou os formatos %s.') % _lista(ns)
+        saida.append({'versao': e.get('seq'), 'quando_texto': _data_texto(e.get('quando')),
+                      'origem_texto': origem_da_versao(e), 'formatos': ns, 'formatos_texto': texto})
+    return saida
+
+
+def _render_do_formato(pasta, fid, job_id, impressao, atual):
+    """(em_dia, tem_render, parada) do render/<fid>/: em dia quando o render.json e deste job e deste formato, o
+    master, o contrato e a impressao da derivacao batem com os de agora; parada: o motivo de render/<fid>/parada.json
+    ('' quando ilegivel; None sem parada). O portao confere o resto (o contrato refeito) no aprovar."""
+    from desdobra import contratos
+    from desdobra.render import execucao
+    base = Path(pasta) / 'render' / fid
+    rel = None
+    if atual['render_json_sha256'] is not None and atual['master_sha256'] is not None:
+        try:
+            rel = contratos.ler(base / 'render.json', execucao.ESQUEMA_RENDER)
+        except (contratos.ErroContrato, OSError, ValueError):
+            rel = None
+    em_dia = rel is not None and impressao is not None and rel['formato']['chave'] == fid and \
+        rel['job_id'] == job_id and rel['master']['sha256'] == atual['master_sha256'] and \
+        rel['contrato_sha256'] == atual['contrato_sha256'] and \
+        (rel.get('derivacao') or {}).get('impressao_formato') == impressao
+    parada = None
+    if (base / 'parada.json').is_file():
+        try:
+            from desdobra import arquivos
+            dados = arquivos.ler_json(base / 'parada.json')
+            parada = dados.get('motivo') if isinstance(dados, dict) and isinstance(dados.get('motivo'), str) else ''
+        except (OSError, ValueError):
+            parada = ''
+    return em_dia, rel is not None, parada
+
+
+def _situacao_do_formato(derivado, aprov, em_dia, tem_render, parada):
+    """(situacao, pede_render, motivo) de um formato (a ordem da decisao: sem layout, aprovacao, render)."""
+    if not derivado:
+        return 'sem_derivacao', False, MOTIVOS_DO_PAINEL['sem_derivacao']
+    if aprov.get('situacao') == 'aprovado':
+        return 'aprovado', False, MOTIVOS_DO_PAINEL['aprovado']
+    if aprov.get('situacao') == 'caiu':
+        motivos = ' '.join(aprov.get('motivos') or [MOTIVOS_DO_PAINEL['aprovacao_caida']])
+        return 'aprovacao_caida', not em_dia, \
+            '%s %s' % (motivos, APROVE_DE_NOVO if em_dia else PEDE_RENDER_DEPOIS_DA_QUEDA)
+    if em_dia:
+        return 'renderizado', False, MOTIVOS_DO_PAINEL['renderizado']
+    if tem_render:
+        return 'desatualizado', True, MOTIVOS_DO_PAINEL['desatualizado']
+    if parada is not None:
+        return 'pede_render', True, MOTIVOS_DO_PAINEL['pede_render'] if parada in PARADAS_CORTADAS else \
+            RENDER_PAROU_POR_PROBLEMA
+    return 'derivado', True, MOTIVOS_DO_PAINEL['derivado']
+
+
+TAMANHO_DA_MARCA = 16  # numero-neutro: caracteres hexadecimais da marca do layout salvo
+
+
+def _marca_do_layout(d):
+    """Uma marca curta da derivacao gravada do formato (None sem ela): muda quando o layout salvo muda, e a pagina pede a
+    previa do layout salvo de novo (revisao do M7b, fase B)."""
+    if d is None:
+        return None
+    import hashlib
+    import json
+    texto = json.dumps(d, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(texto.encode('utf-8')).hexdigest()[:TAMANHO_DA_MARCA]
+
+
+def palcos_salvos(derivacoes, kv, laudo, base):
+    """{formato: palco do layout gravado em derivacao/<formato>.json, ou None}: a previa do passo 5 para o formato sem
+    render em dia (revisao do M7b, fase B). A previa da abertura (palco) parte da proposta do motor com o rascunho por
+    cima e serve ao passo 3; depois de salvar, o layout do formato e o gravado."""
+    saida = {}
+    for fid, d in derivacoes.items():
+        try:
+            saida[fid] = palco(d, kv, laudo, base) if d is not None and d.get('situacao') == 'derivado' else None
+        except (KeyError, TypeError, ValueError):
+            saida[fid] = None  # a derivacao que nao serve ao palco: a pagina fica com a previa da abertura
+    return saida
+
+
+def _painel_e_aprovacoes(pasta, lidas=None):
+    """(painel, aprovacoes): o painel de painel_dos_formatos e a situacao da aprovacao de cada formato
+    (entrega.nucleo_aprovar.situacao), medidos com os mesmos hashes (o master e lido uma vez). No job com decisao do DA
+    (o que o modo de teste da tela recusa), a aprovacao do modo de teste conta como caida (revisao do M7b, fase B).
+    lidas: um dict que recebe {formato: derivacao gravada ou None}, para a previa do layout salvo (montar)."""
+    from desdobra import contratos
+    from desdobra.briefing import modelo as mb
+    from desdobra.derivacao import nucleo as nd
+    from desdobra.entrega import nucleo_aprovar, portao
+    from desdobra.tela import servidor
+    pasta = Path(pasta).resolve()
+    aceita_teste = not servidor._job_do_da(pasta)
+    vazio = {'formatos': [], 'historico': [], 'afetados': []}
+    try:
+        b = mb.ler(pasta)
+    except (contratos.ErroContrato, OSError, ValueError):
+        b = None
+    if not b:
+        return vazio, nucleo_aprovar.situacao(pasta, aceita_teste=aceita_teste)
+    fs = [f for f in b.get('formatos') or [] if isinstance(f, dict) and isinstance(f.get('id'), str)]
+    nomes = _nomes_dos_formatos(fs)
+    try:
+        job_id, _kv = portao.kv_atual(pasta)
+    except (contratos.ErroContrato, OSError, ValueError):
+        job_id = None
+    try:
+        params = portao.parametros_de_entrega(pasta)
+    except (contratos.ErroContrato, OSError, ValueError):
+        params = {}
+    derivacoes, hashes = {}, {}
+    for f in fs:
+        arq = pasta / nd.PASTA / ('%s.json' % f['id'])
+        try:
+            d = contratos.ler(arq, nd.ESQUEMA) if arq.is_file() else None
+        except contratos.ErroContrato:
+            d = None
+        derivacoes[f['id']] = d
+        imp = nd.impressao_de_agora(pasta, d, b) if d is not None else None
+        hashes[f['id']] = portao.hashes_do_formato(pasta, f['id'], imp)
+    if lidas is not None:
+        lidas.update(derivacoes)
+    aprovacoes = nucleo_aprovar.situacao(pasta, hashes=hashes, aceita_teste=aceita_teste)
+    entradas = _entradas_do_historico(pasta)
+    mudancas = _mudancas_por_formato(pasta, entradas)
+    linhas = []
+    for f in fs:
+        fid, d, atual = f['id'], derivacoes[f['id']], hashes[f['id']]
+        aprov = aprovacoes.get(fid) or {}
+        em_dia, tem_render, parada = _render_do_formato(pasta, fid, job_id, atual['impressao_formato'], atual)
+        derivado = d is not None and d.get('situacao') == 'derivado'
+        situacao, pede, motivo = _situacao_do_formato(derivado, aprov, em_dia, tem_render, parada)
+        comp = ((d or {}).get('formato') or {}).get('composicao')
+        if not (isinstance(comp, list) and len(comp) == 2):  # numero-neutro: [largura, altura]
+            comp = [f.get('largura'), f.get('altura')]
+        mudou = mudancas.get(fid)
+        if mudou is not None and situacao == 'aprovado':
+            mudou = None  # o DA aprovou o formato depois da mudanca
+        elif mudou is not None and aprov.get('quando'):
+            # a aprovacao que caiu por outro motivo depois da versao: a mudanca ja tinha sido vista e aprovada
+            antes, depois = _data(mudou['quando']), _data(aprov['quando'])
+            if antes is not None and depois is not None and depois > antes:
+                mudou = None
+        giro = (f.get('rotacao') or {}).get('graus') or 0
+        sentido = ((params.get(fid) or {}).get('rotacao_sentido') or {}).get('valor')
+        linhas.append({'id': fid, 'nome': nomes[fid], 'largura': f.get('largura'), 'altura': f.get('altura'),
+                       'composicao': comp, 'giro': giro, 'sentido': sentido, 'situacao': situacao,
+                       'rotulo': ROTULOS_DA_SITUACAO[situacao], 'motivo': motivo, 'pede_render': pede,
+                       'pode_aprovar': situacao in ('renderizado', 'aprovacao_caida') and em_dia,
+                       'render_em_dia': em_dia, 'mudou': mudou, 'layout': _marca_do_layout(d)})
+    painel = {'formatos': linhas, 'historico': _historico_na_tela(entradas, nomes),
+              'afetados': [x['id'] for x in linhas if x['pede_render']]}
+    return painel, aprovacoes
+
+
+def painel_dos_formatos(pasta):
+    """O painel de situacao por formato da tela (M7b, B5): {'formatos', 'historico', 'afetados'}.
+
+    formatos: uma linha por formato do briefing confirmado, na ordem dele: id, nome (a medida), largura, altura,
+    composicao (o tamanho do master, antes do giro), giro e sentido gravado, situacao (sem_derivacao, derivado,
+    pede_render, desatualizado, renderizado, aprovado ou aprovacao_caida), rotulo e motivo para o DA, pede_render,
+    pode_aprovar, render_em_dia (o master em /render/<id> e o desta versao) e mudou (a lista "o que mudou" da versao
+    mais nova do historico que mexeu no formato, com as caixas de antes e de depois; None quando o formato foi aprovado
+    depois dela). A situacao sai dos hashes de agora, sem refazer contrato nem arquivo final: o portao confere tudo de
+    novo quando o DA aprova. historico: as versoes do briefing, so para leitura (Q12). afetados: os formatos que pedem
+    render (o botao "Renderizar os afetados"; o render nunca parte sozinho, Q3). Sem briefing confirmado, tudo vazio."""
+    return _painel_e_aprovacoes(pasta)[0]
+
+
 def _sem_previa(_dados, origem=None):
     """A previa da edicao enquanto o passo 3 espera: nenhuma familia para editar."""
     return None
@@ -1433,6 +1719,21 @@ def montar(pasta, teto=None):
     avisos = {g['id']: g['aviso'] for o in estado['orientacoes'] for g in o['grupos']}
     from desdobra.briefing import salvar
     estado['briefing'] = dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta))
+    # a aprovacao de cada formato do briefing (M7b, B4): aprovado, caiu (com o campo e o motivo para o DA) ou sem
+    # aprovacao, e o painel de situacao por formato (M7b, B5), medidos a cada montagem e depois de cada ato
+    # (recarregar)
+    lidas = {}
+    estado['painel'], estado['aprovacoes'] = _painel_e_aprovacoes(pasta, lidas)
+
+    def com_os_layouts_salvos(lidas):
+        # a previa do layout salvo de cada formato (o passo 5; revisao do M7b, fase B) vai no mesmo dict que o
+        # servidor serve em /api/previa/<id>, na chave 'salvo'. A chave existe desde a montagem e so o valor troca
+        # depois de cada ato: a leitura da rota nunca ve o dict mudar de tamanho
+        salvos = palcos_salvos({fid: lidas.get(fid) for fid in previas}, r['kv'], laudo, base) \
+            if r['kv'] is not None else {}
+        for fid, p in previas.items():
+            p['salvo'] = salvos.get(fid)
+    com_os_layouts_salvos(lidas)
     if espera is not None:
         editor = None
     else:
@@ -1455,10 +1756,14 @@ def montar(pasta, teto=None):
     def recarregar():
         novo_job = nucleo.ler_estado(pasta)
         novo_lido = com_previas_dos_quadros(lido(pasta, novo_job, laudo, b, r['formatos'], lista_fontes, teto))
+        lidas_agora = {}
+        painel, aprovacoes = _painel_e_aprovacoes(pasta, lidas_agora)
+        com_os_layouts_salvos(lidas_agora)
         return dict(estado, lido=novo_lido, orientacoes=com_os_avisos_de_agora(),
                     faltam=faltam(novo_lido, r['formatos'], n_variantes, familias,
                                   familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas)),
-                    briefing=dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta)))
+                    briefing=dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta)),
+                    aprovacoes=aprovacoes, painel=painel)
 
     conteudo = {'estado': estado, 'previas': previas, 'assets': assets, 'fontes': fontes, 'recarregar': recarregar,
                 'editar': editor.previa if editor is not None else _sem_previa,

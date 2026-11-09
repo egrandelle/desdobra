@@ -22,7 +22,9 @@ tela (M7) ou por um terminal interativo. O Claude nunca dispara. Este modulo:
     SameSite=Strict, entrada de uso unico, cabecalho X-Desdobra-CSRF com o token da pagina, Origin e Sec-Fetch-Site da
     propria origem e a confirmacao explicita; o selo do Disparo fica neste processo, como o do terminal;
   - no modo de teste da tela (proposta do M7, 159c), o Disparo sai com meio 'medicao' e origem 'fixture_de_teste', que
-    o portao de entrega recusa.
+    o portao de entrega recusa;
+  - o Disparo da tela pode sair preso a um alvo (M7b, B2): o render da tela emite, numa confirmacao do DA, um Disparo
+    por formato, e conferir recusa o selo de um formato no render de outro.
 
 Risco residual declarado: um processo do mesmo usuario, fora do Claude, com acesso ao console (por exemplo um
 programa que abre um console novo e escreve teclas nele com WriteConsoleInputW) ainda passa por aqui. O gancho
@@ -88,6 +90,10 @@ class ErroHumano(Exception):
 
 @dataclass(frozen=True)
 class Disparo:
+    """alvo: o formato a que o selo fica preso (M7b, B2: o render da tela emite um Disparo por formato, e o selo de
+    um formato nunca serve a outro). None: o selo serve ao ato que o pedir, como o do terminal, que pergunta formato a
+    formato. O alvo que vale e o do registro do selo neste processo, nunca o do objeto (uma copia com outro alvo leva
+    o mesmo selo e e recusada)."""
     comando: str
     meio: str
     usuario: str | None
@@ -95,6 +101,7 @@ class Disparo:
     quando: str
     selo: str = field(repr=False, default='')
     origem: str = ORIGEM_DA
+    alvo: str | None = None
 
     def registro(self):
         """O que vai para o render.json e para os arquivos de confirmacao (sem o selo)."""
@@ -163,15 +170,15 @@ def exigir(comando):
     return _emitir(comando, MEIO_TERMINAL, ORIGEM_DA)
 
 
-def _emitir(comando, meio, origem):
+def _emitir(comando, meio, origem, alvo=None):
     try:
         usuario = getpass.getuser()
     except Exception:  # noqa: BLE001
         usuario = None
     selo = secrets.token_hex(16)  # numero-neutro: bytes de entropia do selo
     d = Disparo(comando=comando, meio=meio, usuario=usuario, maquina=_platform.node() or None,
-                quando=datetime.now().astimezone().isoformat(timespec='seconds'), selo=selo, origem=origem)
-    _SELOS[selo] = comando
+                quando=datetime.now().astimezone().isoformat(timespec='seconds'), selo=selo, origem=origem, alvo=alvo)
+    _SELOS[selo] = (comando, alvo)
     return d
 
 
@@ -212,28 +219,36 @@ def fechar_sessao_tela(sessao):
         _SESSOES_TELA.pop(sessao.chave, None)
 
 
-def exigir_tela(comando, sessao, confirmado):
+def exigir_tela(comando, sessao, confirmado, alvo=None):
     """O Disparo de um clique do DA na janela, confirmado no dialogo da propria janela. So o servidor da tela chama,
-    depois de gastar o pedido de uso unico (confirmado=True). ErroHumano sem a confirmacao, com sessao que este
-    processo nao abriu ou, fora do modo de teste, num processo com as marcas do Claude."""
+    depois de gastar o pedido de uso unico (confirmado=True). alvo: o formato a que o selo fica preso (o render da
+    tela, um Disparo por formato da mesma confirmacao). ErroHumano sem a confirmacao, com sessao que este processo nao
+    abriu ou, fora do modo de teste, num processo com as marcas do Claude."""
     if comando not in COMANDOS + ATOS_DA_TELA:
         raise ValueError('comando sem disparo humano: %r' % comando)
+    if alvo is not None and (not isinstance(alvo, str) or not alvo):
+        raise ValueError('alvo do disparo fora do padrao')
     if confirmado is not True:
         raise ErroHumano('sem_confirmacao_na_tela')
     if not isinstance(sessao, SessaoTela) or _SESSOES_TELA.get(sessao.chave) is not sessao.teste:
         raise ErroHumano('sessao_da_tela_invalida')
     if sessao.teste:
-        return _emitir(comando, MEIO_MEDICAO, ORIGEM_FIXTURE)
+        return _emitir(comando, MEIO_MEDICAO, ORIGEM_FIXTURE, alvo)
     ok, motivo = ambiente_da_tela()
     if not ok:
         raise ErroHumano(motivo)
-    return _emitir(comando, MEIO_TELA, ORIGEM_DA)
+    return _emitir(comando, MEIO_TELA, ORIGEM_DA, alvo)
 
 
-def conferir(disparo, comando, consumir=False):
-    """ErroHumano quando o disparo nao foi emitido por exigir(comando) neste processo."""
-    if not isinstance(disparo, Disparo) or _SELOS.get(disparo.selo) != comando or disparo.comando != comando:
+def conferir(disparo, comando, consumir=False, alvo=None):
+    """ErroHumano quando o disparo nao foi emitido por exigir(comando) neste processo, ou quando o selo esta preso a
+    outro alvo (alvo: o formato que quem confere vai gravar). O selo sem alvo serve a qualquer um. A recusa nunca gasta
+    o selo."""
+    registro = _SELOS.get(disparo.selo) if isinstance(disparo, Disparo) else None
+    if registro is None or registro[0] != comando or disparo.comando != comando:
         raise ErroHumano('disparo_sem_conferencia')
+    if registro[1] is not None and registro[1] != alvo:
+        raise ErroHumano('disparo_de_outro_alvo')
     if consumir:
         del _SELOS[disparo.selo]
     return disparo

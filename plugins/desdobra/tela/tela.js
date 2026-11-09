@@ -97,7 +97,7 @@
   const CLASSES_FUNCAO = [['base', 'Imagem e fundo'], ['texto', 'Texto'], ['marca', 'Marca'],
     ['global', 'Da peça inteira'], ['fora', 'Fora da peça'], ['indeterminado', 'Outra função']];
   const INVERSA = { estrutura: 'fora_da_peca', fora_da_peca: 'estrutura' };
-  const PASSOS = { lido: 1, funcoes: 2, pecas: 3, design: 4 };
+  const PASSOS = { lido: 1, funcoes: 2, pecas: 3, design: 4, formatos: 5 };
   const AMOSTRA = 'Aa Bb Cc 0123';
   const PASSO_ZOOM = 1.25;
   const MARGEM = 40;
@@ -107,6 +107,7 @@
   let estado = null;
   const familiaCss = new Map();
   const previas = new Map();
+  const previasSalvas = new Map();
   const vista = { k: null, limpo: false, formato: null, modelo: null, variante: null, familia: null, grupo: null };
   const metaCsrf = document.querySelector('meta[name="dsd-csrf"]');
   const csrf = metaCsrf ? metaCsrf.content : '';
@@ -163,8 +164,9 @@
   const DICA_QUADRO = 'Escolha a prancheta da peça no passo 1.';
   const DICA_GIRO = 'Escolha o giro de cada formato no passo 1.';
   const DICA_MEDIDA = 'Escolha a medida do formato com duas medidas no passo 1.';
-  const AVISO_SALVO = 'O briefing está salvo, e o desdobra seguiu com o job: cada formato parte agora das famílias que ' +
-    'você confirmou. Gerar as imagens chega na próxima versão da tela.';
+  /* curto para caber em duas linhas no rodape a 1280 px (revisao do M7b, fase B) */
+  const AVISO_SALVO = 'O briefing está salvo. Cada formato parte agora das famílias que você confirmou. ' +
+    'O render e a aprovação ficam no passo 5.';
   let salvoNaTela = false;
   let p2Mudou = false;
   const ajustes = new WeakMap();
@@ -178,11 +180,28 @@
     return e;
   }
   function limpar(no) { while (no.firstChild) no.removeChild(no.firstChild); }
-  function pedir(rota) {
+  /* o unico GET da tela: pedir() le o JSON e carregarImagem() le a imagem pela mesma chamada */
+  function buscar(rota) {
     return fetch(rota, { credentials: 'same-origin', cache: 'no-store' }).then(function (r) {
       if (!r.ok) throw new Error('rota ' + r.status);
-      return r.json();
+      return r;
     });
+  }
+  function pedir(rota) {
+    return buscar(rota).then(function (r) { return r.json(); });
+  }
+  /* a imagem de /render/<id> e /final/<id> pedida sempre de novo ao servidor. A URL e a mesma para o formato, e o
+     Chromium reaproveita na mesma pagina a imagem que ja carregou para ela, mesmo com no-store: depois de um render
+     novo, o DA veria o master ou o arquivo final de antes. O fetch sem cache vira um blob local (a CSP aceita img-src
+     blob:), solto quando a imagem carrega ou falha. A falha do pedido chega a imagem como o erro dela */
+  function carregarImagem(img, rota) {
+    buscar(rota).then(function (r) { return r.blob(); }).then(function (b) {
+      const url = URL.createObjectURL(b);
+      const soltar = function () { URL.revokeObjectURL(url); };
+      img.addEventListener('load', soltar, { once: true });
+      img.addEventListener('error', soltar, { once: true });
+      img.src = url;
+    }).catch(function () { img.dispatchEvent(new Event('error')); });
   }
   function enviar(rota, dados) {
     return fetch(rota, {
@@ -253,6 +272,8 @@
     estado.aviso_atualizacao = e.aviso_atualizacao;
     salvoNaTela = !!(e.briefing && e.briefing.salvo);
     previas.clear();
+    previasSalvas.clear();
+    trocarPainel(e);
     if ((e.funcoes.decisoes || {}).quadro !== quadroAntes) {
       // a prancheta escolhe as camadas do passo 2: a arvore e o Design system sao montados de novo
       estado.funcoes = e.funcoes;
@@ -288,12 +309,14 @@
   function semAvisos(orientacoes) {
     return JSON.stringify(orientacoes, function (k, v) { return k === 'aviso' ? undefined : v; });
   }
-  /* a faixa de avisos do servidor: a tela que nao se atualizou e o briefing salvo de outra versao dos arquivos */
+  /* a faixa de avisos do servidor: a tela que nao se atualizou, o render que a janela anterior deixou pela metade e o
+     briefing salvo de outra versao dos arquivos */
   function mostrarAvisos(e) {
     const no = document.getElementById('avisos-tela');
     limpar(no);
     const textos = [];
     if (e.aviso_atualizacao) textos.push(e.aviso_atualizacao);
+    if (e.render_inacabado && e.render_inacabado.texto) textos.push(e.render_inacabado.texto);
     ((e.briefing && e.briefing.avisos) || []).forEach(function (t) { textos.push(t); });
     textos.forEach(function (t) { no.appendChild(el('p', t, 'aviso-tela')); });
     no.hidden = !textos.length;
@@ -329,6 +352,12 @@
     document.getElementById('confirmacao-texto').textContent = p.texto;
     sim.textContent = p.sim;
     nao.textContent = p.nao;
+    // o que o ato mostra alem do texto (M7b, B5): os formatos do render, o arquivo final de cada formato a aprovar
+    const extra = document.getElementById('confirmacao-extra');
+    limpar(extra);
+    extra.hidden = !p.extra;
+    if (p.extra) extra.appendChild(p.extra);
+    d.classList.toggle('confirmacao-larga', !!p.larga);
     const antes = document.activeElement;
     return new Promise(function (resolver) {
       let respondido = false;
@@ -339,6 +368,9 @@
         sim.removeEventListener('click', aoSim);
         nao.removeEventListener('click', aoNao);
         if (d.open) d.close();
+        limpar(extra);
+        extra.hidden = true;
+        d.classList.remove('confirmacao-larga');
         if (antes && antes.focus) antes.focus();
         resolver(resposta);
       }
@@ -364,6 +396,7 @@
       estado.briefing = e.briefing;
       estado.aviso_atualizacao = e.aviso_atualizacao;
       salvoNaTela = !!(e.briefing && e.briefing.salvo);
+      trocarPainel(e);
       mostrarAvisos(e);
       atualizarFaltam();
       return Promise.resolve(montarLido(e.lido)).then(sincronizarConfirmacoes);
@@ -435,6 +468,16 @@
     p.catch(function () { previas.delete(fid); });
     return p;
   }
+  /* a previa do passo 5: o servidor leva nela o layout salvo do formato (salvo), que muda depois de cada ato. A marca do
+     layout (f.layout, do painel) diz quando pedir de novo */
+  function previaSalva(f) {
+    const guardada = previasSalvas.get(f.id);
+    if (guardada && guardada.marca === f.layout) return guardada.promessa;
+    const p = pedir('/api/previa/' + encodeURIComponent(f.id));
+    previasSalvas.set(f.id, { marca: f.layout, promessa: p });
+    p.catch(function () { previasSalvas.delete(f.id); });
+    return p;
+  }
   /* setas movem entre as abas de uma lista (role=tablist), Home e End vao as pontas */
   function navegarComSetas(lista) {
     lista.addEventListener('keydown', function (ev) {
@@ -460,15 +503,16 @@
       b.setAttribute('aria-selected', sim ? 'true' : 'false');
       b.tabIndex = sim ? 0 : -1;
     });
-    ['lido', 'funcoes', 'pecas', 'design'].forEach(function (p) {
+    Object.keys(PASSOS).forEach(function (p) {
       document.getElementById('passo-' + p).hidden = p !== id;
     });
-    document.getElementById('passo-atual').textContent = 'Passo ' + PASSOS[id] + ' de 4';
+    document.getElementById('passo-atual').textContent = 'Passo ' + PASSOS[id] + ' de ' + Object.keys(PASSOS).length;
     document.getElementById('confirmar-familia').hidden = id !== 'pecas';
     if (id === 'funcoes') desenharKv();
     if (id === 'design') desenharKvDesign();
     if (id === 'pecas' && !document.querySelector('#orientacoes [role=tab]')) iniciarPecas(null);
     if (id === 'pecas') reajustar(document.getElementById('palco'));
+    if (id === 'formatos') montarPainel();
   }
 
   /* ---------------------------------------------------------------- falta N */
@@ -2327,6 +2371,527 @@
     };
   }
 
+  /* ---------------------------------------------------------------- render e aprovacao (M7b, B5)
+     Uma linha por formato com a situacao que o motor mede (desdobra/tela/estado.py, painel_dos_formatos), o motivo
+     numa frase e a marca de quem pede render. O formato escolhido mostra a imagem (o master em dia pela rota /render,
+     ou a previa do layout) com a caixa de antes tracejada e a de depois cheia, e a lista "o que mudou" da ultima versao
+     do briefing que mexeu nele. "Renderizar os afetados" pede o render de todos os que pedem render, com uma
+     confirmacao so (Q3 e Q4); "Aprovar" pede a aprovacao dos formatos marcados, com o arquivo final de cada um na
+     janela (Q11), e pergunta antes o lado do giro do formato que vai girado sem lado gravado (Q13). Os dois atos rodam
+     como tarefa no servidor: a pagina acompanha a etapa e o formato por /api/tarefa, e Cancelar corta o formato em
+     andamento (Q14). Nada vem marcado, e o render nunca parte sozinho. O historico de versoes e so para leitura (Q12).
+     Todo texto do job entra por textContent; as caixas vao pelo CSSOM, em % do tamanho do master. */
+  const pn = { escolhido: null, marcados: new Set(), ocupado: false, acompanhando: null };
+  const ESPERA_TAREFA_MS = 400;
+  const NOME_PREPARO = 'preparo';
+  const SITUACOES_VIVAS = ['na_fila', 'rodando'];
+  const PAINEL_VAZIO = 'Os formatos aparecem aqui depois que você salva o briefing.';
+  const PAINEL_SO_VER = 'Nesta janela a tela só mostra. O render e a aprovação ficam para a janela que o desdobra abre para você.';
+  const PEDE_RENDER = 'Pede render';
+  const PODE_APROVAR = 'Pode aprovar';
+  const ESCOLHA_UM_FORMATO = 'Escolha um formato na lista para ver o que mudou nele.';
+  const IMAGEM_RENDER = 'Último render';
+  const IMAGEM_PREVIA = 'Prévia do layout, ainda sem render';
+  const IMAGEM_SEM = 'Este formato ainda não tem imagem.';
+  const LEGENDA_ANTES = 'Tracejado: onde estava';
+  const LEGENDA_DEPOIS = 'Contínuo: onde ficou';
+  const TITULO_MUDOU = 'O que mudou';
+  const SEM_MUDANCA = 'Nenhuma mudança à espera neste formato.';
+  const SEM_VERSOES = 'Nenhuma versão salva ainda.';
+  const ERRO_PEDIDO = 'A tela não conseguiu pedir o trabalho. Tente de novo.';
+  const ERRO_TAREFA = 'A tela perdeu o andamento do trabalho. Confira os formatos de novo.';
+  const TEXTO_SENTIDO_UM = 'Este formato vai girado para o veículo. Escolha para que lado ele gira. O lado fica gravado junto com a aprovação.';
+  const TEXTO_SENTIDO_VARIOS = 'Estes formatos vão girados para o veículo. Escolha para que lado cada um gira. O lado fica gravado junto com a aprovação.';
+  const TOPO_DA_PECA = 'A barra mostra onde fica o topo da peça.';
+  const SVG = 'http://www.w3.org/2000/svg';
+
+  function noSvg(tag, attrs) {
+    const n = document.createElementNS(SVG, tag);
+    Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    return n;
+  }
+  function formatosDoPainel() { return (estado && estado.painel && estado.painel.formatos) || []; }
+  function formatoDoPainel(fid) { return formatosDoPainel().find(function (f) { return f.id === fid; }) || null; }
+  function nomeDoFormato(fid) { const f = formatoDoPainel(fid); return f ? f.nome : fid; }
+  function listaDeNomes(ns) { return ns.length <= 1 ? ns.join('') : ns.slice(0, -1).join(', ') + ' e ' + ns[ns.length - 1]; }
+  function tarefaViva(t) { return !!(t && SITUACOES_VIVAS.indexOf(t.situacao) >= 0); }
+  function mensagemDoPainel(texto, tipo) {
+    const no = document.getElementById('painel-mensagem');
+    no.textContent = texto || '';
+    no.dataset.tipo = tipo || '';
+    no.hidden = !texto;
+  }
+  /* o estado novo do servidor no painel: as marcas so ficam nos formatos que ainda podem ser aprovados */
+  function trocarPainel(e) {
+    estado.painel = e.painel;
+    estado.tarefa = e.tarefa;
+    estado.edicao_bloqueada = e.edicao_bloqueada;
+    const podem = new Set(formatosDoPainel().filter(function (f) { return f.pode_aprovar; }).map(function (f) { return f.id; }));
+    Array.from(pn.marcados).forEach(function (fid) { if (!podem.has(fid)) pn.marcados.delete(fid); });
+    if (!document.getElementById('passo-formatos').hidden) montarPainel();
+  }
+  function contagens(fs) {
+    const n = function (teste) { return fs.filter(teste).length; };
+    const partes = [plural(fs.length, 'formato', 'formatos')];
+    const pede = n(function (f) { return f.pede_render; });
+    const podem = n(function (f) { return f.pode_aprovar; });
+    const aprovados = n(function (f) { return f.situacao === 'aprovado'; });
+    if (pede) partes.push(pede === 1 ? '1 pede render' : pede + ' pedem render');
+    if (podem) partes.push(podem === 1 ? '1 pode ser aprovado' : podem + ' podem ser aprovados');
+    if (aprovados) partes.push(aprovados === 1 ? '1 aprovado' : aprovados + ' aprovados');
+    return partes.join(', ') + '.';
+  }
+  function montarPainel() {
+    const fs = formatosDoPainel();
+    const lista = document.getElementById('lista-formatos');
+    limpar(lista);
+    document.getElementById('painel-resumo').textContent = !escrita ? PAINEL_SO_VER : (fs.length ? contagens(fs) : '');
+    if (!fs.length) {
+      const vazio = el('div', null, 'painel-vazio');
+      vazio.appendChild(el('p', PAINEL_VAZIO, 'vazio-titulo'));
+      lista.appendChild(vazio);
+    }
+    fs.forEach(function (f, i) { lista.appendChild(linhaDoFormato(f, i)); });
+    montarHistorico((estado.painel && estado.painel.historico) || []);
+    if (!pn.escolhido || !formatoDoPainel(pn.escolhido)) {
+      // o primeiro que pede atencao do DA; sem nenhum, o primeiro da lista
+      const primeiro = fs.find(function (f) { return f.mudou || f.pede_render || f.pode_aprovar; }) || fs[0];
+      pn.escolhido = primeiro ? primeiro.id : null;
+    }
+    mostrarDetalhe(pn.escolhido);
+    atualizarBotoesDoPainel();
+    if (tarefaViva(estado.tarefa) && !pn.acompanhando) retomarTarefa(estado.tarefa);
+  }
+  function linhaDoFormato(f, i) {
+    const linha = el('div', null, 'linha-formato');
+    linha.setAttribute('role', 'listitem');
+    linha.dataset.formato = f.id;
+    linha.dataset.situacao = f.situacao;
+    linha.style.animationDelay = (i * 35) + 'ms';
+    const marca = el('input', null, 'linha-marca');
+    marca.type = 'checkbox';
+    marca.checked = pn.marcados.has(f.id);
+    marca.disabled = !escrita || !f.pode_aprovar;
+    marca.setAttribute('aria-label', 'Marcar o formato ' + f.nome + ' para aprovar');
+    marca.addEventListener('change', function () {
+      if (marca.checked) pn.marcados.add(f.id); else pn.marcados.delete(f.id);
+      atualizarBotoesDoPainel();
+    });
+    linha.appendChild(marca);
+    const abrir = botao(null, 'linha-abrir');
+    abrir.setAttribute('aria-pressed', pn.escolhido === f.id ? 'true' : 'false');
+    const mini = el('span', null, 'linha-mini');
+    mini.setAttribute('aria-hidden', 'true');
+    const forma = el('span', null, 'linha-forma');
+    caixaMini(forma, f.composicao[0] || 1, f.composicao[1] || 1, 30, 22);
+    mini.appendChild(forma);
+    abrir.appendChild(mini);
+    const textos = el('span', null, 'linha-textos');
+    const nome = el('span', null, 'linha-nome');
+    nome.appendChild(el('span', f.nome, 'linha-medida'));
+    if (f.giro) nome.appendChild(el('span', 'girado ' + f.giro + ' graus', 'linha-giro'));
+    if (f.mudou && f.mudou.itens.length) {
+      nome.appendChild(el('span', plural(f.mudou.itens.length, 'mudança', 'mudanças'), 'conta-mudancas'));
+    }
+    textos.appendChild(nome);
+    textos.appendChild(el('span', f.motivo, 'linha-motivo'));
+    abrir.appendChild(textos);
+    abrir.addEventListener('click', function () {
+      pn.escolhido = f.id;
+      document.querySelectorAll('#lista-formatos .linha-abrir').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.closest('.linha-formato').dataset.formato === f.id ? 'true' : 'false');
+      });
+      mostrarDetalhe(f.id);
+    });
+    linha.appendChild(abrir);
+    const marcas = el('span', null, 'linha-marcas');
+    marcas.appendChild(el('span', f.rotulo, 'chip chip-' + f.situacao));
+    if (f.pede_render) marcas.appendChild(el('span', PEDE_RENDER, 'etiqueta-painel pede'));
+    else if (f.pode_aprovar) marcas.appendChild(el('span', PODE_APROVAR, 'etiqueta-painel pode'));
+    linha.appendChild(marcas);
+    return linha;
+  }
+  function atualizarBotoesDoPainel() {
+    const fs = formatosDoPainel();
+    const ocupado = pn.ocupado || tarefaViva(estado && estado.tarefa);
+    const afetados = (estado && estado.painel && estado.painel.afetados) || [];
+    const r = document.getElementById('renderizar-afetados');
+    const a = document.getElementById('aprovar-marcados');
+    function rotular(b, texto, n, um, varios) {
+      limpar(b);
+      b.appendChild(document.createTextNode(texto));
+      if (n) b.appendChild(el('span', n, 'contagem-botao'));
+      b.setAttribute('aria-label', n ? texto + ', ' + plural(n, um, varios) : texto);
+    }
+    rotular(r, 'Renderizar os afetados', afetados.length, 'formato', 'formatos');
+    rotular(a, 'Aprovar', pn.marcados.size, 'formato marcado', 'formatos marcados');
+    r.disabled = !escrita || ocupado || !afetados.length;
+    a.disabled = !escrita || ocupado || !pn.marcados.size;
+    document.querySelectorAll('#lista-formatos .linha-marca').forEach(function (c) {
+      const f = formatoDoPainel(c.closest('.linha-formato').dataset.formato);
+      c.disabled = !escrita || ocupado || !(f && f.pode_aprovar);
+    });
+    raiz.dataset.painel = fs.length ? 'pronto' : 'vazio';
+  }
+  function montarHistorico(h) {
+    const ol = document.getElementById('historico-versoes');
+    limpar(ol);
+    if (!h.length) { ol.appendChild(el('li', SEM_VERSOES, 'vazio')); return; }
+    h.forEach(function (v) {
+      const li = el('li', null, 'versao');
+      const topo = el('div', null, 'versao-topo');
+      topo.appendChild(el('span', 'Versão ' + v.versao, 'versao-numero'));
+      if (v.quando_texto) topo.appendChild(el('span', v.quando_texto, 'versao-data'));
+      li.appendChild(topo);
+      li.appendChild(el('span', v.origem_texto, 'versao-origem'));
+      li.appendChild(el('span', v.formatos_texto, 'versao-formatos'));
+      ol.appendChild(li);
+    });
+  }
+  function emPorcento(no, c, W, H) {
+    no.style.left = (c[0] / W * 100) + '%';
+    no.style.top = (c[1] / H * 100) + '%';
+    no.style.width = (Math.max(0, c[2] - c[0]) / W * 100) + '%';
+    no.style.height = (Math.max(0, c[3] - c[1]) / H * 100) + '%';
+  }
+  /* a imagem do formato com as caixas de antes (tracejada) e de depois (cheia) de cada item que moveu ou mudou de
+     tamanho; o item da lista realca as caixas do elemento dele */
+  function antesEDepois(f, aside) {
+    const fig = el('figure', null, 'antes-depois');
+    const quadro = el('div', null, 'ad-quadro carregando');
+    const W = f.composicao[0] || 1, H = f.composicao[1] || 1;
+    const largura = Math.max(160, aside.clientWidth - 48);
+    caixaMini(quadro, W, H, largura, 300);
+    fig.appendChild(quadro);
+    const legenda = el('figcaption', null, 'ad-legenda');
+    fig.appendChild(legenda);
+    const caixas = el('div', null, 'ad-caixas');
+    const itens = ((f.mudou && f.mudou.itens) || []).filter(function (x) { return x.antes && x.depois; });
+    itens.forEach(function (x) {
+      [['antes', 'caixa-antes'], ['depois', 'caixa-depois']].forEach(function (par) {
+        const c = el('div', null, par[1]);
+        if (x.elemento) c.dataset.elemento = x.elemento;
+        emPorcento(c, x[par[0]], W, H);
+        caixas.appendChild(c);
+      });
+    });
+    function pronto(texto) {
+      quadro.classList.remove('carregando');
+      quadro.appendChild(caixas);
+      legenda.appendChild(el('span', texto, 'ad-origem'));
+      if (itens.length) {
+        legenda.appendChild(el('span', LEGENDA_ANTES, 'ad-antes'));
+        legenda.appendChild(el('span', LEGENDA_DEPOIS, 'ad-depois'));
+      }
+      quadro.dataset.pronto = '1';
+    }
+    function comPrevia() {
+      if (f.situacao === 'sem_derivacao') { pronto(IMAGEM_SEM); return; }
+      const mini = el('div', null, 'mini-palco ad-previa');
+      mini.style.width = quadro.style.width;
+      mini.style.height = quadro.style.height;
+      quadro.appendChild(mini);
+      previaSalva(f).then(function (m) {
+        // o layout salvo do formato (m.salvo); sem ele, a previa da abertura
+        return desenharPalco(mini, m.salvo || vistaInicial(m), { miniatura: true });
+      }).then(function () { pronto(IMAGEM_PREVIA); }).catch(function () { mini.remove(); pronto(IMAGEM_SEM); });
+    }
+    if (f.render_em_dia) {
+      const img = document.createElement('img');
+      img.className = 'ad-imagem';
+      img.alt = 'Último render do formato ' + f.nome;
+      img.addEventListener('load', function () { pronto(IMAGEM_RENDER); });
+      img.addEventListener('error', function () { img.remove(); comPrevia(); });
+      quadro.appendChild(img);
+      carregarImagem(img, '/render/' + encodeURIComponent(f.id));
+    } else {
+      comPrevia();
+    }
+    return fig;
+  }
+  function mostrarDetalhe(fid) {
+    const aside = document.getElementById('formato-detalhe');
+    limpar(aside);
+    const f = fid ? formatoDoPainel(fid) : null;
+    aside.dataset.formato = f ? f.id : '';
+    if (!f) { aside.appendChild(el('p', formatosDoPainel().length ? ESCOLHA_UM_FORMATO : PAINEL_VAZIO, 'nota')); return; }
+    const topo = el('header', null, 'detalhe-formato-topo');
+    topo.appendChild(el('h2', f.nome, 'detalhe-formato-nome'));
+    topo.appendChild(el('span', f.rotulo, 'chip chip-' + f.situacao));
+    aside.appendChild(topo);
+    if (f.giro) {
+      aside.appendChild(el('p', 'Vai para o veículo girado ' + f.giro + ' graus. A imagem mostra a peça antes do giro.',
+        'detalhe-giro'));
+    }
+    aside.appendChild(antesEDepois(f, aside));
+    aside.appendChild(el('p', f.motivo, 'detalhe-motivo'));
+    const sec = el('section', null, 'mudou');
+    sec.setAttribute('aria-label', TITULO_MUDOU);
+    const cab = el('div', null, 'mudou-topo');
+    cab.appendChild(el('h3', TITULO_MUDOU));
+    if (f.mudou) cab.appendChild(el('span', 'Versão ' + f.mudou.versao + (f.mudou.quando_texto ? ', ' + f.mudou.quando_texto : ''), 'mudou-versao'));
+    sec.appendChild(cab);
+    if (!f.mudou) {
+      sec.appendChild(el('p', SEM_MUDANCA, 'nota'));
+    } else {
+      const ol = el('ol', null, 'mudou-itens');
+      f.mudou.itens.forEach(function (x, i) {
+        const li = el('li', x.frase, 'mudou-item');
+        li.style.animationDelay = (i * 30) + 'ms';
+        if (x.elemento && x.antes) {
+          li.dataset.elemento = x.elemento;
+          li.tabIndex = 0;
+          const realce = function (sim) {
+            aside.querySelectorAll('.ad-caixas [data-elemento]').forEach(function (c) {
+              c.classList.toggle('realce', sim && c.dataset.elemento === x.elemento);
+            });
+          };
+          ['mouseenter', 'focus'].forEach(function (ev) { li.addEventListener(ev, function () { realce(true); }); });
+          ['mouseleave', 'blur'].forEach(function (ev) { li.addEventListener(ev, function () { realce(false); }); });
+        }
+        ol.appendChild(li);
+      });
+      sec.appendChild(ol);
+    }
+    aside.appendChild(sec);
+  }
+
+  /* ---- tarefas: o preparo do pedido, o render e a aprovacao rodam no servidor; a pagina acompanha */
+  function mostrarTarefa(v) {
+    const caixa = document.getElementById('tarefa-painel');
+    caixa.hidden = false;
+    caixa.dataset.situacao = v.situacao;
+    caixa.dataset.nome = v.nome;
+    document.getElementById('tarefa-texto').textContent = v.texto;
+    const partes = [];
+    if (v.etapa_texto) partes.push(v.etapa_texto + (v.formato ? ', ' + nomeDoFormato(v.formato) : ''));
+    if (v.nome !== NOME_PREPARO && v.formatos.length) partes.push(v.feitos.length + ' de ' + v.formatos.length + ' prontos');
+    document.getElementById('tarefa-detalhe').textContent = partes.join('. ') + (partes.length ? '.' : '');
+    const barra = document.getElementById('tarefa-barra');
+    const parte = v.nome !== NOME_PREPARO && v.formatos.length ? v.feitos.length / v.formatos.length : null;
+    barra.parentNode.classList.toggle('indeterminada', parte === null);
+    barra.style.transform = 'scaleX(' + (parte === null ? 1 : Math.max(0.02, parte)) + ')';
+    document.getElementById('tarefa-cancelar').hidden = !tarefaViva(v) || !escrita;
+    raiz.dataset.tarefa = v.situacao;
+  }
+  function esconderTarefa() {
+    document.getElementById('tarefa-painel').hidden = true;
+    raiz.dataset.tarefa = '';
+  }
+  function acompanhar(id) {
+    pn.acompanhando = id;
+    return new Promise(function (resolver, recusar) {
+      function ver() {
+        pedir('/api/tarefa/' + encodeURIComponent(id)).then(function (v) {
+          mostrarTarefa(v);
+          if (tarefaViva(v)) { setTimeout(ver, ESPERA_TAREFA_MS); return; }
+          pn.acompanhando = null;
+          resolver(v);
+        }).catch(function (e) { pn.acompanhando = null; recusar(e); });
+      }
+      ver();
+    });
+  }
+  /* a tarefa que ja rodava quando a pagina abriu (ou voltou): so acompanhar, e o estado novo no fim */
+  function retomarTarefa(t) {
+    pn.ocupado = true;
+    atualizarBotoesDoPainel();
+    acompanhar(t.id).then(function (fim) {
+      mensagemDoPainel(fim.texto, fim.situacao);
+      esconderTarefa();
+    }).catch(function () { mensagemDoPainel(ERRO_TAREFA, 'parou'); esconderTarefa(); }).then(function () {
+      pn.ocupado = false;
+      return recarregarEstado();
+    }).catch(function () { return null; });
+  }
+  function nomesDaResposta(r) {
+    const lista = (r && (r.bloqueados || r.com_falha || r.recusados || r.mudaram)) || [];
+    return lista.map(function (x) { return typeof x === 'string' ? nomeDoFormato(x) : x.nome; });
+  }
+  function textoDoFim(v) {
+    const ns = nomesDaResposta(v.resposta);
+    if (!ns.length) return v.texto;
+    return v.texto + ' ' + (ns.length === 1 ? 'Formato: ' : 'Formatos: ') + listaDeNomes(ns) + '.';
+  }
+  function extraDoAto(nome, p) {
+    const fs = p.formatos || [];
+    if (!fs.length) return null;
+    if (nome === 'aprovar') {
+      const grade = el('div', null, 'finais');
+      fs.forEach(function (f) {
+        const fig = el('figure', null, 'final');
+        const caixa = el('div', null, 'final-caixa carregando');
+        const img = document.createElement('img');
+        img.alt = 'Arquivo final do formato ' + f.nome;
+        img.addEventListener('load', function () { caixa.classList.remove('carregando'); });
+        caixa.appendChild(img);
+        carregarImagem(img, '/final/' + encodeURIComponent(f.id));
+        fig.appendChild(caixa);
+        const leg = el('figcaption', null, 'final-legenda');
+        leg.appendChild(el('span', f.nome, 'final-nome'));
+        if (f.extensao) leg.appendChild(el('span', String(f.extensao).toUpperCase(), 'final-tipo'));
+        fig.appendChild(leg);
+        grade.appendChild(fig);
+      });
+      return grade;
+    }
+    const lista = el('ul', null, 'formatos-do-ato');
+    fs.forEach(function (f) { lista.appendChild(el('li', f.nome, 'chip chip-neutro')); });
+    return lista;
+  }
+  /* a figura do giro: a peca como o layout dela (composicao, antes do giro), a seta do lado escolhido e a peca como
+     sai para o veiculo, com o lado maior trocado; a barra marca o topo da peca */
+  function figuraDoGiro(graus, sentido, composicao) {
+    const s = noSvg('svg', { viewBox: '0 0 148 64', width: '148', height: '64', 'aria-hidden': 'true', focusable: 'false', 'class': 'figura-giro' });
+    const deitada = !composicao || composicao[0] >= composicao[1];
+    // antes: deitada 46x28 ou de pe 28x46, centrada na metade esquerda; depois: o contrario, na metade direita
+    const antes = deitada ? { x: 6, y: 19, l: 46, a: 28 } : { x: 15, y: 9, l: 28, a: 46 };
+    const depois = deitada ? { x: 106, y: 6, l: 28, a: 46 } : { x: 96, y: 18, l: 46, a: 28 };
+    s.appendChild(noSvg('rect', { x: String(antes.x), y: String(antes.y), width: String(antes.l), height: String(antes.a), rx: '3', 'class': 'giro-peca' }));
+    s.appendChild(noSvg('rect', { x: String(antes.x), y: String(antes.y), width: String(antes.l), height: '5', rx: '2', 'class': 'giro-topo' }));
+    const horario = sentido === 'horario';
+    s.appendChild(noSvg('path', { d: horario ? 'M62 36 A11 11 0 0 1 84 36' : 'M84 36 A11 11 0 0 0 62 36', 'class': 'giro-seta' }));
+    s.appendChild(noSvg('path', { d: horario ? 'M80 32 L84 37 L88 32' : 'M58 32 L62 37 L66 32', 'class': 'giro-seta' }));
+    // o quarto de volta no sentido do relogio leva o topo para a direita; ao contrario, para a esquerda
+    const direita = horario === (graus === 90);
+    s.appendChild(noSvg('rect', { x: String(depois.x), y: String(depois.y), width: String(depois.l), height: String(depois.a), rx: '3', 'class': 'giro-peca' }));
+    s.appendChild(noSvg('rect', { x: String(direita ? depois.x + depois.l - 5 : depois.x), y: String(depois.y), width: '5', height: String(depois.a), rx: '2', 'class': 'giro-topo' }));
+    return s;
+  }
+  /* a janela do lado do giro (Q13): nada vem marcado; Seguir so com o lado de cada formato escolhido */
+  function escolherSentido(lista) {
+    const d = document.getElementById('sentido');
+    const corpo = document.getElementById('sentido-formatos');
+    const sim = d.querySelector('[data-resposta=sim]');
+    const nao = d.querySelector('[data-resposta=nao]');
+    document.getElementById('sentido-texto').textContent = (lista.length === 1 ? TEXTO_SENTIDO_UM : TEXTO_SENTIDO_VARIOS) + ' ' + TOPO_DA_PECA;
+    limpar(corpo);
+    const escolhas = {};
+    sim.disabled = true;
+    lista.forEach(function (f) {
+      const bloco = el('div', null, 'sentido-formato');
+      bloco.appendChild(el('p', f.nome + ', girado ' + f.graus + ' graus', 'sentido-nome'));
+      const grupo = el('div', null, 'sentido-opcoes');
+      grupo.setAttribute('role', 'group');
+      grupo.setAttribute('aria-label', 'Lado do giro do formato ' + f.nome);
+      f.opcoes.forEach(function (o) {
+        const b = botao(null, 'sentido-opcao');
+        b.setAttribute('aria-pressed', 'false');
+        b.dataset.formato = f.id;
+        b.dataset.sentido = o.valor;
+        b.appendChild(figuraDoGiro(f.graus, o.valor, f.composicao));
+        b.appendChild(el('span', o.texto, 'sentido-opcao-texto'));
+        b.addEventListener('click', function () {
+          escolhas[f.id] = o.valor;
+          grupo.querySelectorAll('.sentido-opcao').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+          sim.disabled = lista.some(function (x) { return !escolhas[x.id]; });
+        });
+        grupo.appendChild(b);
+      });
+      bloco.appendChild(grupo);
+      corpo.appendChild(bloco);
+    });
+    const antes = document.activeElement;
+    return new Promise(function (resolver) {
+      let respondido = false;
+      function fim(resposta) {
+        if (respondido) return;
+        respondido = true;
+        d.removeEventListener('cancel', aoCancelar);
+        sim.removeEventListener('click', aoSim);
+        nao.removeEventListener('click', aoNao);
+        if (d.open) d.close();
+        if (antes && antes.focus) antes.focus();
+        resolver(resposta ? escolhas : null);
+      }
+      function aoCancelar(ev) { ev.preventDefault(); fim(false); }
+      function aoSim() { if (!sim.disabled) fim(true); }
+      function aoNao() { fim(false); }
+      d.addEventListener('cancel', aoCancelar);
+      sim.addEventListener('click', aoSim);
+      nao.addEventListener('click', aoNao);
+      d.showModal();
+      document.getElementById('sentido-titulo').focus();
+    });
+  }
+  /* o pedido de um ato longo (render ou aprovar): o preparo roda no servidor e, no fim, a confirmacao na janela; o
+     Confirmar inicia a tarefa, que a pagina acompanha ate o fim, e o estado novo redesenha o painel */
+  function pedirAtoLongo(nome, dados) {
+    if (pn.ocupado) return Promise.resolve(null);
+    pn.ocupado = true;
+    atualizarBotoesDoPainel();
+    mensagemDoPainel('');
+    raiz.dataset.estadoAto = '';
+    let antes = Promise.resolve();
+    if (rascunho.espera_id !== null) { clearTimeout(rascunho.espera_id); antes = gravarRascunho(); }
+    let seguir = null;
+    let emTarefa = false;
+    return antes.then(function () {
+      return enviar('/api/ato/pedir', { ato: nome, dados: dados });
+    }).then(function (r) {
+      emTarefa = true;
+      return acompanhar(r.tarefa);
+    }).then(function (v) {
+      esconderTarefa();
+      if (v.situacao !== 'feita') {
+        if (v.motivo === 'falta_sentido' && v.resposta && v.resposta.sem_sentido) {
+          return escolherSentido(v.resposta.sem_sentido).then(function (escolhas) {
+            if (!escolhas) { raiz.dataset.estadoAto = 'cancelado'; return null; }
+            seguir = { formatos: dados.formatos, sentidos: Object.assign({}, dados.sentidos || {}, escolhas) };
+            return null;
+          });
+        }
+        mensagemDoPainel(textoDoFim(v), 'parou');
+        raiz.dataset.estadoAto = 'parou';
+        return null;
+      }
+      const p = v.resposta;
+      return confirmarNaJanela(Object.assign({}, p, { extra: extraDoAto(nome, p), larga: nome === 'aprovar' })).then(function (sim) {
+        if (!sim) {
+          return enviar('/api/ato/cancelar', { pedido: p.pedido }).then(function () { raiz.dataset.estadoAto = 'cancelado'; });
+        }
+        return enviar('/api/ato/confirmar', { pedido: p.pedido, resposta: 'confirmar' }).then(function (r) {
+          return acompanhar(r.tarefa);
+        }).then(function (fim) {
+          esconderTarefa();
+          mensagemDoPainel(textoDoFim(fim), fim.situacao);
+          if (fim.situacao === 'feita' && nome === 'aprovar') pn.marcados.clear();
+          // o painel redesenhado com o estado novo antes de dizer que o ato acabou
+          return recarregarEstado().then(function () {
+            raiz.dataset.estadoAto = fim.situacao === 'feita' ? 'feito' : fim.situacao;
+          });
+        });
+      });
+    }).catch(function () {
+      esconderTarefa();
+      raiz.dataset.estadoAto = 'erro';
+      mensagemDoPainel(emTarefa ? ERRO_TAREFA : ERRO_PEDIDO, 'parou');
+      pn.acompanhando = null;
+    }).then(function () {
+      pn.ocupado = false;
+      atualizarBotoesDoPainel();
+      // o lado do giro escolhido: o mesmo pedido de novo, agora com o lado (a confirmacao do DA grava os dois)
+      if (seguir) return pedirAtoLongo(nome, seguir);
+      return null;
+    });
+  }
+  function ligarPainel() {
+    document.getElementById('renderizar-afetados').addEventListener('click', function () {
+      const afetados = (estado && estado.painel && estado.painel.afetados) || [];
+      if (afetados.length) pedirAtoLongo('render', { formatos: afetados.slice() });
+    });
+    document.getElementById('aprovar-marcados').addEventListener('click', function () {
+      const ids = formatosDoPainel().map(function (f) { return f.id; }).filter(function (fid) { return pn.marcados.has(fid); });
+      if (ids.length) pedirAtoLongo('aprovar', { formatos: ids });
+    });
+    document.getElementById('tarefa-cancelar').addEventListener('click', function () {
+      const b = document.getElementById('tarefa-cancelar');
+      if (!pn.acompanhando) return;
+      b.disabled = true;
+      enviar('/api/tarefa/cancelar', { tarefa: pn.acompanhando }).catch(function () { return null; }).then(function () { b.disabled = false; });
+    });
+  }
+
   /* ---------------------------------------------------------------- controles do palco */
   function zoom(novo) {
     vista.k = novo;
@@ -2368,6 +2933,7 @@
   ligarAtos();
   ligarEdicao();
   ligarFaltam();
+  ligarPainel();
   lerRascunho().then(function () { return pedir('/api/estado'); }).then(function (e) {
     estado = e;
     salvoNaTela = !!(e.briefing && e.briefing.salvo);
@@ -2376,6 +2942,8 @@
     mostrarAvisos(e);
     atualizarFaltam();
     mostrarPasso('lido');
+    atualizarBotoesDoPainel();
+    if (tarefaViva(e.tarefa)) retomarTarefa(e.tarefa);
     return montarLido(e.lido).then(function () { return document.fonts.ready; });
   }).then(function () {
     raiz.dataset.pronto = '1';

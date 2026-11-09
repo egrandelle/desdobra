@@ -16,14 +16,16 @@ conferir() devolve, por formato do briefing, as falhas que impedem entregar (ou 
     formato fora de uma familia confirmada recusa; a proposta da galeria (derivacao/<formato>.json com o caminho
     galeria) sem a confirmacao da familia recusa;
   - aprovacao (so o entregar, nº 138): o registro do formato em briefing/aprovacao.json, com os hashes de agora e o
-    arquivo final que o encoder da agora.
+    arquivo final que o encoder da agora. A aprovacao do modo de teste da tela (meio medicao ou origem
+    fixture_de_teste; M7b, B4) e recusada (aprovacao_de_teste), com o meio e a origem gravados nas medidas; o sentido
+    do giro do modo de teste conta como confirmacao de teste (confirmacao_de_teste).
 
 Funcao pura dos arquivos do job: nao grava nada.
 """
 import json
 from pathlib import Path
 
-from desdobra import arquivos, contratos
+from desdobra import arquivos, contratos, humano
 from desdobra.briefing import modelo as mb
 from desdobra.entrega import aprovacao as mod_aprovacao
 from desdobra.entrega import codificar
@@ -61,6 +63,8 @@ DESCRICOES = {
     'aprovacao_antiga': 'A aprovação do formato é de uma versão anterior do desdobra, que olhava o briefing inteiro, e '
                         'caiu: aprove o formato de novo.',
     'aprovacao_de_outro_job': 'briefing/aprovacao.json é de outro job.',
+    'aprovacao_de_teste': 'A aprovação do formato saiu do modo de teste da tela (meio medicao ou origem '
+                          'fixture_de_teste) e não vale para a entrega: o DA aprova o formato na tela.',
     'aprovacao_caiu': 'A aprovação do formato caiu: algo mudou depois dela (veja os campos).',
 }
 
@@ -142,6 +146,14 @@ def confirmacao_de_teste(pasta):
         acoes = []
     if any(a.get('por') == mb.ORIGEM_FIXTURE for a in acoes):
         return 'confirmacao_de_fixture_de_teste'
+    # o sentido do giro gravado pela janela de aprovar do modo de teste (M7b, B4)
+    try:
+        params = parametros_de_entrega(pasta)
+    except contratos.ErroContrato:
+        params = {}
+    if any((c.get('confirmado_por') or {}).get('origem') == mb.ORIGEM_FIXTURE
+           for campos in params.values() for c in campos.values()):
+        return 'confirmacao_de_fixture_de_teste'
     return None
 
 
@@ -164,15 +176,24 @@ def impressao_do_formato(pasta, briefing, formato):
     return nd.impressao_de_agora(pasta, d, briefing) if d is not None else None
 
 
+def hashes_do_formato(pasta, formato, impressao):
+    """Os HASHES da aprovacao medidos agora (desdobra.entrega.aprovacao), sem refazer contrato nem arquivo final: a
+    impressao dada e o sha256 do master, do render.json e do contrato (None quando falta). A tela mede com eles a
+    aprovacao que caiu (desdobra.entrega.nucleo_aprovar.situacao; M7b, B4)."""
+    base = Path(pasta) / 'render' / formato
+    arq_master, arq_rel, arq_contrato = base / 'master.png', base / 'render.json', base / 'contrato.json'
+    return {'impressao_formato': impressao,
+            'master_sha256': arquivos.sha256_arquivo(arq_master) if arq_master.is_file() else None,
+            'render_json_sha256': arquivos.sha256_arquivo(arq_rel) if arq_rel.is_file() else None,
+            'contrato_sha256': arquivos.sha256_arquivo(arq_contrato) if arq_contrato.is_file() else None}
+
+
 def _render_do_formato(pasta, formato, job_id, kv, impressao):
     """(atual, rel, falhas) dos arquivos de render/<formato>/: atual = os hashes medidos agora (None quando falta)."""
     from desdobra.render import execucao
     base = Path(pasta) / 'render' / formato
-    arq_master, arq_rel, arq_contrato = base / 'master.png', base / 'render.json', base / 'contrato.json'
-    atual = {'impressao_formato': impressao,
-             'master_sha256': arquivos.sha256_arquivo(arq_master) if arq_master.is_file() else None,
-             'render_json_sha256': arquivos.sha256_arquivo(arq_rel) if arq_rel.is_file() else None,
-             'contrato_sha256': arquivos.sha256_arquivo(arq_contrato) if arq_contrato.is_file() else None}
+    arq_rel, arq_contrato = base / 'render.json', base / 'contrato.json'
+    atual = hashes_do_formato(pasta, formato, impressao)
     if None in (atual['master_sha256'], atual['render_json_sha256'], atual['contrato_sha256']):
         return atual, None, [_falha('sem_master')]
     try:
@@ -209,10 +230,12 @@ def _render_do_formato(pasta, formato, job_id, kv, impressao):
     return atual, rel, []
 
 
-def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True):
+def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True, sentidos=None):
     """Confere os formatos do job para a entrega (origem e aprovacao: o entregar) ou para a aprovacao (origem=False,
     aprovacao=False: o aprovar). formatos: ids a conferir (None: todos os formatos do briefing). final: gera o arquivo
-    final dos formatos sem falha (desdobra.entrega.codificar).
+    final dos formatos sem falha (desdobra.entrega.codificar). sentidos: {formato: sentido do giro} que o DA escolheu
+    na janela de aprovar da tela e que ainda nao esta gravado (M7b, B4): vale para a rotacao e para o arquivo final
+    deste conferir, sem gravar nada; quem chama confere o pedido (parametros.conferir) antes.
 
     Devolve {'briefing': motivo ou None, 'formatos': {id: {'falhas': [...], 'atual': {...}, 'final': ArquivoFinal ou
     None, 'recusa_do_encoder': ErroCodificar ou None}}}. Sem briefing legivel, 'formatos' so tem os ids pedidos.
@@ -257,7 +280,9 @@ def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True):
             saida['formatos'][fid] = {'falhas': [_falha('formato_inexistente')], 'atual': {}, 'final': None}
             continue
         falhas = [erro_params] if erro_params else []
-        falhas += conferir_rotacao(do_briefing[fid], params.get(fid))
+        sentido = (sentidos or {}).get(fid)
+        params_f = params.get(fid) if sentido is None else dict(params.get(fid) or {}, rotacao_sentido={'valor': sentido})
+        falhas += conferir_rotacao(do_briefing[fid], params_f)
         if origem:
             falhas += conferir_familia(pasta, b, fid)
         atual, _rel, f_render = _render_do_formato(pasta, fid, job_id, kv, impressao_do_formato(pasta, b, fid))
@@ -265,7 +290,8 @@ def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True):
         arq_final, recusa = None, None
         if final and not falhas:
             try:
-                arq_final = codificar.arquivo_final(pasta, fid)
+                arq_final = codificar.arquivo_final(pasta, fid) if sentido is None else \
+                    codificar.arquivo_final(pasta, fid, sentido=sentido)
             except codificar.ErroCodificar as e:
                 if aprovacao and e.codigo in validar.RECUSAS_ROTEADAS:
                     recusa = e  # o entregar manda o formato para reprovados, com regra e sugestao, sem arquivo
@@ -286,7 +312,13 @@ def _conferir_aprovacao(aprov, erro, formato, job_id, atual, final):
         return [_falha('aprovacao_de_outro_job')]
     if aprov['esquema'] != mod_aprovacao.ESQUEMA:
         return [_falha('aprovacao_antiga', esquema=aprov['esquema'])]
-    campos = mod_aprovacao.diferencas(aprov['formatos'][formato], job_id, atual, final)
+    reg = aprov['formatos'][formato]
+    # a aprovacao do modo de teste da tela nunca vale para a entrega (M7b, B4; a critica do plano): o meio e a origem
+    # gravados vao nas medidas. O registro de antes da origem gravada (o do terminal) conta como do DA
+    por = reg.get('aprovado_por') or {}
+    if por.get('meio') == humano.MEIO_MEDICAO or por.get('origem', humano.ORIGEM_DA) != humano.ORIGEM_DA:
+        return [_falha('aprovacao_de_teste', meio=por.get('meio'), origem=por.get('origem'))]
+    campos = mod_aprovacao.diferencas(reg, job_id, atual, final)
     return [_falha('aprovacao_caiu', campos=campos)] if campos else []
 
 

@@ -19,7 +19,9 @@ do job e grava. Giro, achatamento e borda entram nos parametros do encoder: muda
 "aprovar" confere cada formato pedido como a entrega confere (master, render.json, contrato refeito, KV, briefing e
 rotacao; a origem do briefing fica para o entregar), gera o arquivo final de cada um (desdobra.entrega.codificar), grava
 a previa em entrega/previa/ e pede uma confirmacao so, sem resposta padrao. Com o sim, confere tudo de novo com a trava
-do job e grava um registro por formato em briefing/aprovacao.json (desdobra.entrega.aprovacao).
+do job e grava um registro por formato em briefing/aprovacao.json (desdobra.entrega.aprovacao). O roteiro e o do
+nucleo comum (desdobra.entrega.nucleo_aprovar), o mesmo do ato de aprovar da tela (M7b, B4); o comando fica so para a
+Trezion e para os testes, e o DA aprova na tela.
 
 "entregar" roda o portao inteiro em todos os formatos do briefing (desdobra.entrega.portao): briefing de origem 'da' com
 a conferencia inteira (fixture de teste e rascunho sao recusados), rotacao decidida, master e render coerentes, contrato
@@ -121,7 +123,7 @@ def _erro_job(comando, pasta, e):
 
 def _aprovar(args):
     from desdobra import humano
-    from desdobra.entrega import aprovacao, portao
+    from desdobra.entrega import nucleo_aprovar
     from desdobra.job import nucleo
     from desdobra.render import perguntar
     pasta = Path(args.job).resolve()
@@ -132,12 +134,13 @@ def _aprovar(args):
     if not (pasta / 'estado.json').is_file():
         return _sem_job('aprovar', pasta)
     formatos = list(dict.fromkeys(args.formato))
+    # o mesmo nucleo do ato de aprovar da tela (M7b, B4): conferir, previa, pergunta sem a trava, confirmar
     try:
         with nucleo.Trava(pasta):
-            conf = portao.conferir(pasta, formatos, origem=False, aprovacao=False)
-            if any(item['falhas'] for item in conf['formatos'].values()):
+            conf = nucleo_aprovar.conferir(pasta, formatos)
+            if nucleo_aprovar.com_falha(conf):
                 return _recusado('aprovar', pasta, conf, O_QUE_FAZER_APROVAR_RECUSA)
-            previas = {fid: aprovacao.gravar_previa(pasta, fid, item['final']) for fid, item in conf['formatos'].items()}
+            previas = nucleo_aprovar.gravar_previas(pasta, conf)
     except nucleo.ErroJob as e:
         return _erro_job('aprovar', pasta, e)
     print('Arquivo final de cada formato (abra e confira antes de aprovar):')
@@ -152,23 +155,14 @@ def _aprovar(args):
     try:
         with nucleo.Trava(pasta):
             # a pergunta roda sem a trava: confere de novo e so grava se nada mudou desde o que o DA viu
-            nova = portao.conferir(pasta, formatos, origem=False, aprovacao=False)
-            mudou = sorted(fid for fid, item in nova['formatos'].items()
-                           if item['falhas'] or item['atual'] != conf['formatos'][fid]['atual'] or
-                           item['final'].sha256 != conf['formatos'][fid]['final'].sha256 or
-                           item['final'].parametros != conf['formatos'][fid]['final'].parametros)
-            if mudou:
-                return Resultado(comando='aprovar', codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
-                                 o_que_fazer='O job mudou durante a confirmação. Nada foi gravado: rode o "desdobra '
-                                             'aprovar" de novo.', contagens={'recusa_mudou_durante_a_confirmacao': len(mudou)},
-                                 linhas_humanas=['O job mudou durante a confirmação: %s.' % ', '.join(mudou)])
-            job_id, _kv = portao.kv_atual(pasta)
-            regs = [aprovacao.registro(fid, job_id, item['atual'], item['final'], disparo)
-                    for fid, item in nova['formatos'].items()]
-            aprovacao.gravar(pasta, regs, job_id, disparo=disparo)
+            regs = nucleo_aprovar.confirmar(pasta, formatos, nucleo_aprovar.vista(conf), disparo)
+    except nucleo_aprovar.ErroAprovar as e:
+        return Resultado(comando='aprovar', codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
+                         o_que_fazer='O job mudou durante a confirmação. Nada foi gravado: rode o "desdobra '
+                                     'aprovar" de novo.', contagens={'recusa_mudou_durante_a_confirmacao': len(e.mudaram)},
+                         linhas_humanas=['O job mudou durante a confirmação: %s.' % ', '.join(e.mudaram)])
     except nucleo.ErroJob as e:
         return _erro_job('aprovar', pasta, e)
-    nucleo.registrar_evento(pasta, 'aprovacao_gravada', n_formatos=len(regs))
     return Resultado(comando='aprovar', situacao='ok', pasta_job=pasta, contagens={'aprovados': len(regs)},
                      o_que_fazer='A aprovação está em briefing/aprovacao.json, um registro por formato. Mudar o master, '
                                  'o render, o que alimenta o formato no briefing ou o arquivo final derruba a aprovação '

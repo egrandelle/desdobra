@@ -352,18 +352,18 @@ def _gravar_parada(pasta, formato, e):
 
 
 def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guardar_coberturas=None,
-               formato=mod_contrato.FORMATO_ORIGEM):
+               formato=mod_contrato.FORMATO_ORIGEM, progresso=None, parar=None):
     """Renderiza um formato do job (veja _renderizar). Toda parada depois do disparo humano grava
     render/<formato>/parada.json; o render que termina apaga a parada velha."""
     from desdobra import humano
     try:
-        humano.conferir(disparo, 'render', consumir=False)
+        humano.conferir(disparo, 'render', consumir=False, alvo=formato)
     except humano.ErroHumano:
         return _renderizar(pasta_job, disparo=disparo, aceites=aceites, plat=plat, funcoes=funcoes,
-                           guardar_coberturas=guardar_coberturas, formato=formato)
+                           guardar_coberturas=guardar_coberturas, formato=formato, progresso=progresso, parar=parar)
     try:
         rel = _renderizar(pasta_job, disparo=disparo, aceites=aceites, plat=plat, funcoes=funcoes,
-                          guardar_coberturas=guardar_coberturas, formato=formato)
+                          guardar_coberturas=guardar_coberturas, formato=formato, progresso=progresso, parar=parar)
     except ErroRender as e:
         _gravar_parada(pasta_job, formato, e)
         raise
@@ -375,20 +375,32 @@ def renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guard
 
 
 def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guardar_coberturas=None,
-                formato=mod_contrato.FORMATO_ORIGEM):
+                formato=mod_contrato.FORMATO_ORIGEM, progresso=None, parar=None):
     """Renderiza um formato do job: a origem (M4) ou um formato derivado (M5, de derivacao/<formato>.json). disparo:
-    o Disparo que desdobra.humano.exigir('render') emitiu depois de conferir o console (nada mais vale, e o disparo so
-    serve uma vez); aceites: decisoes do DA confirmadas no terminal (codigos de pede_confirmacao). Devolve o
+    o Disparo que desdobra.humano.exigir('render') emitiu depois de conferir o console, ou o da tela preso a este
+    formato (humano.exigir_tela com alvo; M7b, B2): nada mais vale, o disparo so serve uma vez e o selo de outro
+    formato e recusado; aceites: decisoes do DA confirmadas no terminal ou na janela da tela (codigos de
+    pede_confirmacao). Devolve o
     render.json gravado. ErroRender quando para; nesse caso nao fica master nem render.json novos, nem
     render/.trabalho.
 
-    guardar_coberturas: pasta fora do job para as coberturas do texto (so a medicao do corpus usa)."""
+    guardar_coberturas: pasta fora do job para as coberturas do texto (so a medicao do corpus usa).
+    progresso(etapa) e parar() -> bool (M7b, B1; a tarefa da tela, desdobra.tela.tarefas): antes de cada etapa
+    (ETAPAS), parar() verdadeiro corta o render com o motivo "parado" (o selo ja foi gasto, e nada e gravado alem da
+    parada); senao, progresso diz a etapa que comeca. A ultima conferencia e depois da composicao, antes de gravar."""
     from desdobra import humano
     try:
-        humano.conferir(disparo, 'render', consumir=True)
+        humano.conferir(disparo, 'render', consumir=True, alvo=formato)
     except humano.ErroHumano:
         raise ErroRender('O render só parte de uma pessoa num terminal interativo.', 'disparo_sem_conferencia',
                          o_que_fazer=humano.O_QUE_FAZER) from None
+
+    def etapa(nome):
+        if parar is not None and parar():
+            raise ErroRender('O render foi parado antes de terminar.', 'parado', medidas={'etapa': nome})
+        if progresso is not None:
+            progresso(nome)
+    etapa('contrato')
     t0 = time.perf_counter()
     tempos = {}
     pasta = Path(pasta_job).resolve()
@@ -408,10 +420,12 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
     arq_contrato = mod_contrato.gravar(pasta, contrato)
     tempos['contrato'] = round(time.perf_counter() - t0, 3)
 
+    etapa('pilhas')
     t1 = time.perf_counter()
     mapa_pilhas, do_cache = resolver_pilhas(pasta, contrato, plat)
     tempos['pilhas'] = round(time.perf_counter() - t1, 3)
 
+    etapa('texto')
     t2 = time.perf_counter()
     servidos = bytes_das_faces(pasta, contrato, estado)
     prefixo = 'dsd-%s' % estado['job_id'][:8]  # numero-neutro: prefixo curto do job no nome da familia
@@ -432,6 +446,7 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
                          o_que_fazer='Rode "desdobra job proxima --todas" e "desdobra doctor"; se repetir, mande o '
                                      'render.json para a Trezion.', medidas={'cdp': cdp})
 
+    etapa('composicao')
     t3 = time.perf_counter()
     leitura = [pasta / PASTA_ASSETS, pasta / 'entrada' / 'campanha']
     if contrato['documento'].get('perfil'):
@@ -461,6 +476,7 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
             raise ErroRender('A tinta de um texto passou da caixa que a derivação validou (ou foi cortada na página).',
                              'tinta_fora_da_caixa_validada', medidas={'textos': fora_da_caixa},
                              o_que_fazer='Rode o "desdobra derivar" de novo; se continuar, mande o render.json para a Trezion.')
+    etapa('gravacao')
     destino = pasta / 'render' / formato
 
     fora, varridos = conferencia.varrer_fontes_fora_da_entrada(pasta)

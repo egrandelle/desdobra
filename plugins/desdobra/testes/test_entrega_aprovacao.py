@@ -135,6 +135,87 @@ def test_gancho_nega_os_desvios_de_aspas_escape_caminho_e_codigo_da_entrega():
         assert decidir('Bash', {'command': c}) == 'segue', c
 
 
+def test_gancho_nega_o_nucleo_da_aprovacao_os_atos_da_tela_e_o_humano_por_atributo():
+    # achados da revisao do M7b, fase B: a gravacao da aprovacao saiu do _aprovar para o nucleo comum
+    # (desdobra.entrega.nucleo_aprovar), os atos longos da tela (desdobra.tela.ato_aprovar e ato_render) gravam com o
+    # Disparo da tela, e o portao passou a importar o humano (p.humano)
+    g = _gancho()
+
+    def decidir(ferramenta, entrada):
+        return g.decidir({'tool_name': ferramenta, 'tool_input': entrada}) or 'segue'
+    negar = ['python -c "from desdobra.entrega import nucleo_aprovar as n, portao as p; h = p.humano; '
+             's = h.abrir_sessao_tela(teste=True); d = h.exigir_tela(\'aprovar\', s, confirmado=True); '
+             'n.confirmar(j, f, n.vista(n.conferir(j, f)), d)"',
+             'python -c "import desdobra.entrega.nucleo_aprovar as n; n.confirmar(j, f, v, d)"',
+             'python -c "from desdobra.entrega import portao; s = portao.humano.abrir_sessao_tela()"',
+             'python -c "from desdobra.render import execucao as e; d = e . humano . exigir_tela(c, s)"',
+             'python -c "from desdobra.tela import ato_aprovar as a; a.ato_de_aprovar(j).executar(d, x, t, p, o)"',
+             'python -c "import desdobra.tela.ato_render as r; r.ato_de_render(j)"']
+    for c in negar:
+        assert decidir('Bash', {'command': c}) == 'deny', c
+        assert decidir('PowerShell', {'command': c}) == 'deny', c
+    # ler, testar e comparar o codigo-fonte desses modulos seguem
+    for c in ['python -m pytest plugins/desdobra/testes/test_tela_ato_aprovar.py -q',
+              'git diff plugins/desdobra/motor/desdobra/entrega/nucleo_aprovar.py',
+              'git diff plugins\\desdobra\\motor\\desdobra\\tela\\ato_aprovar.py',
+              'cat plugins/desdobra/motor/desdobra/humano.py']:
+        assert decidir('Bash', {'command': c}) == 'segue', c
+
+
+def test_gancho_nega_o_servidor_da_tela_pelos_modulos_de_teste_e_as_marcas_do_claude_tiradas():
+    # achado da segunda revisao do M7b, fase B: os modulos de teste do repo trazem o servidor da tela e os atos como
+    # atributo (test_tela_ato_render.ts, test_tela_ato_aprovar.ta) e os ajudantes HTTP com cookie e CSRF. Uma linha
+    # comum subia o servidor num job e aprovava pelo caminho do clique do DA; sem as marcas do Claude no proprio
+    # processo, o registro sairia com meio tela e origem da
+    g = _gancho()
+
+    def decidir(ferramenta, entrada):
+        return g.decidir({'tool_name': ferramenta, 'tool_input': entrada}) or 'segue'
+    corpo = ("import sys; sys.path[:0] = ['motor', 'testes']; "
+             "import test_tela_ato_aprovar as T, test_tela_servidor as S; from pathlib import Path; "
+             "j = Path(sys.argv[1]); c = T.te.montar(j); "
+             "s = T.tar.ts.ServidorTela(c, pasta=j, modo_teste=%s, atos=T.ta.atos_do_job(j, conteudo=c)).iniciar(); "
+             "b = S._entrar(s); k, v = T._pedir(s, b, ['perto', 'mesma']); "
+             "print(T.tar._confirmar(s, b, v['resposta']['pedido'])); s.parar()")
+    sem_marcas = ("import os; [os.environ.pop(k, None) for k in list(os.environ) "
+                  "if k.startswith('CLAUDE') or k in ('AI_AGENT', 'TERM_PROGRAM')]; ")
+    negar = ['python -c "%s" C:/jobs/kv' % (corpo % 'True'),
+             'python -c "%s" C:/jobs/kv' % (sem_marcas + corpo % 'False'),
+             'python -c "%s" C:\\trabalhos\\desdobra\\job' % (sem_marcas + corpo % 'False'),
+             # os modulos de teste por outros jeitos de importar
+             'python -c "from test_tela_ato_aprovar import _pedir, _aprovar"',
+             'python -c "import testes.test_tela_servidor as S"',
+             'python -c "import json, conftest"',
+             'python -c "import importlib; m = importlib.import_module(\'test_tela_ato_render\')"',
+             'python -c "m = __import__(\'test_tela_painel\')"',
+             # o servidor e os atos da tela pelo nome, lidos de qualquer modulo
+             'python -c "import x; x.ts.ServidorTela(c, pasta=j)"',
+             'python -c "import x; x.ta.atos_do_job(j)"',
+             # as marcas do Claude tiradas do ambiente (o motor confere so elas no processo da tela)
+             'python -c "import os; os.environ.pop(\'CLAUDECODE\'); import y"',
+             'python -c "import os; del os.environ[\'CLAUDE_CODE_ENTRYPOINT\']"',
+             'env -u CLAUDECODE -u AI_AGENT python y.py',
+             'env -i python y.py',
+             'unset CLAUDECODE CLAUDE_CODE_SESSION_ID; python y.py',
+             'Remove-Item Env:CLAUDECODE; python y.py',
+             '$env:CLAUDECODE = $null; python y.py',
+             '[Environment]::SetEnvironmentVariable(\'AI_AGENT\', $null); python y.py']
+    for c in negar:
+        assert decidir('Bash', {'command': c}) == 'deny', c
+        assert decidir('PowerShell', {'command': c}) == 'deny', c
+    # rodar e ler os testes, ler o ambiente e o PYTHONPATH de uma pasta com "claude" no nome seguem
+    for c in ['python -m pytest testes/test_tela_ato_aprovar.py::test_texto -q',
+              'python -m pytest testes/test_tela_servidor.py testes/test_tela_ato_render.py -k gancho',
+              "PYTHONPATH='testes;C:/Temp/claude/x' python -m pytest C:/Temp/claude/x/test_y.py --rootdir C:/Temp/claude/x",
+              "$env:PYTHONPATH = 'testes;C:/Temp/claude/x'; python -m pytest C:/Temp/claude/x/test_y.py",
+              'git diff plugins/desdobra/testes/test_tela_servidor.py',
+              'cat plugins/desdobra/testes/conftest.py',
+              'echo $CLAUDECODE',
+              'python -c "import os; print(os.environ.get(\'CLAUDECODE\'))"']:
+        assert decidir('Bash', {'command': c}) == 'segue', c
+        assert decidir('PowerShell', {'command': c}) == 'segue', c
+
+
 def test_aprovar_e_entregar_sem_console_recusam_e_nao_gravam(tmp_path, monkeypatch):
     monkeypatch.setattr(humano, 'console_interativo', lambda: (False, 'sem_terminal'))
     (tmp_path / 'estado.json').write_text('{}', encoding='utf-8')

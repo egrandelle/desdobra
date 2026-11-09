@@ -175,7 +175,9 @@ def test_mostra_antes_e_depois_e_grava_segundo_o_contrato(job, pessoa, monkeypat
     reg = dados['formatos']['giro']['rotacao_sentido']
     assert reg['valor'] == 'horario'
     assert reg['confirmado_por']['meio'] == 'terminal' and reg['confirmado_por']['quando']
-    assert set(reg['confirmado_por']) == {'usuario', 'maquina', 'meio', 'quando'}
+    # a origem do Disparo vai junto (M7b, B4): a do modo de teste da tela o portao da entrega recusa
+    assert set(reg['confirmado_por']) == {'usuario', 'maquina', 'meio', 'quando', 'origem'}
+    assert reg['confirmado_por']['origem'] == 'da'
     # o portao e o encoder leem o que foi gravado
     assert portao.parametros_de_entrega(job)['giro']['rotacao_sentido']['valor'] == 'horario'
     assert portao.conferir_rotacao(FORMATOS[0], portao.parametros_de_entrega(job)['giro']) == []

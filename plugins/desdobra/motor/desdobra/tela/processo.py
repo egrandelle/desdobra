@@ -6,7 +6,8 @@
 Quem chama e o "desdobra tela abrir" (desdobra.tela), solto do terminal. A linha de comando nao leva segredo: o token
 da entrada e a sessao do cookie nascem aqui (desdobra.tela.servidor) e vao so ao Chromium, por page.goto
 (navegador.Janela.ir). Este processo:
-  1. apaga as pastas dsd-tela- orfas (navegador.varrer_orfaos);
+  1. apaga as pastas dsd-tela- orfas (navegador.varrer_orfaos) e le o marcador do render que a janela anterior deixou
+     pela metade (tarefas.recuperar: o aviso vai para a tela, e a trava do processo morto sai);
   2. monta o conteudo do job (desdobra.tela.estado.montar), com a trava do job so durante a montagem; erro fora do
      previsto vira "recusado erro_interno", com o evento tela_recusou;
   3. sobe o servidor, com a escrita do rascunho e dos atos do passo 1 (desdobra.tela.atos) so quando este processo
@@ -53,11 +54,16 @@ def executar(pasta, avisar=_avisar, ao_abrir=None, teto=None):
     Devolve o codigo de saida do processo."""
     from desdobra.chromium import navegador
     from desdobra.job import nucleo
-    from desdobra.tela import atos, estado, servidor
+    from desdobra.tela import atos, estado, servidor, tarefas
     pasta = Path(pasta).resolve()
     try:
         orfaos = navegador.varrer_orfaos()
+        # o render que a janela anterior deixou pela metade: o aviso vai para a tela, e a trava do processo morto sai
+        # antes da montagem, que pega a trava do job (desdobra.tela.tarefas, M7b B1)
+        inacabado = tarefas.recuperar(pasta)
         conteudo = estado.montar(pasta, teto=teto) if teto else estado.montar(pasta)
+        if inacabado:
+            conteudo['render_inacabado'] = inacabado
     except estado.ErroTela as e:
         _registrar_recusa(pasta, motivo=e.motivo)
         avisar('%s %s' % (RECUSADO, e.motivo))

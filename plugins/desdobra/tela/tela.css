@@ -1003,3 +1003,186 @@ img.peca { user-select: none; pointer-events: none; }
 .membro .marca-aviso { grid-column: 1 / -1; }
 .membro-nome { grid-area: nome; font-size: 11px; font-weight: 500; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .membro-medida { grid-area: medida; font-size: 11px; color: var(--mais-suave); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- render e aprovacao (M7b, B5)
+   Lista por linhas, sem cartoes: cada formato numa faixa separada por fio. O detalhe a direita mostra a imagem com a
+   caixa de antes tracejada (cor de aviso) e a de depois cheia (o acento). Verde so para o aprovado. */
+.passo-formatos { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(380px, 0.85fr); }
+.painel-coluna { min-height: 0; overflow: auto; padding: 32px 40px 40px; }
+.painel-cabeca { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+.painel-titulo { min-width: 0; }
+.painel-titulo h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 6px; }
+.painel-acoes { display: flex; gap: 8px; flex: none; }
+.contagem-botao {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.08);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.botao-primario .contagem-botao { background: rgba(255, 255, 255, 0.18); }
+.painel-mensagem { margin: 0 0 16px; padding: 10px 12px; border-left: 2px solid var(--acento); background: var(--acento-fundo); border-radius: 0 var(--raio-p) var(--raio-p) 0; max-width: 80ch; animation: surgir 0.24s var(--curva); }
+.painel-mensagem[data-tipo="parou"], .painel-mensagem[data-tipo="cancelada"] { border-left-color: var(--aviso); background: var(--aviso-fundo); }
+.painel-mensagem[data-tipo="feita"] { border-left-color: #2f6b45; background: #edf5ef; }
+
+/* a tarefa em andamento: o texto do motor, a etapa e o formato, e a barra dos prontos */
+.tarefa { margin: 0 0 16px; padding: 12px 14px; background: var(--superficie); border: 1px solid var(--linha); border-radius: var(--raio); animation: surgir 0.24s var(--curva); }
+.tarefa-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tarefa-texto { font-weight: 600; }
+.tarefa-detalhe { margin-top: 6px; color: var(--suave); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tarefa-detalhe:empty { display: none; }
+.tarefa-trilho { position: relative; height: 4px; margin-top: 10px; border-radius: 999px; background: var(--linha); overflow: hidden; }
+.tarefa-barra { position: absolute; inset: 0; background: var(--tinta); transform-origin: 0 50%; transform: scaleX(0.02); transition: transform 0.5s var(--curva); }
+.tarefa-trilho.indeterminada .tarefa-barra { background: linear-gradient(90deg, var(--linha) 0%, var(--mais-suave) 50%, var(--linha) 100%); background-size: 200% 100%; animation: brilho 1.4s linear infinite; }
+
+/* as linhas dos formatos */
+.lista-formatos-topo { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; padding: 0 12px 8px; color: var(--mais-suave); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; border-bottom: 1px solid var(--linha); }
+.lista-formatos-topo span:first-child { grid-column: 2; }
+.lista-formatos { display: grid; }
+.linha-formato {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--linha);
+  animation: subir 0.35s var(--curva) both;
+  transition: background-color 0.2s var(--curva);
+}
+.linha-formato:hover { background: var(--superficie-2); }
+.linha-formato:has(.linha-abrir[aria-pressed="true"]) { background: var(--superficie); }
+.linha-formato:has(.linha-abrir[aria-pressed="true"])::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: var(--tinta); }
+.linha-marca { width: 15px; height: 15px; margin: 0; accent-color: var(--tinta); cursor: pointer; }
+.linha-marca:disabled { cursor: not-allowed; opacity: 0.35; }
+.linha-abrir { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 12px; padding: 2px 0; border: 0; background: transparent; text-align: left; cursor: pointer; min-width: 0; transition: transform 0.15s var(--curva); }
+.linha-abrir:active { transform: scale(0.99); }
+.linha-mini { display: grid; place-items: center; width: 36px; height: 28px; border-radius: 5px; background: var(--mesa); }
+.linha-forma { display: block; border: 1.5px solid var(--mais-suave); border-radius: 2px; background: var(--superficie); }
+.linha-textos { display: grid; gap: 2px; min-width: 0; }
+.linha-nome { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.linha-medida { font-weight: 600; font-variant-numeric: tabular-nums; }
+.linha-giro { color: var(--mais-suave); font-size: 12px; white-space: nowrap; }
+.linha-motivo { color: var(--suave); font-size: 12px; overflow-wrap: anywhere; }
+.conta-mudancas { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 999px; background: var(--acento-fundo); color: var(--acento); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.linha-marcas { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.painel-vazio { padding: 28px 0; display: grid; gap: 6px; color: var(--mais-suave); }
+
+/* a situacao: neutra no que ainda nao foi ao render, acento no render em dia, aviso no que caiu ou ficou velho */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--linha);
+  background: var(--superficie-2);
+  color: var(--suave);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.8; }
+.chip-renderizado { background: var(--acento-fundo); border-color: var(--acento-linha); color: var(--acento); }
+.chip-aprovado { background: #edf5ef; border-color: #cfe3d5; color: #2f6b45; }
+.chip-desatualizado, .chip-pede_render, .chip-aprovacao_caida { background: var(--aviso-fundo); border-color: #ecd2cd; color: var(--aviso); }
+.chip-sem_derivacao { color: var(--mais-suave); }
+.etiqueta-painel { font-size: 11px; color: var(--mais-suave); white-space: nowrap; }
+.etiqueta-painel.pede { color: var(--aviso); font-weight: 600; }
+.etiqueta-painel.pode { color: var(--acento); font-weight: 600; }
+
+/* o historico, so para leitura: uma linha do tempo discreta */
+.historico { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--linha); }
+.historico h2 { font-size: 12px; font-weight: 600; color: var(--suave); margin-bottom: 4px; }
+.historico-nota { font-size: 12px; margin-bottom: 12px; }
+.historico-versoes { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 1px solid var(--linha-forte); display: grid; gap: 12px; }
+.historico-versoes .vazio { color: var(--mais-suave); }
+.versao { position: relative; display: grid; gap: 1px; }
+.versao::before { content: ""; position: absolute; left: -18px; top: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--superficie); border: 1px solid var(--mais-suave); }
+.versao:first-child::before { background: var(--tinta); border-color: var(--tinta); }
+.versao-topo { display: flex; align-items: baseline; gap: 10px; }
+.versao-numero { font-weight: 600; font-variant-numeric: tabular-nums; }
+.versao-data, .versao-origem, .versao-formatos { color: var(--mais-suave); font-size: 12px; font-variant-numeric: tabular-nums; }
+.versao-formatos { color: var(--suave); }
+
+/* o detalhe do formato escolhido */
+.formato-detalhe { min-height: 0; overflow: auto; padding: 28px 24px 32px; background: var(--superficie); border-left: 1px solid var(--linha); display: flex; flex-direction: column; gap: 14px; }
+.detalhe-formato-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detalhe-formato-nome { font-size: 18px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.detalhe-giro { color: var(--mais-suave); font-size: 12px; }
+.detalhe-motivo { color: var(--tinta); max-width: 60ch; }
+.antes-depois { margin: 0; display: grid; gap: 8px; }
+.ad-quadro { position: relative; justify-self: start; overflow: hidden; border-radius: 4px; background-color: var(--mesa); background-image: radial-gradient(var(--ponto) 1px, transparent 1px); background-size: 12px 12px; box-shadow: 0 0 0 1px var(--linha), 0 10px 24px -16px rgba(24, 24, 27, 0.35); animation: entrar 0.3s var(--curva); }
+.ad-quadro.carregando { background-image: linear-gradient(90deg, var(--linha) 0%, var(--superficie-2) 50%, var(--linha) 100%); background-size: 200% 100%; animation: brilho 1.4s linear infinite; }
+.ad-imagem { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.ad-previa { position: absolute; left: 0; top: 0; box-shadow: none; }
+.ad-caixas { position: absolute; inset: 0; pointer-events: none; }
+.caixa-antes, .caixa-depois { position: absolute; border-radius: 1px; transition: opacity 0.2s var(--curva); }
+.caixa-antes { border: 1.5px dashed var(--aviso); background: rgba(155, 59, 46, 0.06); }
+.caixa-depois { border: 1.5px solid var(--acento); background: rgba(138, 90, 18, 0.1); }
+.ad-caixas:has(.realce) > :not(.realce) { opacity: 0.25; }
+.ad-legenda { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; color: var(--mais-suave); font-size: 12px; }
+.ad-origem { flex-basis: 100%; color: var(--suave); font-weight: 500; }
+.ad-antes, .ad-depois { display: inline-flex; align-items: center; gap: 6px; }
+.ad-antes::before, .ad-depois::before { content: ""; width: 14px; height: 9px; border-radius: 1px; }
+.ad-antes::before { border: 1.5px dashed var(--aviso); }
+.ad-depois::before { border: 1.5px solid var(--acento); }
+.mudou { padding-top: 14px; border-top: 1px solid var(--linha); }
+.mudou-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.mudou h3 { font-size: 12px; font-weight: 600; color: var(--suave); margin: 0; }
+.mudou-versao { color: var(--mais-suave); font-size: 12px; font-variant-numeric: tabular-nums; }
+.mudou-itens { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.mudou-item { padding-left: 2px; animation: subir 0.3s var(--curva) both; }
+.mudou-item::marker { color: var(--mais-suave); font-variant-numeric: tabular-nums; }
+.mudou-item[data-elemento] { border-radius: 4px; transition: background-color 0.2s var(--curva); }
+.mudou-item[data-elemento]:hover, .mudou-item[data-elemento]:focus-visible { background: var(--acento-fundo); }
+
+/* a janela de confirmacao com o que o ato mostra: os formatos do render e o arquivo final de cada formato a aprovar */
+.confirmacao.confirmacao-larga { width: min(760px, calc(100vw - 32px)); }
+.confirmacao-extra { margin-top: 16px; max-height: min(52vh, 440px); overflow: auto; }
+.formatos-do-ato { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.formatos-do-ato .chip::before { display: none; }
+.finais { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.final { margin: 0; display: grid; gap: 6px; }
+.final-caixa { display: grid; place-items: center; height: 148px; padding: 8px; border-radius: var(--raio-p); background: var(--mesa); }
+.final-caixa.carregando { background: linear-gradient(90deg, var(--linha) 0%, var(--superficie-2) 50%, var(--linha) 100%); background-size: 200% 100%; animation: brilho 1.4s linear infinite; }
+.final-caixa img { display: block; width: auto; height: auto; max-width: 100%; max-height: 132px; object-fit: contain; box-shadow: 0 1px 3px rgba(24, 24, 27, 0.2); }
+.confirmacao-larga .confirmacao-texto { max-width: 72ch; }
+.final-legenda { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; }
+.final-nome { font-weight: 600; font-variant-numeric: tabular-nums; }
+.final-tipo { color: var(--mais-suave); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+
+/* a janela do lado do giro: a figura mostra a peca deitada, a seta e a peca de pe com o topo marcado */
+.sentido-formatos { margin-top: 16px; display: grid; gap: 16px; }
+.sentido-nome { font-weight: 600; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.sentido-opcoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sentido-opcao {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s var(--curva), background-color 0.2s var(--curva), transform 0.15s var(--curva);
+}
+.sentido-opcao:hover { border-color: var(--mais-suave); }
+.sentido-opcao:active { transform: scale(0.98); }
+.sentido-opcao[aria-pressed="true"] { border-color: var(--tinta); background: var(--superficie-2); box-shadow: inset 0 0 0 1px var(--tinta); }
+.sentido-opcao-texto { color: var(--suave); font-size: 12px; max-width: 30ch; }
+.figura-giro .giro-peca { fill: var(--superficie); stroke: var(--tinta); stroke-width: 1.5; }
+.figura-giro .giro-topo { fill: var(--acento); }
+.figura-giro .giro-seta { fill: none; stroke: var(--tinta); stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+#sentido .botao[data-resposta="sim"]:disabled { cursor: not-allowed; opacity: 0.45; }
+
+@media (max-width: 1280px) {
+  .passo-formatos { grid-template-columns: minmax(0, 1fr) 400px; }
+  .painel-coluna { padding: 24px 24px 32px; }
+}

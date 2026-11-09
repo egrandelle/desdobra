@@ -21,13 +21,32 @@ Regras (cada uma com teste em testes/test_tela_servidor.py e testes/test_tela_es
     errado nao executam nada. No modo de teste (proposta do M7, 159c) o Disparo sai com meio medicao e origem
     fixture_de_teste, e o rascunho com origem fixture_de_teste; o modo de teste recusa o job com briefing ou rascunho
     do DA, e nenhum comando da CLI o abre;
+  - ato longo (Ato.longo; M7b, B1): o Confirmar emite o Disparo, pega a trava do job e responde 202 com o id da tarefa
+    (desdobra.tela.tarefas), que roda no fio de trabalho unico do servidor. A pagina acompanha por GET
+    /api/tarefa/<id> (etapa, formato, prontos, texto do motor) e cancela por POST /api/tarefa/cancelar, com as
+    mesmas conferencias da escrita. Enquanto a tarefa roda, /api/estado e o rascunho respondem sem montar a tela de
+    novo (o estado leva a tarefa e edicao_bloqueada), e a previa da edicao e os atos sao recusados (403,
+    tarefa_em_andamento). Na saida, parar() pede a parada da tarefa e espera no maximo tela.parar_max_s;
+  - ato com preparo (Ato.preparar; M7b, B2): o pedir responde 202 com a tarefa do preparo, que confere o que o ato vai
+    fazer fora da trava de escrita; o pedido de uso unico e o texto do dialogo saem na resposta da tarefa. Com
+    Ato.selo_por_formato, a confirmacao do DA emite um Disparo por formato, preso a ele (o render da tela). O aprovar da
+    tela (M7b, B4) usa o preparo para gerar o arquivo final de cada formato, que o servidor mostra por /final antes do
+    dialogo, e Ato.outros_comandos para gravar o sentido do giro com a mesma confirmacao (um Disparo do
+    parametros-entrega ao lado do Disparo do aprovar);
   - antes do roteamento, 404 para o caminho cru e o decodificado que citam .ttf .otf .ttc .woff .woff2 .psd .psb, sem
     diferenca de maiuscula, com ponto e espaco no fim e ::$DATA normalizados (decisoes-v1.md, proposta 167);
   - depois, Host igual a 127.0.0.1:<porta>, cliente 127.0.0.1, Origin ausente ou a propria, Sec-Fetch-Site ausente ou
     da mesma origem (contra pagina de outro site e DNS rebinding): fora disso, 403;
   - rotas explicitas (tabela em _rota): /entrar/<token>, /, /tela.js, /tela.css, /fontes.css, /controle,
-    /api/estado, /api/saude, /api/previa/<id>, /asset/<id> e /fonte/<id ou sha256>. Caminho fora da tabela, com
-    query, com % ou com barra a mais da 404;
+    /api/estado, /api/saude, /api/previa/<id>, /api/tarefa/<id> (so no servidor que grava, so JSON), /asset/<id>,
+    /fonte/<id ou sha256> e, so no servidor que grava, /render/<formato> e /final/<formato>. Caminho fora da tabela,
+    com query, com % ou com barra a mais da 404;
+  - rotas de imagem (M7b, B3): o id segue ID_PREVIA e e formato do briefing confirmado, e tudo e lido do disco so
+    depois do cookie. /render/<formato> serve render/<formato>/master.png quando o sha256 dos bytes lidos e o do
+    render.json do formato e do job; /final/<formato> serve entrega/previa/<formato>.<png ou jpg> quando o sha256 e o do
+    arquivo final que o portao gerou nesta janela (mostrar_final). So image/png e image/jpeg, conferidos pelos primeiros
+    bytes, e o caminho real nao pode sair do lugar dele no job (juncao ou link): fora disso, 404. Nunca servem
+    .trabalho, PDF, fonte nem pagina de texto;
   - /entrar/<token> vale uma vez so: vira o cookie HttpOnly SameSite=Strict e depois da 404. A resposta e 204, sem
     pagina: a navegacao nao se completa e a URL com o token nao entra no historico do perfil (proposta do M7, secao 3,
     linha Entrada); quem abre segue para / (desdobra.tela.processo). Toda outra rota, saude inclusive, exige o cookie,
@@ -47,6 +66,7 @@ terminal do Claude (DESPEJO_DE_MEMORIA em scripts/gancho_confirmacoes.py), e o r
 import hashlib
 import http.server
 import json
+import os
 import re
 import secrets
 import socket
@@ -65,11 +85,17 @@ METODOS = ('GET', 'POST')
 # /api/familia/previa nao grava: e a previa da edicao por familia (desdobra.tela.edicao), que passa pelas mesmas
 # conferencias da escrita porque leva as edicoes do DA no corpo
 ESCRITAS = {'/api/rascunho': 'rascunho', '/api/ato/pedir': 'ato_pedir', '/api/ato/confirmar': 'ato_confirmar',
-            '/api/ato/cancelar': 'ato_cancelar', '/api/familia/previa': 'familia_previa'}
+            '/api/ato/cancelar': 'ato_cancelar', '/api/familia/previa': 'familia_previa',
+            '/api/tarefa/cancelar': 'tarefa_cancelar'}
+# escritas recusadas enquanto uma tarefa longa roda (a edicao fica bloqueada; M7b, B1): a previa disputaria o fio do
+# HiGHS com o render (decisoes-v1.md, 172), e todo ato pega a trava do job, que fica com a tarefa
+BLOQUEADAS_NA_TAREFA = ('familia_previa', 'ato_pedir', 'ato_confirmar')
 CABECALHO_CSRF = 'X-Desdobra-CSRF'
 TIPOS_JSON = ('application/json', 'application/json;charset=utf-8')
 META_CSRF = '<meta name="dsd-csrf" content="%s">'
 RESPOSTA_CONFIRMAR = 'confirmar'
+# as chaves do dialogo de confirmacao, que so o servidor poe (o preparo de um ato nao as troca)
+CHAVES_DO_DIALOGO = ('pedido', 'titulo', 'texto', 'sim', 'nao')
 # a tela que nao conseguiu se montar de novo (_atualizar) avisa o DA no estado, e o aviso sai na proxima atualizacao
 # que der certo (revisao do M7a): nunca segue calada com o que tinha
 AVISO_JOB_OCUPADO = ('O job está ocupado com outra tarefa agora, e a tela ainda mostra o que tinha antes da sua última '
@@ -88,11 +114,16 @@ ID_FONTE = re.compile(r'^(?:f\d{2}|[0-9a-f]{64})$')
 ID_ASSET = re.compile(r'^a\d{3,4}$')
 ID_PREVIA = re.compile(r'^[a-z0-9][a-z0-9_-]*$')  # o id do formato do briefing (briefing-1.json, formatos.id)
 _TOKEN = re.compile(r'^[0-9a-f]+$')
+# as rotas de imagem do servidor que grava (M7b, B3): /render/<formato> (o master) e /final/<formato> (o arquivo final
+# que o portao gerou para a aprovacao). So estes dois tipos saem, e o conteudo e conferido pelos primeiros bytes
+ROTAS_DE_IMAGEM = ('render', 'final')
+MIME_IMAGEM = {'png': 'image/png', 'jpg': 'image/jpeg'}
+ASSINATURAS_IMAGEM = {'png': b'\x89PNG\r\n\x1a\n', 'jpg': b'\xff\xd8\xff'}  # numero-neutro: assinaturas dos formatos
 # contagem por rota servida; as recusas tem contagem propria
-ROTAS = ('entrar', 'pagina', 'estatico', 'controle', 'estado', 'saude', 'previa', 'asset', 'fonte', 'rascunho_lido') + \
-    tuple(ESCRITAS.values())
+ROTAS = ('entrar', 'pagina', 'estatico', 'controle', 'estado', 'saude', 'previa', 'asset', 'fonte', 'rascunho_lido',
+         'tarefa') + ROTAS_DE_IMAGEM + tuple(ESCRITAS.values())
 RECUSAS = ('proibido', 'nao_encontrado', 'sem_cookie', 'extensao_recusada', 'metodo_recusado', 'entrada_reusada',
-           'tipo_recusado', 'csrf_recusado', 'corpo_recusado', 'dado_recusado', 'erro_do_ato')
+           'tipo_recusado', 'csrf_recusado', 'corpo_recusado', 'dado_recusado', 'erro_do_ato', 'tarefa_em_andamento')
 MIME_JSON = 'application/json; charset=utf-8'
 DECODIFICACOES = 3  # numero-neutro: camadas de %-codificacao desfeitas na recusa por extensao (%252E e afins)
 
@@ -133,7 +164,18 @@ class Ato:
     """Um ato humano da tela: o comando humano (humano.COMANDOS ou humano.ATOS_DA_TELA) do Disparo, o texto do dialogo
     de confirmacao (do motor, nunca da pagina) e quem executa. executar(disparo, dados) -> dict da resposta;
     validar(dados) -> bool (sem ele, o ato nao aceita dados). texto pode ser uma funcao dos dados ja validados
-    (texto(dados) -> str), para o dialogo dizer o que sera gravado."""
+    (texto(dados) -> str), para o dialogo dizer o que sera gravado. longo: o ato roda como tarefa em segundo plano
+    (desdobra.tela.tarefas), com executar(disparo, dados, tarefa); formatos(dados) -> [ids] diz os formatos dela.
+    preparar(dados, tarefa) -> {'texto', 'vista', 'guardado'} (M7b, B2): o pedido nao monta o texto no fio do pedido
+    HTTP; ele vira uma tarefa (fio de trabalho, com a trava do job e fora da trava de escrita) que confere o que o ato
+    vai fazer e devolve o texto do dialogo, o que mais a pagina mostra nele (vista) e o que o servidor guarda no pedido
+    pendente (guardado, nunca enviado a pagina). O executar recebe preparado=<guardado> no Confirmar.
+    selo_por_formato: o Confirmar emite um Disparo por formato (humano.exigir_tela com alvo), e executar recebe
+    {formato: Disparo} no lugar do Disparo unico. O preparo pode devolver tambem 'finais' ({formato: ArquivoFinal}, M7b,
+    B4): o servidor os mostra na janela (/final/<formato>, mostrar_final) antes de abrir o dialogo.
+    outros_comandos(dados) -> [comandos] (M7b, B4; so em ato longo): a mesma confirmacao do DA emite tambem um Disparo
+    da tela de cada um desses comandos (o aprovar da tela grava o sentido do giro com o do parametros-entrega), e
+    executar recebe outros={comando: Disparo}; todos sao gastos quando a tarefa acaba."""
     comando: str
     titulo: str
     texto: str
@@ -141,6 +183,11 @@ class Ato:
     nao: str
     executar: Callable
     validar: Callable | None = None
+    longo: bool = False
+    formatos: Callable | None = None
+    preparar: Callable | None = None
+    selo_por_formato: bool = False
+    outros_comandos: Callable | None = None
 
 
 def _job_do_da(pasta):
@@ -231,6 +278,9 @@ class ServidorTela:
             humanos = humano.COMANDOS + humano.ATOS_DA_TELA
             if not ID_ATO.match(nome) or not isinstance(ato, Ato) or ato.comando not in humanos:
                 raise ValueError('ato fora do padrao')
+            if (ato.preparar is not None or ato.selo_por_formato or ato.outros_comandos is not None) and \
+                    not (ato.longo and callable(ato.formatos)):
+                raise ValueError('ato fora do padrao')  # o preparo e os selos a mais sao de ato longo
         self.pasta = Path(pasta).resolve() if pasta is not None else None
         self.modo_teste = bool(modo_teste)
         self.laudo_sha256 = None
@@ -240,6 +290,14 @@ class ServidorTela:
         self.corpo_max = int(limites.valor('tela.corpo_max_bytes'))
         self.espera_rascunho_ms = limites.valor('tela.rascunho_espera_ms')
         self._sessao_humana = None
+        # as tarefas longas (desdobra.tela.tarefas), so no servidor que grava; o aviso do render que a janela anterior
+        # deixou pela metade vem do processo de fundo (tarefas.recuperar, antes da montagem)
+        self.tarefas = None
+        self.render_inacabado = conteudo.get('render_inacabado')
+        self._tarefas_do_aviso = set()  # as tarefas que ja mexeram no aviso (_aviso_depois_da_tarefa)
+        self._recarregar_depois = False
+        # {formato: (sha256, extensao)} dos arquivos finais que o portao gerou nesta janela (mostrar_final; M7b, B3)
+        self._finais = {}
         if self.pasta is not None:
             self.laudo_sha256 = rascunho.laudo_sha256(self.pasta)
             self.job_id = (conteudo.get('estado') or {}).get('job_id')
@@ -249,6 +307,8 @@ class ServidorTela:
                 raise ValueError('o modo de teste da tela so roda em job sintetico')
             self.csrf = secrets.token_hex(16)  # numero-neutro: bytes de entropia do token CSRF
             self._sessao_humana = humano.abrir_sessao_tela(teste=self.modo_teste)
+            from desdobra.tela import tarefas
+            self.tarefas = tarefas.Tarefas(self.pasta)
         if '/' in self.estaticos:
             # o token CSRF vai so na pagina, na meta dsd-csrf (vazia no servidor so de leitura)
             pagina, tipo = self.estaticos['/']
@@ -259,7 +319,7 @@ class ServidorTela:
         self.marcador_controle = secrets.token_hex(32).encode('ascii')  # numero-neutro: bytes de entropia do marcador
         self.contagem = {k: 0 for k in ROTAS + RECUSAS}
         self._entrada_usada = False
-        self._pendente = None  # (pedido, nome do ato, dados) do unico ato a confirmar
+        self._pendente = None  # (pedido, nome do ato, dados, preparado) do unico ato a confirmar
         self._trava = threading.Lock()
         self._trava_escrita = threading.Lock()
         self._trava_previa = threading.Lock()
@@ -331,7 +391,79 @@ class ServidorTela:
             return 'fonte', self._fonte_por_rota[ident]
         if nome == 'asset' and ID_ASSET.match(ident) and ident in self.assets:
             return 'asset', self.assets[ident]
+        if nome in ROTAS_DE_IMAGEM and self.escreve and ID_PREVIA.match(ident):
+            return nome, lambda: self._imagem(nome, ident)  # o briefing e os bytes, so depois do cookie
         return None
+
+    # -------------------------------------------------------------- imagens (M7b, B3)
+    def mostrar_final(self, formato, final):
+        """O portao gerou o arquivo final do formato (desdobra.entrega.codificar.ArquivoFinal) e o gravou na previa
+        (entrega/previa/<formato>.<extensao>) para o DA conferir antes de aprovar: /final/<formato> passa a servir esse
+        arquivo, e so enquanto o sha256 dos bytes lidos for o dele. final None tira o formato da janela. ValueError no
+        servidor so de leitura, com id fora do padrao ou com extensao que nao e de imagem (so png e jpg)."""
+        if not self.escreve or not isinstance(formato, str) or not ID_PREVIA.match(formato):
+            raise ValueError('formato fora do padrao')
+        if final is not None and final.extensao not in MIME_IMAGEM:
+            raise ValueError('o arquivo final da tela e png ou jpg')
+        with self._trava:
+            if final is None:
+                self._finais.pop(formato, None)
+            else:
+                self._finais[formato] = (final.sha256, final.extensao)
+
+    def _ler_no_job(self, rel):
+        """Os bytes de <pasta do job>/<rel>, ou None quando o arquivo falta ou o caminho real sai dele (juncao ou link
+        de uma pasta para outra, dentro ou fora do job)."""
+        caminho = self.pasta / rel
+        try:
+            real = caminho.resolve(strict=True)
+            if os.path.normcase(str(real)) != os.path.normcase(str(caminho)) or not real.is_file():
+                return None
+            return real.read_bytes()
+        except (OSError, RuntimeError):
+            return None
+
+    def _imagem(self, nome, formato):
+        """(bytes, tipo) da rota de imagem, ou None (404). O formato tem de ser do briefing confirmado. /render: o
+        render/<formato>/master.png, com o render.json do formato e do job no esquema e o sha256 dos bytes lidos igual ao
+        do master dele. /final: o arquivo da previa que o portao mostrou nesta janela (mostrar_final), pelo sha256. Em
+        todos, os primeiros bytes tem de ser os do tipo (png ou jpg): nunca sai PDF, fonte nem pagina de texto. O caminho
+        nunca vem do arquivo lido: e montado do id conferido."""
+        from desdobra import arquivos, contratos
+        from desdobra.briefing import modelo
+        from desdobra.entrega import aprovacao
+        from desdobra.render import execucao
+        try:
+            b = modelo.ler(self.pasta)
+        except (contratos.ErroContrato, OSError, ValueError):
+            return None
+        if not b or formato not in {f.get('id') for f in b.get('formatos') or []}:
+            return None
+        if nome == 'render':
+            base = Path('render') / formato
+            bruto = self._ler_no_job(base / 'render.json')
+            if bruto is None:
+                return None
+            try:
+                rel = contratos.validar(json.loads(bruto.decode('utf-8')), execucao.ESQUEMA_RENDER)
+            except (UnicodeDecodeError, ValueError, contratos.ErroContrato):
+                return None
+            if rel.get('job_id') != self.job_id or (rel.get('formato') or {}).get('chave') != formato:
+                return None
+            esperado, extensao, arq = rel['master']['sha256'], 'png', base / 'master.png'
+        else:
+            with self._trava:
+                mostrado = self._finais.get(formato)
+            if mostrado is None:
+                return None
+            esperado, extensao = mostrado
+            arq = aprovacao.PASTA_PREVIA / ('%s.%s' % (formato, extensao))
+        dados = self._ler_no_job(arq)
+        if dados is None or arquivos.sha256_bytes(dados) != esperado:
+            return None
+        if not dados.startswith(ASSINATURAS_IMAGEM[extensao]):
+            return None
+        return dados, MIME_IMAGEM[extensao]
 
     def _previa(self, caminho):
         partes = caminho.split('/')
@@ -340,11 +472,67 @@ class ServidorTela:
             return 'previa', (json.dumps(d, ensure_ascii=False, default=str).encode('utf-8'), MIME_JSON)
         return None
 
+    def _tarefa(self, caminho):
+        """/api/tarefa/<id>: a vista da tarefa deste servidor, lida so depois do cookie."""
+        from desdobra.tela import tarefas
+        partes = caminho.split('/')
+        if self.tarefas is None or len(partes) != 4 or partes[1] != 'api' or partes[2] != 'tarefa':  # numero-neutro: /api/tarefa/<id>
+            return None
+        t = self.tarefas.obter(partes[3]) if tarefas.ID_TAREFA.match(partes[3]) else None
+        if t is None:
+            return None
+        return 'tarefa', lambda: (json.dumps(t.vista(), ensure_ascii=False, default=str).encode('utf-8'), MIME_JSON)
+
+    def bloqueada(self, chave):
+        """A escrita `chave` espera a tarefa longa acabar (a edicao fica bloqueada durante ela)."""
+        return chave in BLOQUEADAS_NA_TAREFA and self.tarefas is not None and self.tarefas.ocupada
+
     def _estado_servido(self):
         if self.escreve:
             with self._trava_escrita:
-                self._atualizar()
-        return json.dumps(self.estado, ensure_ascii=False, default=str).encode('utf-8'), MIME_JSON
+                # com a tarefa rodando, a trava do job e dela: a tela nao tenta se montar de novo (o aviso de job
+                # ocupado daria lugar ao trabalho em andamento) e responde ja com o que tem
+                if not self.tarefas.ocupada:
+                    self._aviso_depois_da_tarefa()
+                    self._depois_da_tarefa()
+                    self._atualizar()
+        return json.dumps(self._estado_com_tarefa(), ensure_ascii=False, default=str).encode('utf-8'), MIME_JSON
+
+    def _estado_com_tarefa(self):
+        """O estado servido: o da montagem, com a ultima tarefa (ou None), edicao_bloqueada e o aviso do render que a
+        janela anterior deixou pela metade (render_inacabado)."""
+        extra = {}
+        if self.tarefas is not None:
+            t = self.tarefas.ultima
+            extra['tarefa'] = t.vista() if t is not None else None
+            extra['edicao_bloqueada'] = self.tarefas.ocupada
+        if self.render_inacabado:
+            extra['render_inacabado'] = self.render_inacabado
+        return dict(self.estado, **extra) if extra else self.estado
+
+    def _aviso_depois_da_tarefa(self):
+        """O aviso da reabertura (render_inacabado) perde os formatos que as tarefas acabadas desde o ultimo pedido
+        refizeram nesta janela, uma vez por tarefa e na ordem delas (tarefas.aviso_depois_da_tarefa; segunda revisao do
+        M7b, fase B)."""
+        from desdobra.tela import tarefas
+        for t in self.tarefas.acabadas():
+            if t.id in self._tarefas_do_aviso:
+                continue
+            self._tarefas_do_aviso.add(t.id)
+            self.render_inacabado = tarefas.aviso_depois_da_tarefa(self.render_inacabado, t)
+
+    def _depois_da_tarefa(self):
+        """A primeira montagem depois de uma tarefa longa: o recarregar, como depois de todo ato. O erro deixa o aviso
+        e tenta de novo no proximo pedido."""
+        if not self._recarregar_depois or not callable(self.recarregar):
+            self._recarregar_depois = False
+            return
+        try:
+            self.estado = self.recarregar()
+        except Exception as e:  # noqa: BLE001 - job ocupado por outro comando: fica o estado de antes, com o aviso
+            self._avisar(AVISO_JOB_OCUPADO if getattr(e, 'motivo', None) == 'job_ocupado' else AVISO_SEM_ATUALIZAR)
+            return
+        self._recarregar_depois = False
 
     def _atualizar(self):
         """O passo 2 do rascunho mudou desde a montagem (conteudo atualizar): o conteudo e montado de novo e entra no
@@ -405,6 +593,8 @@ class ServidorTela:
         """(codigo, dict ou None) da escrita aceita, ou None quando recusada (403 sem detalhe)."""
         if chave == 'familia_previa':
             return self._previa_da_familia(dados)
+        if chave == 'tarefa_cancelar':
+            return self._cancelar_tarefa(dados)
         with self._trava_escrita:
             if chave == 'rascunho':
                 return self._gravar_rascunho(dados)
@@ -452,17 +642,101 @@ class ServidorTela:
         valido = ato.validar(dados['dados']) if ato.validar is not None else dados['dados'] == {}
         if valido is not True:
             return None
+        if ato.preparar is not None:
+            return self._preparar_ato(dados['ato'], ato, dados['dados'])
         pedido = secrets.token_hex(16)  # numero-neutro: bytes de entropia do pedido
-        self._pendente = (pedido, dados['ato'], dados['dados'])  # um pedido novo derruba o anterior
+        self._pendente = (pedido, dados['ato'], dados['dados'], None)  # um pedido novo derruba o anterior
         texto = ato.texto(dados['dados']) if callable(ato.texto) else ato.texto
         return 200, {'pedido': pedido, 'titulo': ato.titulo, 'texto': texto, 'sim': ato.sim,  # numero-neutro: codigo HTTP
                      'nao': ato.nao}
+
+    def _preparar_ato(self, nome, ato, dados):
+        """O pedido do ato com preparo (M7b, B2): o preparo roda como tarefa sem marcador (desdobra.tela.tarefas), com a
+        trava do job e fora da trava de escrita, e a resposta e 202 com o id dela. No fim, a tarefa leva na resposta o
+        pedido de uso unico e o texto do dialogo, como o pedido comum; o que o preparo guardou fica so no pedido
+        pendente. Job ocupado ou outra tarefa: recusa."""
+        from desdobra.job import nucleo
+        from desdobra.tela import tarefas
+        self._pendente = None  # um pedido novo derruba o anterior, mesmo antes de o preparo acabar
+
+        def rodar(tarefa):
+            preparo = ato.preparar(dados, tarefa)
+            if tarefa.parar():
+                return None
+            # o arquivo final de cada formato que o preparo gerou (o aprovar, M7b, B4): a janela o mostra por /final
+            for fid, final in (preparo.get('finais') or {}).items():
+                self.mostrar_final(fid, final)
+            pedido = secrets.token_hex(16)  # numero-neutro: bytes de entropia do pedido
+            with self._trava_escrita:
+                self._pendente = (pedido, nome, dados, preparo['guardado'])
+            vista = {k: v for k, v in (preparo.get('vista') or {}).items() if k not in CHAVES_DO_DIALOGO}
+            return dict(vista, pedido=pedido, titulo=ato.titulo, texto=preparo['texto'], sim=ato.sim, nao=ato.nao)
+        try:
+            t = self.tarefas.iniciar(tarefas.TAREFA_PREPARO, rodar, marcador=False)
+        except (tarefas.ErroTarefa, nucleo.ErroJob):
+            return None
+        return 202, {'tarefa': t.id}  # numero-neutro: codigo HTTP
 
     def _cancelar_ato(self, dados):
         if not isinstance(dados, dict) or set(dados) != {'pedido'} or not self._pedido_vivo(dados['pedido']):
             return None
         self._pendente = None
         return 204, None  # numero-neutro: codigo HTTP
+
+    def _cancelar_tarefa(self, dados):
+        """O DA cancelou a tarefa longa: a parada vale entre formatos e entre as etapas do render (o formato cortado
+        pede render de novo, os prontos ficam)."""
+        if not isinstance(dados, dict) or set(dados) != {'tarefa'} or not isinstance(dados['tarefa'], str):
+            return None
+        return (204, None) if self.tarefas.cancelar(dados['tarefa']) else None  # numero-neutro: codigo HTTP
+
+    def _iniciar_tarefa(self, nome, ato, dados, preparado=None):
+        """O ato longo confirmado: o Disparo e a trava do job vao para a tarefa, e a resposta e 202 com o id dela. Job
+        ocupado (outro comando do desdobra ou outra tarefa): recusa, com o Disparo gasto. Com selo_por_formato (M7b,
+        B2), a confirmacao do DA emite um Disparo por formato, preso a ele (humano.exigir_tela com alvo), e todos sao
+        gastos quando a tarefa acaba, usados ou nao."""
+        from desdobra import humano
+        from desdobra.job import nucleo
+        from desdobra.tela import tarefas
+        formatos = list(ato.formatos(dados)) if callable(ato.formatos) else []
+        outros_comandos = list(ato.outros_comandos(dados)) if callable(ato.outros_comandos) else []
+        selos, outros = [], {}
+        try:
+            if ato.selo_por_formato:
+                if not formatos or len(set(formatos)) != len(formatos):
+                    return None
+                for f in formatos:
+                    selos.append(humano.exigir_tela(ato.comando, self._sessao_humana, confirmado=True, alvo=f))
+                disparo = dict(zip(formatos, selos))
+            else:
+                selos.append(humano.exigir_tela(ato.comando, self._sessao_humana, confirmado=True))
+                disparo = selos[0]
+            # a mesma confirmacao do DA vale para os outros comandos do ato (M7b, B4: o sentido do giro no aprovar)
+            for c in dict.fromkeys(outros_comandos):
+                outros[c] = humano.exigir_tela(c, self._sessao_humana, confirmado=True)
+                selos.append(outros[c])
+        except (humano.ErroHumano, ValueError):
+            for d in selos:
+                humano.gastar(d)
+            return None
+        extra = {'preparado': preparado} if ato.preparar is not None else {}
+        if ato.outros_comandos is not None:
+            extra['outros'] = outros
+
+        def rodar(tarefa):
+            try:
+                return ato.executar(disparo, dados, tarefa, **extra)
+            finally:
+                for d in selos:
+                    humano.gastar(d)  # o selo de uso unico nunca passa da tarefa
+        try:
+            t = self.tarefas.iniciar(nome, rodar, formatos=formatos)
+        except (tarefas.ErroTarefa, nucleo.ErroJob):
+            for d in selos:
+                humano.gastar(d)
+            return None
+        self._recarregar_depois = True
+        return 202, {'tarefa': t.id}  # numero-neutro: codigo HTTP
 
     def _confirmar_ato(self, dados):
         from desdobra import humano
@@ -475,12 +749,15 @@ class ServidorTela:
         self._atualizar()
         if not self._pedido_vivo(dados['pedido']):
             return None
-        _pedido, nome, dados_ato = self._pendente
+        _pedido, nome, dados_ato, preparado = self._pendente
         self._pendente = None  # o pedido morre antes do ato
         ato = self.atos[nome]
-        # os dados valem de novo no Confirmar: o que mudou no disco depois do pedido nao ganha o clique do DA
+        # os dados valem de novo no Confirmar: o que mudou no disco depois do pedido nao ganha o clique do DA. O ato
+        # com preparo confere de novo, na tarefa, o que o preparo guardou (o contrato de cada formato, no render)
         if ato.validar is not None and ato.validar(dados_ato) is not True:
             return None
+        if ato.longo:
+            return self._iniciar_tarefa(nome, ato, dados_ato, preparado)
         try:
             disparo = humano.exigir_tela(ato.comando, self._sessao_humana, confirmado=True)
         except humano.ErroHumano:
@@ -585,6 +862,8 @@ class ServidorTela:
                     dados = json.loads(corpo.decode('utf-8'))
                 except (UnicodeDecodeError, ValueError):
                     return self._negar(403, 'dado_recusado')  # numero-neutro: codigo HTTP
+                if dono.bloqueada(chave):
+                    return self._negar(403, 'tarefa_em_andamento')  # numero-neutro: codigo HTTP
                 try:
                     feito = dono._escrever(chave, dados)
                 except Exception:  # noqa: BLE001 - erro do ato: 500 sem detalhe, nada impresso
@@ -628,14 +907,17 @@ class ServidorTela:
                     # de sessao (sem Max-Age, nunca gravado no disco) vale mesmo assim
                     return self._responder(204, extra=(  # numero-neutro: codigo HTTP
                         ('Set-Cookie', '%s=%s; HttpOnly; SameSite=Strict; Path=/' % (COOKIE, dono.sessao)),))
-                achado = dono._rota(alvo) or dono._previa(alvo)
+                achado = dono._rota(alvo) or dono._previa(alvo) or dono._tarefa(alvo)
                 if achado is None:
                     return self._negar(404, 'nao_encontrado')  # numero-neutro: codigo HTTP
                 # 5. o cookie da sessao: sem ele, 404 (a rota nao se revela)
                 if not self._cookie_ok():
                     return self._negar(404, 'sem_cookie')  # numero-neutro: codigo HTTP
                 chave, servido = achado
-                corpo, tipo = servido() if callable(servido) else servido
+                servido = servido() if callable(servido) else servido
+                if servido is None:  # a rota de imagem sem arquivo que confira (M7b, B3)
+                    return self._negar(404, 'nao_encontrado')  # numero-neutro: codigo HTTP
+                corpo, tipo = servido
                 dono._contar(chave)
                 cache = CACHE_CONTROLE if chave == 'controle' else 'no-store'
                 return self._responder(200, corpo, tipo, cache=cache)  # numero-neutro: codigo HTTP
@@ -656,6 +938,9 @@ class ServidorTela:
         sempre; aqui vira erro."""
         from desdobra import humano, limites
         preso = False
+        if self.tarefas is not None:
+            # a janela fechou com a tarefa no meio: parada em ordem, com teto (desdobra.tela.tarefas, fechar)
+            self.tarefas.fechar(float(limites.valor('tela.parar_max_s')))
         if self._srv is not None:
             srv, fio, self._srv = self._srv, self._fio, None
             srv._BaseServer__shutdown_request = True  # o mesmo que shutdown() faz, sem a espera sem teto

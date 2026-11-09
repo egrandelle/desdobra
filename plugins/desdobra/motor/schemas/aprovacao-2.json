@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:desdobra:schema:aprovacao:2",
   "title": "Aprovacao do DA por formato (aprovacao/2)",
-  "description": "briefing/aprovacao.json (arquitetura-v1.md, 5.4; decisoes-v1.md, 138), gravado so pelo DA. Um registro por formato aprovado: a impressao do formato (desdobra.derivacao.impressao; M7b, A2, no lugar do sha do briefing inteiro da aprovacao/1), os hashes do master, do render.json e do contrato, o sha256 do arquivo final que vai para o veiculo e os parametros do encoder. Mudar qualquer um derruba a aprovacao daquele formato. registro_sha256 e o sha256 do proprio registro sem esse campo (registro mexido a mao cai). O arquivo na aprovacao/1 ainda le, e o portao conta cada registro dele como aprovacao caida (aprovacao_antiga).",
+  "description": "briefing/aprovacao.json (arquitetura-v1.md, 5.4; decisoes-v1.md, 138), gravado so pelo DA. Um registro por formato aprovado: a impressao do formato (desdobra.derivacao.impressao; M7b, A2, no lugar do sha do briefing inteiro da aprovacao/1), os hashes do master, do render.json e do contrato, o sha256 do arquivo final que vai para o veiculo e os parametros do encoder. Mudar qualquer um derruba a aprovacao daquele formato. aprovado_por leva o meio e a origem do Disparo (M7b, B4: a tela grava meio tela; o modo de teste da tela, meio medicao e origem fixture_de_teste, que o portao da entrega recusa). registro_sha256 e o sha256 do proprio registro sem esse campo (registro mexido a mao cai). O arquivo na aprovacao/1 ainda le, e o portao conta cada registro dele como aprovacao caida (aprovacao_antiga).",
   "type": "object",
   "additionalProperties": false,
   "required": ["esquema", "job_id", "formatos"],
@@ -30,7 +30,8 @@
           "parametros_encoder": {"type": "object"},
           "aprovado_por": {"type": "object", "required": ["meio", "quando"],
                            "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
-                                          "meio": {"enum": ["terminal", "tela"]}, "quando": {"type": "string"}}},
+                                          "meio": {"enum": ["terminal", "tela", "medicao"]}, "quando": {"type": "string"},
+                                          "origem": {"enum": ["da", "fixture_de_teste"]}}},
           "registro_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
         }
       }

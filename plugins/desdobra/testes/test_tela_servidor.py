@@ -189,7 +189,9 @@ MATRIZ = ['/fonte/f01.ttf', '/x.ttf', '/x.TTF', '/x.otf', '/x.OtF', '/x.ttc', '/
           '/fonte%2Ff01', '/nao-existe', '/api', '/api/', '/api/previa/', '/api/previa/nao', '/asset/', '/asset/a002',
           '//api/estado', '/./api/estado', '/API/ESTADO', '/api/estado/', '/api/estado?x=1', '/fonte/f01%00',
           '/%2e%2e/estado.json', '/../estado.json', '/estado.json', '/entrar', '/entrar/', 'api/estado',
-          'http://127.0.0.1/api/estado', '/pagina', '/index.html']
+          'http://127.0.0.1/api/estado', '/pagina', '/index.html',
+          # as rotas de imagem (M7b, B3) so existem no servidor que grava
+          '/render/mesmo', '/final/mesmo', '/render/..', '/render/mesmo.pdf', '/final/mesmo.ttf']
 EXTENSOES = [c for c in MATRIZ if re.search(r'(?i)(ttf|otf|ttc|woff|psd|psb)', c)]
 
 
@@ -405,6 +407,8 @@ def test_gancho_deixa_o_claude_abrir_a_tela(ferramenta, comando):
     'python -c "import urllib.request as u; u.urlopen(\'http://127.0.0.1:%d/fonte/f01\' % p)"',
     'wget 127.0.0.1:8080/asset/a001',
     'curl http://127.0.0.1:8080/controle',
+    'curl http://127.0.0.1:51234/render/mesma -o m.png',
+    'Invoke-WebRequest http://localhost:5000/final/mesma',
     'dir %TEMP%\\dsd-tela-abc123',
     'Get-ChildItem $env:TEMP -Filter dsd-tela-*',
     'ls /tmp/dsd-tela-x/Default/Cookies',
