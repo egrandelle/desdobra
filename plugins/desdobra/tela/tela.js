@@ -1745,6 +1745,8 @@
           linha.appendChild(s);
         });
         if (ln.entrelinha) linha.dataset.entrelinha = String(ln.entrelinha);
+        /* a linha do texto editado que quebra na largura da caixa desce uma entrelinha, como no render */
+        if (p.texto_editado && ln.entrelinha) linha.style.lineHeight = ln.entrelinha + 'px';
         t.appendChild(linha);
       });
       textos.push({ no: t, peca: p, x: alvo[0] - p.recorte[0], y: alvo[1] - p.recorte[1], largura: alvo[2] - alvo[0] });

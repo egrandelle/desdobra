@@ -33,7 +33,7 @@ from desdobra.entrega import aprovacao, codificar, validar
 from desdobra.entrega import relatorio as mr
 
 JOB = 'j' * 32
-H = {'briefing_sha256': 'b' * 64, 'master_sha256': 'c' * 64, 'render_json_sha256': 'd' * 64, 'contrato_sha256': 'e' * 64}
+H = {'impressao_formato': 'b' * 64, 'master_sha256': 'c' * 64, 'render_json_sha256': 'd' * 64, 'contrato_sha256': 'e' * 64}
 CAMPOS_DE_LICENCA = ('canal', 'eula', 'kit_web', 'fstype', 'restricao', 'desktop', 'titular', 'usuarios', 'comprovante',
                      'licenca_')
 

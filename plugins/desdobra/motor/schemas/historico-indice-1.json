@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:historico-indice:1",
+  "title": "Indice do historico do briefing (historico-indice/1)",
+  "description": "briefing/historico/indice.json (M7b, A4; desdobra.briefing.historico): uma entrada por gravacao do briefing confirmado, em sequencia, com o sha do briefing antes e depois, o carimbo, a origem e o meio do cabecalho, os formatos afetados (null quando a gravacao nao os calculou) e o sha256 da entrada anterior (a cadeia). A cadeia mostra a ordem e pega a adulteracao ingenua (entrada apagada, trocada ou fora de ordem); ela nao prova quem gravou (risco 177): quem reescreve o indice inteiro passa. reiniciado_de: o nome do indice ilegivel guardado em briefing/historico/ quando a gravacao comecou um indice novo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "entradas"],
+  "properties": {
+    "esquema": {"const": "historico-indice/1"},
+    "reiniciado_de": {"type": "string", "pattern": "^indice-invalido-[0-9a-f]{64}\\.json$"},
+    "entradas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["seq", "quando", "origem", "meio", "sha_anterior", "sha_novo", "formatos_afetados", "sha_entrada_anterior"],
+        "properties": {
+          "seq": {"type": "integer", "minimum": 1},
+          "quando": {"type": "string", "minLength": 1},
+          "origem": {"type": ["string", "null"]},
+          "meio": {"type": ["string", "null"]},
+          "sha_anterior": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{64}$"}]},
+          "sha_novo": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "formatos_afetados": {"anyOf": [{"type": "null"}, {"type": "array", "items": {"type": "string"}}]},
+          "sha_entrada_anterior": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{64}$"}]}
+        }
+      }
+    }
+  }
+}

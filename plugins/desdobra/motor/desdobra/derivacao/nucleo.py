@@ -27,6 +27,7 @@ from desdobra.briefing import modelo as mb
 from desdobra.derivacao import elementos as mod_elementos
 from desdobra.derivacao import escala as mod_escala
 from desdobra.derivacao import formatos as mod_formatos
+from desdobra.derivacao import impressao as mod_impressao
 from desdobra.derivacao import quebras as mod_quebras
 from desdobra.derivacao import solver as mod_solver
 from desdobra.derivacao import validacao as mod_validacao
@@ -119,12 +120,14 @@ def _portao_fontes(pasta):
     return 'decisao_do_da' if codigos else 'passa'
 
 
-def preparar(pasta, partida=False):
+def preparar(pasta, partida=False, briefing=None):
     """Le e confere o que a derivacao precisa. Devolve o contexto, ou ErroDerivacao.
     partida: so para a tela (desdobra.tela.estado.montar). No job sem briefing confirmado (ou com o rascunho do motor
     no lugar dele), o contexto sai do briefing de partida em memoria (briefing.modelo.partida), sem conferencia: a tela
     mostra o que falta, e a derivacao gravada (derivar) continua pedindo o briefing confirmado. Com o briefing gravado
-    de outra versao dos arquivos do job, o contexto sai da retomada (briefing.modelo.retomada)."""
+    de outra versao dos arquivos do job, o contexto sai da retomada (briefing.modelo.retomada).
+    briefing: o briefing a conferir e derivar em memoria no lugar do gravado (o salvar seletivo, M7b A6, antes de
+    gravar); o briefing_sha256 do contexto fica vazio, porque o arquivo ainda nao existe."""
     from desdobra.job import fases as mod_fases
     from desdobra.job import nucleo
     pasta = Path(pasta).resolve()
@@ -136,8 +139,9 @@ def preparar(pasta, partida=False):
     if invalidas:
         raise ErroDerivacao('Fases desatualizadas: %s.' % ', '.join(invalidas), 'fases_desatualizadas',
                             {'fases': invalidas})
+    em_memoria = briefing is not None
     try:
-        briefing = mb.ler(pasta)
+        briefing = briefing if em_memoria else mb.ler(pasta)
     except contratos.ErroContrato as e:
         raise ErroDerivacao('O briefing não segue o contrato: %s' % e, 'briefing_invalido') from None
     if partida and (briefing is None or briefing['cabecalho']['origem'] == mb.ORIGEM_RASCUNHO or
@@ -168,7 +172,8 @@ def preparar(pasta, partida=False):
         from desdobra.derivacao import medida_quebras
         medidas = medida_quebras.medir(pasta, laudo, briefing, estado)
     return contexto(laudo, briefing, ds=ds, job_id=estado['job_id'], pasta=pasta,
-                    briefing_sha256=arquivos.sha256_arquivo(pasta / mb.ARQUIVO), portao_fontes=_portao_fontes(pasta),
+                    briefing_sha256=None if em_memoria else arquivos.sha256_arquivo(pasta / mb.ARQUIVO),
+                    portao_fontes=_portao_fontes(pasta),
                     medidas_quebras=medidas, da_tela=partida)
 
 
@@ -648,8 +653,11 @@ def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=N
                 return _formato_com_erro(ctx, kv, f, params, e)
         mod_proposta.aplicar(ctx, kv, resultados, derivar_um, specs=specs, arquivo_specs=arquivo_specs, params=params)
     inventario = _inventario(kv, resultados)
-    for d in resultados.values():
+    res = mod_impressao.resolvido(b, ctx['resolvidas'], specs)
+    for k, d in resultados.items():
         d['inventario_entre_formatos'] = 'igual' if inventario['iguais_entre_formatos'] else 'diferente'
+        # a impressao do formato (M7b, A2): a cadeia render, contrato, portao e aprovacao cai so no formato que mudou
+        d['impressao_formato'] = mod_impressao.impressao(d, res, k)
         contratos.validar(d, ESQUEMA)
     return {'formatos': resultados, 'devolucoes': _devolucoes(resultados), 'inventario': inventario, 'kv': kv}
 
@@ -685,15 +693,15 @@ def _formato_com_erro(ctx, kv, formato, params, erro):
 def derivar(pasta, so=None):
     """Deriva os formatos do briefing (ou so os ids de so). Grava derivacao/<id>.json e atualiza
     derivacao/devolucoes.json: com so, so as entradas desses formatos mudam, e o inventario e refeito com todos os
-    formatos do briefing que tem derivacao gravada deste briefing."""
+    formatos do briefing que tem derivacao gravada cuja impressao ainda confere com o briefing de agora (M7b, A3: a
+    derivacao guardada de antes de uma mudanca que nao mexeu no formato fica). O campo inventario_entre_formatos dos
+    formatos derivados agora sai desse inventario; o dos guardados fica o gravado (o arquivo deles nao muda)."""
     ctx = preparar(pasta)
     pasta = ctx['pasta']
     specs, arquivo_specs = mod_formatos.specs_do_job(pasta)
     r = derivar_em_memoria(ctx, specs=specs, arquivo_specs=arquivo_specs,
                            params=mod_formatos.parametros(pasta, ctx['briefing']), so=so)
-    (pasta / PASTA).mkdir(parents=True, exist_ok=True)
-    for k, d in r['formatos'].items():
-        contratos.gravar(pasta / PASTA / ('%s.json' % k), d, ESQUEMA)
+    res = mod_impressao.resolvido(ctx['briefing'], ctx['resolvidas'], specs)
     todos = {}
     for f in ctx['briefing']['formatos']:
         arq = pasta / PASTA / ('%s.json' % f['id'])
@@ -704,13 +712,34 @@ def derivar(pasta, so=None):
                 d = contratos.ler(arq, ESQUEMA)
             except contratos.ErroContrato:
                 continue
-            if d['briefing_sha256'] == ctx['briefing_sha256']:
+            if d.get('impressao_formato') == mod_impressao.impressao(d, res, f['id']):
                 todos[f['id']] = d
     inventario = _inventario(r['kv'], todos)
+    (pasta / PASTA).mkdir(parents=True, exist_ok=True)
+    for k, d in r['formatos'].items():
+        d['inventario_entre_formatos'] = 'igual' if inventario['iguais_entre_formatos'] else 'diferente'
+        contratos.gravar(pasta / PASTA / ('%s.json' % k), d, ESQUEMA)
     dev = {'esquema': ESQUEMA_DEVOLUCOES, 'job_id': ctx['estado']['job_id'], 'gerado_em': agora(),
            'briefing_sha256': ctx['briefing_sha256'], 'devolucoes': _devolucoes(todos), 'inventario': inventario}
     contratos.gravar(pasta / ARQUIVO_DEVOLUCOES, dev, ESQUEMA_DEVOLUCOES)
     return dict(r, devolucoes=dev['devolucoes'], inventario=inventario)
+
+
+def impressao_de_agora(pasta, d, briefing=None):
+    """A impressao do formato gravado d (derivacao/1) com o briefing, o laudo e as folhas de spec do job de agora
+    (desdobra.derivacao.impressao): igual a d['impressao_formato'] quando nada que alimenta o formato mudou. None quando
+    o formato saiu do briefing ou falta o que ler."""
+    pasta = Path(pasta)
+    try:
+        briefing = mb.ler(pasta) if briefing is None else briefing
+        if briefing is None or not any(f['id'] == d['formato']['id'] for f in briefing['formatos']):
+            return None
+        laudo = contratos.ler(pasta / mb.ARQUIVO_LAUDO, 'laudo/1')
+        specs, _arq = mod_formatos.specs_do_job(pasta)
+    except (contratos.ErroContrato, mod_formatos.ErroFormatos):
+        return None
+    resolvidas, _e, _i = mb.resolver(laudo, briefing)
+    return mod_impressao.impressao(d, mod_impressao.resolvido(briefing, resolvidas, specs), d['formato']['id'])
 
 
 def conferir_layout(pasta, formato):

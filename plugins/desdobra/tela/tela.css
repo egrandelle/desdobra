@@ -920,7 +920,8 @@ img.peca { user-select: none; pointer-events: none; }
 .alca[data-canto="ne"], .alca[data-canto="sw"] { cursor: nesw-resize; }
 .recorte { will-change: auto; }
 .guia { position: absolute; background: var(--acento); opacity: 0.75; pointer-events: none; animation: entrar 0.12s var(--curva); }
-.texto.editado, .texto.editado .linha { white-space: pre-wrap; overflow-wrap: break-word; }
+/* o texto editado quebra so no espaco, na largura da caixa, como o render (render/texto.py, quebras_da_caixa) */
+.texto.editado, .texto.editado .linha { white-space: pre-wrap; }
 .selo-confirmada { background: #edf5ef; border-color: #cfe3d5; color: #2f6b45; }
 .barra-edicao {
   display: grid;

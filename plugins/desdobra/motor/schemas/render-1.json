@@ -41,13 +41,14 @@
     "curva": {"type": ["object", "null"]},
     "conversao_cor": {"type": ["object", "null"]},
     "entradas": {"type": "array"},
-    "textos": {"type": "object", "required": ["camadas", "sharp_pequeno", "paginas_pdf"]},
+    "textos": {"type": "object", "required": ["camadas", "sharp_pequeno", "paginas_pdf"], "properties": {"editados": {"type": "array", "description": "Formato derivado (M7b, A7): o texto editado pelo DA na tela, com as linhas que o render desenhou (as do DA e as quebras na largura da caixa)", "items": {"type": "object", "required": ["entrada", "layer_id", "elemento", "linhas"], "properties": {"entrada": {"type": "string"}, "layer_id": {"type": "integer"}, "elemento": {"type": ["string", "null"]}, "linhas": {"type": "array", "items": {"type": "string"}}}}}}},
     "recursos": {"type": "object"},
     "tempos": {"type": "object"},
     "tempo_s": {"type": "number", "minimum": 0},
     "derivacao": {"type": "object", "required": ["arquivo", "sha256", "caminho", "briefing_sha256", "briefing_origem"],
-                  "description": "Formato derivado (M5): a derivacao usada, com o sha256, o caminho, a mestre e o briefing (com a origem; o entregar recusa fixture_de_teste)",
+                  "description": "Formato derivado (M5): a derivacao usada, com o sha256 do arquivo, a impressao do formato (M7b, A2: o que o portao e a aprovacao comparam; fora do required, o render.json de antes cai no portao como master_de_outra_impressao), o caminho, a mestre e o briefing (so registro, com a origem; o entregar recusa fixture_de_teste)",
                   "properties": {"arquivo": {"type": "string"}, "sha256": {"type": ["string", "null"]}, "caminho": {"type": "string"},
+                                 "impressao_formato": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
                                  "briefing_sha256": {"type": "string"}, "briefing_origem": {"enum": ["da", "fixture_de_teste"]},
                                  "mestre": {"type": ["string", "null"]}}}
   }

@@ -35,7 +35,7 @@ FRASE_RESPONSABILIDADE = ('Toda fonte enviada pela agência é tratada como font
                           'é só registro: não bloqueia, não avisa e não libera o job, e não é parecer jurídico.')
 # os limites que a entrega cita alem dos entrega.* (o perfil embutido, nº 140)
 LIMITES_EXTRA = ('cor.saida_perfil_embutido',)
-HASHES = ('briefing_sha256', 'master_sha256', 'render_json_sha256', 'contrato_sha256')
+HASHES = ('impressao_formato', 'master_sha256', 'render_json_sha256', 'contrato_sha256')  # os de aprovacao.HASHES
 
 
 def citacoes_da_entrega():

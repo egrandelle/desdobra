@@ -53,7 +53,7 @@ def _do_aprovar():
 
 
 def _atual(**troca):
-    a = {'briefing_sha256': '1' * 64, 'master_sha256': '2' * 64, 'render_json_sha256': '3' * 64,
+    a = {'impressao_formato': '1' * 64, 'master_sha256': '2' * 64, 'render_json_sha256': '3' * 64,
          'contrato_sha256': '4' * 64}
     a.update(troca)
     return a
@@ -152,13 +152,13 @@ def test_o_encoder_nao_inventa_arquivo_sem_job(tmp_path):
 # ------------------------------------------------------------------ queda da aprovacao
 def test_registro_vale_e_segue_o_contrato():
     reg = aprovacao.registro('perto', JOB, _atual(), _final(), _do_aprovar())
-    contratos.validar({'esquema': 'aprovacao/1', 'job_id': JOB, 'formatos': {'perto': reg}}, 'aprovacao/1')
+    contratos.validar({'esquema': 'aprovacao/2', 'job_id': JOB, 'formatos': {'perto': reg}}, 'aprovacao/2')
     assert aprovacao.diferencas(reg, JOB, _atual(), _final()) == []
     assert reg['arquivo_entregue']['sha256'] == arquivos.sha256_bytes(b'arquivo-final-sintetico')
 
 
 MUTACOES = [
-    ('briefing', {'atual': _atual(briefing_sha256='9' * 64)}, ['briefing_sha256']),
+    ('impressao', {'atual': _atual(impressao_formato='9' * 64)}, ['impressao_formato']),
     ('master', {'atual': _atual(master_sha256='9' * 64)}, ['master_sha256']),
     ('render_json', {'atual': _atual(render_json_sha256='9' * 64)}, ['render_json_sha256']),
     ('contrato', {'atual': _atual(contrato_sha256='9' * 64)}, ['contrato_sha256']),
@@ -228,9 +228,13 @@ def test_gravar_so_com_o_disparo_do_aprovar_e_um_registro_por_formato(tmp_path, 
 def test_aprovacao_ausente_de_outro_job_ou_invalida_recusa():
     f = portao._conferir_aprovacao
     assert [x['codigo'] for x in f(None, None, 'a', JOB, _atual(), None)] == ['sem_aprovacao']
-    aprov = {'job_id': 'b' * 32, 'formatos': {'a': aprovacao.registro('a', 'b' * 32, _atual(), _final(), _do_aprovar())}}
+    aprov = {'esquema': aprovacao.ESQUEMA, 'job_id': 'b' * 32,
+             'formatos': {'a': aprovacao.registro('a', 'b' * 32, _atual(), _final(), _do_aprovar())}}
     assert [x['codigo'] for x in f(aprov, None, 'a', JOB, _atual(), None)] == ['aprovacao_de_outro_job']
     assert [x['codigo'] for x in f(aprov, None, 'outro', JOB, _atual(), None)] == ['sem_aprovacao']
+    # a aprovacao/1 (sha do briefing inteiro, antes do M7b) cai com o motivo dela, sem olhar os campos
+    antiga = dict(aprov, esquema=aprovacao.ESQUEMA_ANTIGO, job_id=JOB)
+    assert [x['codigo'] for x in f(antiga, None, 'a', JOB, _atual(), None)] == ['aprovacao_antiga']
     erro = portao._falha('aprovacao_invalida')
     assert f(None, erro, 'a', JOB, _atual(), None) == [erro]
 

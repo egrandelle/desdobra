@@ -41,7 +41,8 @@
                      "laudo_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
                      "conferencia_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
                      "linkados_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
-                     "derivacao_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}], "description": "Formato derivado (M5): sha256 de derivacao/<formato>.json"},
+                     "derivacao_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}], "description": "Formato derivado (M5, antes do M7b): sha256 de derivacao/<formato>.json. O motor nao grava mais (o carimbo do arquivo mudava o contrato a cada derivar)"},
+                     "derivacao_impressao": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}], "description": "Formato derivado (M7b, A2): a impressao_formato de derivacao/<formato>.json (desdobra.derivacao.impressao), sem o carimbo"},
                      "funcoes": {"enum": ["identidade", "derivacao", "autoteste"]}}
     },
     "faces": {
@@ -72,7 +73,7 @@
           "corpo_dispositivo_px": {"type": "number"}, "sharp_pequeno": {"type": "boolean"},
           "quebras_juntadas": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Formato derivado (M5): posicoes de quebra gravada que viram espaco (quebras aprovadas por familia)"},
           "quebras_inseridas": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Formato derivado (M5): posicoes de espaco que viram quebra (mestre propria)"},
-          "caixa_validada": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4, "description": "Formato derivado (M5): a caixa do texto que a derivacao validou, no formato; o render confere a tinta contra ela"},
+          "caixa_validada": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4, "description": "Formato derivado (M5): a caixa do texto que a derivacao validou, no formato; o render confere a tinta contra ela"}, "texto_editado": {"type": "boolean", "description": "Formato derivado (M7b, A7): o texto editado pelo DA na tela, num trecho so; a caixa validada e a regiao sao o formato inteiro, e tinta na borda dele e corte"}, "largura_quebra": {"type": "number", "exclusiveMinimum": 0, "description": "Formato derivado (M7b, A7): a largura, no espaco do texto, em que o render quebra o texto editado no espaco (a da caixa de tinta da camada, como a previa da tela)"},
           "arquivo": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"},
           "colocacao": {"type": ["array", "null"], "items": {"type": "number"}}, "caixa": {"type": ["array", "null"]},
           "elemento": {"type": "string", "pattern": "^el[0-9]+$", "description": "Formato derivado (M5): o elemento da derivacao"},

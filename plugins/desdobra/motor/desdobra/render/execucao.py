@@ -506,15 +506,23 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
         'entradas': saida.get('entradas') or [],
         'textos': {'camadas': sum(1 for e in contrato['entradas'] if e['tipo'] == 'texto'),
                    'sharp_pequeno': sum(1 for e in contrato['entradas'] if e['tipo'] == 'texto' and e['sharp_pequeno']),
-                   'paginas_pdf': len(paginas)},
+                   'paginas_pdf': len(paginas),
+                   # o texto editado pelo DA (M7b, A7): as linhas que o render desenhou, com as quebras da medida
+                   'editados': [{'entrada': e['id'], 'layer_id': e['layer_id'], 'elemento': e.get('elemento'),
+                                 'linhas': mod_texto.linhas_desenhadas(e)}
+                                for e in contrato['entradas'] if e['tipo'] == 'texto' and e.get('texto_editado')]},
         'recursos': {'pico_bytes_composicao': pico},
         'tempos': dict(tempos, filho=saida.get('tempos')), 'tempo_s': round(time.perf_counter() - t0, 3),
     }
     if formato != mod_contrato.FORMATO_ORIGEM:
         from desdobra.derivacao import nucleo as nd
-        d = contratos.ler(pasta / nd.PASTA / ('%s.json' % formato), nd.ESQUEMA)
+        arq_d = pasta / nd.PASTA / ('%s.json' % formato)
+        d = contratos.ler(arq_d, nd.ESQUEMA)
+        # impressao_formato: a do contrato, que e o que o portao e a aprovacao comparam (M7b, A2); o sha do arquivo e o
+        # do briefing ficam como registro
         rel['derivacao'] = {'arquivo': '%s/%s.json' % (nd.PASTA.as_posix(), formato),
-                            'sha256': contrato['origem'].get('derivacao_sha256'), 'caminho': d['caminho'],
+                            'sha256': arquivos.sha256_arquivo(arq_d), 'caminho': d['caminho'],
+                            'impressao_formato': contrato['origem'].get('derivacao_impressao'),
                             'briefing_sha256': d['briefing_sha256'], 'briefing_origem': d['briefing_origem'],
                             'mestre': (d.get('mestre') or {}).get('id')}
     if fora or pdfs_job:

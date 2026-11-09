@@ -101,6 +101,14 @@ def linhas_da_camada(texto, quebras=(), juntar=()):
     return saida
 
 
+def linhas_desenhadas(entrada):
+    """O texto de cada linha da entrada como o render a desenha (as quebras gravadas, as automaticas medidas, as
+    inseridas e as juntadas), para o registro no render.json."""
+    quebras = set(entrada.get('quebras_automaticas') or ()) | set(entrada.get('quebras_inseridas') or ())
+    return [''.join(s for s, _r in ln['pedacos'])
+            for ln in linhas_da_camada(entrada['texto'], quebras, entrada.get('quebras_juntadas'))]
+
+
 def caixa_alta(s):
     """Caixa alta caractere a caractere, sem mudar o tamanho do texto (o mapa de posicoes depende disso)."""
     return ''.join(c.upper() if len(c.upper()) == 1 else c for c in s)
@@ -128,13 +136,25 @@ def eh_caixa_de_paragrafo(t):
     return t.get('tipo_caixa') == 'paragrafo' and bool(caixa) and len(caixa) == 4  # numero-neutro: [esquerda, topo, direita, base]
 
 
-def quebras_da_caixa(entrada, posicoes, faces_por_ps):
-    """Quebras automaticas da caixa de paragrafo: em cada linha medida, a ultima posicao de espaco antes de o texto
-    passar da largura da caixa vira fim de linha (como o Photoshop quebra, pela palavra). posicoes: as do Chromium na
-    pagina de medida, com as quebras que ja havia. Devolve a lista ordenada de posicoes no texto."""
+def largura_da_quebra(entrada):
+    """A largura em que o texto da entrada quebra no espaco, no espaco do texto, ou None: a do texto editado pelo DA
+    (largura_quebra, a da caixa de tinta da camada, como a previa da tela) ou a da caixa de paragrafo."""
+    if entrada.get('largura_quebra') is not None:
+        return float(entrada['largura_quebra'])
     t = entrada['texto']
-    esq, _topo, dir_, _base = (float(x) for x in t['box_bounds'])
-    largura = dir_ - esq
+    if eh_caixa_de_paragrafo(t):
+        esq, _topo, dir_, _base = (float(x) for x in t['box_bounds'])
+        return dir_ - esq
+    return None
+
+
+def quebras_da_caixa(entrada, posicoes, faces_por_ps):
+    """Quebras automaticas da caixa de paragrafo (ou do texto editado, M7b A7): em cada linha medida, a ultima
+    posicao de espaco antes de o texto passar da largura da quebra vira fim de linha (como o Photoshop quebra, pela
+    palavra). posicoes: as do Chromium na pagina de medida, com as quebras que ja havia. Devolve a lista ordenada de
+    posicoes no texto."""
+    t = entrada['texto']
+    largura = largura_da_quebra(entrada)
     quebras = set(entrada.get('quebras_automaticas') or ())
     for n, ln in enumerate(linhas_da_camada(t, quebras | set(entrada.get('quebras_inseridas') or ()),
                                              entrada.get('quebras_juntadas'))):
@@ -328,8 +348,9 @@ def paginas_da_entrada(entrada, faces_por_ps, faces, prefixo):
     largura, altura = _tamanho_da_pagina(entrada)
     css = _css_da_entrada(faces_por_ps, faces, prefixo)
     svg, spans, _linhas = montar_svg(entrada, faces_por_ps, prefixo)
-    if eh_caixa_de_paragrafo(entrada['texto']) and entrada.get('quebras_automaticas') is None:
-        # caixa de paragrafo: primeiro mede as linhas sem a quebra automatica; as quebras saem de quebras_da_caixa
+    if largura_da_quebra(entrada) is not None and entrada.get('quebras_automaticas') is None:
+        # caixa de paragrafo ou texto editado: primeiro mede as linhas sem a quebra automatica; as quebras saem de
+        # quebras_da_caixa
         return [{'id': '%s_quebra' % entrada['id'], 'cor': None, 'largura': largura, 'altura': altura,
                  'html': pagina(svg, largura, altura, css), 'spans': spans, 'pdf': False, 'posicoes': True,
                  'quebra': True, 'entrada': entrada['id']}]

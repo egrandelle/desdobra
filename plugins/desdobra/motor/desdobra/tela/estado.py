@@ -1045,11 +1045,14 @@ def avisos_de_retomada(pasta, gravado):
 
 def _avisos_do_job(pasta):
     from desdobra import contratos
+    from desdobra.briefing import historico
     from desdobra.briefing import modelo as mb
     try:
-        return avisos_de_retomada(pasta, mb.ler(pasta))
+        retomada = avisos_de_retomada(pasta, mb.ler(pasta))
     except contratos.ErroContrato:
-        return []
+        retomada = []
+    # o indice do historico mexido fora do desdobra (M7b, A4): so a adulteracao ingenua, risco 177 continua
+    return retomada + historico.avisos(pasta)
 
 
 def com_o_passo_1_do_rascunho(pasta, ctx):

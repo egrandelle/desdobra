@@ -5,9 +5,10 @@ na hora, briefing de teste, derivacao e render de dois formatos.
 Criterios de pronto cobertos aqui (arquitetura-v1.md, 9.7):
   - o fluxo do M5 com briefing de origem fixture de teste (e o rascunho) e recusado pelo entregar em 100% dos formatos;
   - arquivo velho ou trocado e detectado em 100% dos casos de mutacao: masters trocados, render.json trocado, 1 pixel
-    mudado, master velho depois de mudar o briefing, formato de outro KV, contrato mexido, derivacao mexida;
-  - a aprovacao anterior cai quando o master, o render.json, o briefing, o contrato, o arquivo final ou os parametros
-    do encoder mudam, e o resultado diz o campo por formato (nº 138); aprovacao mexida a mao, copiada de outro job e de
+    mudado, master velho depois de mudar a funcao de uma camada dos formatos (a impressao, M7b; o briefing mudado
+    fora dos formatos nao derruba), formato de outro KV, contrato mexido, derivacao mexida;
+  - a aprovacao anterior cai quando o master, o render.json, a impressao do formato, o contrato, o arquivo final ou
+    os parametros do encoder mudam, e o resultado diz o campo por formato (nº 138); aprovacao mexida a mao, copiada de outro job e de
     formato que nao existe mais;
   - entrega de verdade (bloco 3): com folha confirmada sintetica, o entregar roteia pela validacao final (o formato com
     teto condicional sem a escolha do DA vai para reprovados com a regra e a sugestao, nº 137; o aprovado fica abaixo
@@ -63,6 +64,15 @@ def _mudar_briefing(job, **cabecalho):
                              'confirmada': True,
                              'confirmacao': {'origem': 'da', 'meio': 'tela', 'em': '2026-11-05T10:00:00'}}
                             for f in b['formatos']]
+    contratos.gravar(job / mb.ARQUIVO, b, 'briefing/1')
+
+
+def _mudar_funcao(job):
+    """A funcao do texto de apoio muda (mesma ancora e mesma regra): a impressao dos formatos que tem a camada muda."""
+    laudo = contratos.ler(job / mb.ARQUIVO_LAUDO, 'laudo/1')
+    lid = next(c['identidade']['layer_id'] for c in laudo['camadas'] if c['nome'] == 'texto-apoio')
+    b = contratos.ler(job / mb.ARQUIVO, 'briefing/1')
+    next(x for x in b['funcoes'] if x['layer_id'] == lid)['funcao'] = ap.decisao('informacao_de_evento')
     contratos.gravar(job / mb.ARQUIVO, b, 'briefing/1')
 
 
@@ -220,12 +230,14 @@ MUTACOES_PORTAO = [
     ('masters_trocados', _trocar_masters, {'mesma': 'master_diferente_do_render', 'perto': 'master_diferente_do_render'}),
     ('render_json_trocado', _trocar_render_json, {'mesma': 'render_de_outro_formato', 'perto': 'render_de_outro_formato'}),
     ('um_pixel', lambda j: _pixel(j, 'perto'), {'perto': 'master_diferente_do_render'}),
-    ('master_velho_depois_do_briefing', lambda j: _mudar_briefing(j, quando='2026-11-04T11:00:00-03:00'),
-     {'mesma': 'master_de_outro_briefing', 'perto': 'master_de_outro_briefing'}),
+    ('master_velho_depois_da_funcao', lambda j: _mudar_funcao(j),
+     {'mesma': 'master_de_outra_impressao', 'perto': 'master_de_outra_impressao'}),
+    # o briefing que muda fora do que alimenta os formatos (o carimbo do cabecalho) nao derruba nenhum (M7b, A2)
+    ('briefing_mudado_fora_dos_formatos', lambda j: _mudar_briefing(j, quando='2026-11-04T11:00:00-03:00'), {}),
     ('formato_de_outro_kv', _outro_kv, {'perto': 'master_de_outro_kv'}),
     ('contrato_mexido', _contrato_mexido, {'perto': 'contrato_diferente_do_render'}),
     ('contrato_mexido_coerente', _contrato_mexido_coerente, {'perto': 'contrato_desatualizado'}),
-    ('derivacao_mexida', _derivacao_mexida, {'perto': 'contrato_desatualizado'}),
+    ('derivacao_mexida', _derivacao_mexida, {'perto': 'master_de_outra_impressao'}),
     ('sem_master', _sem_master, {'perto': 'sem_master'}),
     ('render_de_outro_job', _render_de_outro_job, {'perto': 'render_de_outro_job'}),
 ]
@@ -308,7 +320,7 @@ def test_aprovar_grava_um_registro_por_formato_e_o_portao_abre(copia, pessoa, mo
         reg = dados['formatos'][fid]
         master = copia / 'render' / fid / 'master.png'
         assert reg['master_sha256'] == arquivos.sha256_arquivo(master) == reg['arquivo_entregue']['sha256']
-        assert reg['briefing_sha256'] == arquivos.sha256_arquivo(copia / mb.ARQUIVO)
+        assert reg['impressao_formato'] == arquivos.ler_json(copia / 'derivacao' / ('%s.json' % fid))['impressao_formato']
         assert reg['parametros_encoder'] == {'qualidade': 90, 'tipo': 'png'}
         assert (copia / aprovacao.PASTA_PREVIA / ('%s.png' % fid)).read_bytes() == master.read_bytes()
     conf = portao.conferir(copia)
@@ -350,8 +362,7 @@ MUTACOES_APROVACAO = [
     ('master', _master_novo, None, 'aprovacao_caiu', {'master_sha256', 'render_json_sha256', 'arquivo_entregue_sha256'}),
     ('render_json', lambda j: _gravar_render(j, 'perto', lambda rel: rel.update(gerado_em='2026-11-04T12:00:00-03:00')),
      None, 'aprovacao_caiu', {'render_json_sha256'}),
-    ('briefing', lambda j: _mudar_briefing(j, quando='2026-11-04T11:00:00-03:00'), None, 'aprovacao_caiu',
-     {'briefing_sha256'}),
+    ('funcao', _mudar_funcao, None, 'aprovacao_caiu', {'impressao_formato'}),
     ('contrato', _contrato_mexido_coerente, None, 'aprovacao_caiu', {'contrato_sha256', 'render_json_sha256'}),
     ('parametros_encoder', None, _encoder_de_teste(qualidade=80), 'aprovacao_caiu', {'parametros_encoder.qualidade'}),
     ('arquivo_final', None, _encoder_de_teste(sufixo=b'x'), 'aprovacao_caiu', {'arquivo_entregue_sha256'}),

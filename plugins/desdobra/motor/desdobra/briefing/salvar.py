@@ -32,6 +32,8 @@ ORIGEM_FIXTURE = 'fixture_de_teste'
 REF_RASCUNHO = 'rascunho da tela'
 REF_MODO = 'briefing/modo-dados.json'
 CAMPOS_DO_RASCUNHO = ('funcoes', 'cobertas', 'regras_escala', 'regras_indeterminado', 'ancoras')
+PASTA_MUDANCAS = Path('briefing') / 'historico' / 'mudancas'
+ESQUEMA_MUDANCAS = 'historico-mudancas/1'
 
 
 class ErroSalvar(Exception):
@@ -212,15 +214,90 @@ def _salvar(pasta, conteudo, disparo):
     contratos.validar(b, mb.ESQUEMA)
     derivado, motivo, devolucoes = True, None, None
     with nucleo.Trava(pasta):
-        guardada = mb.gravar_com_historico(pasta, b, disparo=disparo)
+        # o salvar seletivo (M7b, A6): a derivacao em memoria com o briefing novo diz os formatos afetados antes de
+        # gravar; sem ela (a derivacao nao roda), afetados fica None e todo formato e refeito, como antes
+        mudancas = _mudancas(pasta, b)
+        afetados = None if mudancas is None else sorted(mudancas)
+        guardada = mb.gravar_com_historico(pasta, b, disparo=disparo, afetados=afetados)
+        if mudancas is not None:
+            _gravar_mudancas(pasta, mudancas)
         try:
-            r = nd.derivar(pasta)
+            r = nd.derivar(pasta, so=None if mudancas is None else
+                           [f['id'] for f in b['formatos'] if f['id'] in mudancas])
             devolucoes = len(r['devolucoes'])
         except nd.ErroDerivacao as e:
             derivado, motivo = False, e.motivo
     nucleo.registrar_evento(pasta, 'briefing_confirmado', origem=disparo.origem, meio=disparo.meio,
-                            familias=len(b['composicoes']), derivado=derivado, motivo=motivo)
-    return {'briefing': b, 'historico': guardada, 'derivado': derivado, 'motivo': motivo, 'devolucoes': devolucoes}
+                            familias=len(b['composicoes']), derivado=derivado, motivo=motivo, afetados=afetados)
+    return {'briefing': b, 'historico': guardada, 'derivado': derivado, 'motivo': motivo, 'devolucoes': devolucoes,
+            'afetados': afetados}
+
+
+def _resolvido_gravado(pasta, laudo, specs):
+    """O briefing gravado agora (o de antes da gravacao), resolvido para a diferenca por formato; None sem briefing
+    gravado, ilegivel ou de outra versao dos arquivos do job (os formatos dele contam como novos)."""
+    from desdobra.briefing import modelo as mb
+    from desdobra.derivacao import impressao as mi
+    try:
+        b = mb.ler(pasta)
+    except contratos.ErroContrato:
+        return None
+    if b is None or mb.desatualizado(pasta, b):
+        return None
+    return mi.resolvido(b, mb.resolver(laudo, b)[0], specs)
+
+
+def _gravada(pasta, fid):
+    from desdobra.derivacao import nucleo as nd
+    arq = Path(pasta) / nd.PASTA / ('%s.json' % fid)
+    if not arq.is_file():
+        return None
+    try:
+        return contratos.ler(arq, nd.ESQUEMA)
+    except contratos.ErroContrato:
+        return None
+
+
+def _mudancas(pasta, b):
+    """O salvar seletivo (M7b, A6): deriva em memoria com o briefing novo b, ainda nao gravado, e compara a impressao
+    de cada formato (desdobra.derivacao.impressao) com a da derivacao gravada. Devolve {formato: itens da diferenca
+    (desdobra.derivacao.diferenca)} so dos afetados: a impressao mudou, o formato nao tinha derivacao gravada (ou ela
+    nao se le) ou saiu do briefing. None quando a derivacao em memoria nao roda (a gravada diz o motivo depois)."""
+    from desdobra.derivacao import diferenca
+    from desdobra.derivacao import formatos as mf
+    from desdobra.derivacao import impressao as mi
+    from desdobra.derivacao import nucleo as nd
+    try:
+        ctx = nd.preparar(pasta, briefing=b)
+        specs, arquivo_specs = mf.specs_do_job(pasta)
+        r = nd.derivar_em_memoria(ctx, specs=specs, arquivo_specs=arquivo_specs, params=mf.parametros(pasta, b))
+    except (nd.ErroDerivacao, mf.ErroFormatos, contratos.ErroContrato):
+        return None
+    novo = mi.resolvido(b, ctx['resolvidas'], specs)
+    velho = _resolvido_gravado(pasta, ctx['laudo'], specs)
+    de_antes = {f['id'] for f in velho['briefing']['formatos']} if velho else set()
+    saida = {}
+    for fid in sorted(set(r['formatos']) | de_antes):
+        depois, antes = r['formatos'].get(fid), _gravada(pasta, fid)
+        if depois is not None and antes is not None and antes.get('impressao_formato') == depois['impressao_formato']:
+            continue
+        if antes is None or fid not in de_antes:
+            # sem a derivacao ou sem o briefing de antes do formato, ele entra no job (ou sai, sem nada gravado)
+            itens = diferenca.diferencas(None, {}) if depois is not None else diferenca.diferencas({}, None)
+        else:
+            itens = diferenca.do_formato(antes, velho, depois, novo, fid)
+        saida[fid] = itens
+    return saida
+
+
+def _gravar_mudancas(pasta, mudancas):
+    """Grava briefing/historico/mudancas/<seq>.json com a entrada que a gravacao acabou de por no indice."""
+    from desdobra.briefing import historico
+    entrada = historico.ler(pasta)['entradas'][-1]
+    dados = {'esquema': ESQUEMA_MUDANCAS, 'seq': entrada['seq'], 'sha_anterior': entrada['sha_anterior'],
+             'sha_novo': entrada['sha_novo'], 'formatos': mudancas}
+    (Path(pasta) / PASTA_MUDANCAS).mkdir(parents=True, exist_ok=True)
+    contratos.gravar(Path(pasta) / PASTA_MUDANCAS / ('%d.json' % entrada['seq']), dados, ESQUEMA_MUDANCAS)
 
 
 def situacao_na_tela(pasta, familias):

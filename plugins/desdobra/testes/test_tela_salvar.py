@@ -16,7 +16,7 @@ Criterios de pronto cobertos aqui:
     o que vai ao briefing e o que o DA escolheu no rascunho;
   - o entregar recusa formato de familia sem confirmacao e proposta sem confirmacao;
   - o "briefing confirmar" do terminal (so para teste) e a tela usam o mesmo gravador;
-  - o render recusa texto editado (o render do texto novo chega no M7b), nunca desenha o texto velho calado;
+  - o render desenha o texto editado (M7b, A7), nunca o texto velho calado;
   - a tela: "Salvar e seguir" so com todas as familias confirmadas, o dialogo sem opcao marcada e o proximo passo
     dito em portugues.
 Tudo sintetico: o PSD de test_tela_palco e a fonte de autoteste do motor."""
@@ -160,8 +160,11 @@ def _deriv(job, fid):
 
 # ------------------------------------------------------------------ nenhum valor inicial e o que falta
 def test_sem_familia_confirmada_nada_e_gravado(job, modelo):
+    from desdobra.briefing import historico as bh
     conteudo = te.montar(job)
     antes = (job / mb.ARQUIVO).read_bytes()
+    # o importar --teste do modelo ja abriu o indice do historico (M7b, A4), sem versao anterior guardada
+    indice = (job / bh.ARQUIVO).read_bytes()
     s = _servidor(job, conteudo)
     try:
         biscoito = tts._entrar(s)
@@ -171,7 +174,8 @@ def test_sem_familia_confirmada_nada_e_gravado(job, modelo):
     finally:
         s.parar()
     assert (job / mb.ARQUIVO).read_bytes() == antes
-    assert not (job / mb.PASTA_HISTORICO).exists()
+    assert [p.name for p in (job / mb.PASTA_HISTORICO).iterdir()] == ['indice.json']
+    assert (job / bh.ARQUIVO).read_bytes() == indice
 
 
 def test_sem_o_passo_2_ou_sem_o_modo_nada_e_gravado(job, modelo):
@@ -304,6 +308,13 @@ def test_salvar_e_seguir_grava_deriva_e_rele_igual(job, modelo):
     assert b['cabecalho']['origem'] == mb.ORIGEM_FIXTURE and b['cabecalho']['meio'] == humano.MEIO_MEDICAO
     # a versao anterior fica no historico
     assert (job / mb.PASTA_HISTORICO / ('%s.json' % anterior_sha)).is_file()
+    # e a gravacao entra no indice encadeado (M7b, A4), depois da do importar --teste
+    from desdobra.briefing import historico as bh
+    entradas = bh.ler(job)['entradas']
+    assert [(x['seq'], x['meio']) for x in entradas] == [(1, 'importar_teste'), (2, humano.MEIO_MEDICAO)]
+    assert entradas[1]['sha_anterior'] == anterior_sha == entradas[0]['sha_novo']
+    assert entradas[1]['sha_novo'] == arquivos.sha256_arquivo(job / mb.ARQUIVO)
+    assert bh.conferir(job) == []
     # o que vai ao briefing e o que o DA escolheu: funcoes, regras, ancoras, modo e as familias do rascunho
     assert {x['layer_id']: x['funcao']['valor'] for x in b['funcoes']} == modelo['funcoes']
     assert {x['funcao']: x['regra']['valor'] for x in b['regras_escala']} == {f: v[0] for f, v in USADAS.items()}
@@ -375,6 +386,172 @@ def test_editar_depois_de_salvar_tira_o_salvo_da_tela(job, modelo):
     finally:
         s.parar()
     assert te.montar(job)['estado']['briefing']['salvo'] is False
+
+
+# ------------------------------------------------------------------ salvar seletivo (M7b, A6)
+def _shas_da_derivacao(job):
+    return {fid: arquivos.sha256_arquivo(job / nd.PASTA / ('%s.json' % fid)) for fid, _w, _h in FORMATOS}
+
+
+def _confirmar_todas(s, biscoito, escolhas):
+    for gid, f in escolhas.items():
+        assert _ato(s, biscoito, 'familia', {'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']})[1] == 200, gid
+
+
+def _eventos(job, nome):
+    linhas = (job / 'log' / 'eventos.jsonl').read_text(encoding='utf-8').splitlines()
+    return [x for x in map(json.loads, linhas) if x['evento'] == nome]
+
+
+def test_primeiro_salvar_marca_todos_os_formatos_como_afetados(job, modelo):
+    from desdobra.briefing import historico as bh
+    conteudo = te.montar(job)
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    todos = sorted(fid for fid, _w, _h in FORMATOS)
+    ultima = bh.ler(job)['entradas'][-1]
+    assert ultima['formatos_afetados'] == todos
+    assert _eventos(job, 'briefing_confirmado')[-1]['afetados'] == todos
+    mud = contratos.ler(job / bs.PASTA_MUDANCAS / ('%d.json' % ultima['seq']), bs.ESQUEMA_MUDANCAS)
+    assert mud['seq'] == ultima['seq'] and sorted(mud['formatos']) == todos
+    # sem derivacao gravada antes, cada formato entra no job
+    assert all([i['tipo'] for i in itens] == ['formato_novo'] for itens in mud['formatos'].values())
+
+
+def test_salvar_de_novo_sem_mudanca_nao_regrava_nenhum_formato(job, modelo):
+    from desdobra.briefing import historico as bh
+    conteudo = te.montar(job)
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert _salvar(s, biscoito, job)[1] == 200
+        antes = _shas_da_derivacao(job)
+        dev = (job / nd.ARQUIVO_DEVOLUCOES).read_bytes()
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    assert _shas_da_derivacao(job) == antes
+    ultima = bh.ler(job)['entradas'][-1]
+    assert ultima['formatos_afetados'] == [] and ultima['seq'] == 3
+    assert _eventos(job, 'briefing_confirmado')[-1]['afetados'] == []
+    mud = contratos.ler(job / bs.PASTA_MUDANCAS / '3.json', bs.ESQUEMA_MUDANCAS)
+    assert mud['formatos'] == {}
+    # o inventario e as devolucoes saem dos guardados, iguais
+    assert json.loads(dev)['devolucoes'] == arquivos.ler_json(job / nd.ARQUIVO_DEVOLUCOES)['devolucoes']
+    assert bh.conferir(job) == []
+
+
+def test_mudar_a_ancora_regrava_so_os_afetados_e_a_outra_familia_fica_intacta(job, modelo):
+    # decisoes-v1.md, 175: a mudanca do passo 2 tira a confirmacao de todas as familias, e o DA confirma de novo
+    # formatos que nao queria rever; o salvar seletivo regrava so os formatos cuja impressao mudou, e os da familia
+    # vertical (o logo apagado pelo DA) ficam com o mesmo arquivo
+    from desdobra.briefing import historico as bh
+    conteudo = te.montar(job)
+    gv = _familia_de(conteudo, 'v1')
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        escolhas = _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert _salvar(s, biscoito, job)[1] == 200
+        antes = _shas_da_derivacao(job)
+        derivs = {fid: _deriv(job, fid) for fid, _w, _h in FORMATOS}
+        p2 = _passo_2(modelo['funcoes'])
+        p2['design']['logo_principal'] = dict(p2['design']['logo_principal'], x='esquerda')
+        assert _gravar_rascunho(s, biscoito, escolhas, p2) == 200
+        # a familia pede confirmacao de novo, tambem a vertical, onde o logo foi apagado
+        assert {p['codigo'] for p in bs.pendencias(job, conteudo)} == {'familia_sem_confirmacao'}
+        assert {p['familia'] for p in bs.pendencias(job, conteudo)} == set(conteudo['familias'])
+        _confirmar_todas(s, biscoito, escolhas)
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    depois = _shas_da_derivacao(job)
+    mudaram = sorted(fid for fid in antes if antes[fid] != depois[fid])
+    ultima = bh.ler(job)['entradas'][-1]
+    assert ultima['formatos_afetados'] == mudaram
+    assert _eventos(job, 'briefing_confirmado')[-1]['afetados'] == mudaram
+    verticais = sorted(fid for fid, _w, _h in VERTICAIS)
+    assert mudaram == ['mesma', 'quadrado']
+    assert set(conteudo['familias'][gv]['formatos']) == set(verticais)
+    # os que nao mudaram tem a mesma impressao com o briefing novo; os afetados, outra
+    for fid, d in derivs.items():
+        assert (nd.impressao_de_agora(job, d) == d['impressao_formato']) is (fid not in mudaram), fid
+    # a diferenca do A5 de cada afetado, nenhuma dos outros
+    mud = contratos.ler(job / bs.PASTA_MUDANCAS / ('%d.json' % ultima['seq']), bs.ESQUEMA_MUDANCAS)
+    assert sorted(mud['formatos']) == mudaram
+    assert all(mud['formatos'][fid] for fid in mudaram)
+    assert [i['frase'] for i in mud['formatos']['mesma'] if i['tipo'] == 'ancora'] == \
+        ['A âncora do logo principal mudou: antes direita e base, agora esquerda e base.']
+    assert (mud['sha_anterior'], mud['sha_novo']) == (ultima['sha_anterior'], ultima['sha_novo'])
+    assert bh.conferir(job) == []
+    # a derivacao gravada e a de agora: o render (a trava do derivado) aceita os dois lados
+    from desdobra.render import derivado
+    for fid, _w, _h in FORMATOS:
+        d = _deriv(job, fid)
+        assert nd.impressao_de_agora(job, d) == d['impressao_formato'], fid
+        assert derivado.montar(job, fid)[1] == [], fid
+    dev = arquivos.ler_json(job / nd.ARQUIVO_DEVOLUCOES)
+    assert dev['inventario']['formatos'] == len(FORMATOS) and dev['inventario']['iguais_entre_formatos'] is True
+
+
+def test_confirmar_a_familia_de_novo_e_salvar_deixa_o_render_seguir(job, modelo):
+    # a confirmacao nova (outro carimbo, mesma versao e mesmas edicoes) nao regrava o formato, e a trava do derivado,
+    # que refaz a derivacao com o briefing de agora, aceita o arquivo guardado
+    from desdobra.briefing import historico as bh
+    from desdobra.render import derivado
+    conteudo = te.montar(job)
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        escolhas = _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert _salvar(s, biscoito, job)[1] == 200
+        assert derivado.montar(job, 'v1')[1] == []
+        antes = _shas_da_derivacao(job)
+        gv = _familia_de(conteudo, 'v1')
+        assert _ato(s, biscoito, 'familia', {'familia': gv, 'versao': escolhas[gv]['versao'],
+                                              'edicoes': escolhas[gv]['edicoes']})[1] == 200
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    assert _shas_da_derivacao(job) == antes
+    assert bh.ler(job)['entradas'][-1]['formatos_afetados'] == []
+    for fid, _w, _h in FORMATOS:
+        assert derivado.montar(job, fid)[1] == [], fid
+
+
+def test_sem_a_derivacao_em_memoria_tudo_e_refeito_como_antes(job, modelo, monkeypatch):
+    # a derivacao em memoria que nao roda nao impede salvar: afetados fica None no indice e no evento, nenhuma
+    # diferenca e gravada, e a derivacao gravada refaz todo formato
+    from desdobra.briefing import historico as bh
+    conteudo = te.montar(job)
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert _salvar(s, biscoito, job)[1] == 200
+        antes = _shas_da_derivacao(job)
+        preparar = nd.preparar
+
+        def falha(pasta, partida=False, briefing=None):
+            if briefing is not None:
+                raise nd.ErroDerivacao('falha de teste', 'fases_desatualizadas')
+            return preparar(pasta, partida=partida)
+        monkeypatch.setattr(nd, 'preparar', falha)
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    ultima = bh.ler(job)['entradas'][-1]
+    assert ultima['seq'] == 3 and ultima['formatos_afetados'] is None
+    assert 'afetados' not in _eventos(job, 'briefing_confirmado')[-1]
+    assert not (job / bs.PASTA_MUDANCAS / '3.json').exists()
+    depois = _shas_da_derivacao(job)
+    assert all(antes[fid] != depois[fid] for fid in antes)
 
 
 # ------------------------------------------------------------------ o mesmo gravador no terminal
@@ -607,7 +784,7 @@ def test_composicao_que_cita_formato_inexistente_e_recusada(job):
     assert 'formato_em_duas_composicoes' in {e['codigo'] for e in mb.conferir(laudo, dict(b, composicoes=dois))}
 
 
-def test_render_recusa_texto_editado(job):
+def test_render_desenha_o_texto_editado(job):
     from desdobra.render import derivado
     conteudo = te.montar(job)
     gv = _familia_de(conteudo, 'v1')
@@ -624,8 +801,12 @@ def test_render_recusa_texto_editado(job):
     assert el['texto_editado'] == 'HAH' and el['origem_geometria'] == 'da'
     # o texto vale so na familia editada (171)
     assert not any(e.get('texto_editado') for e in _deriv(job, 'quadrado')['elementos'])
-    _contrato, bloqueios, _c = derivado.montar(job, 'v1')
-    assert [b['codigo'] for b in bloqueios] == ['texto_editado_sem_render']
+    # o render desenha o texto novo (M7b, A7): nunca o texto velho calado
+    contrato, bloqueios, _c = derivado.montar(job, 'v1')
+    assert bloqueios == []
+    editados = [e for e in contrato['entradas'] if e.get('texto_editado')]
+    assert [e['elemento'] for e in editados] == [apoio]
+    assert [r['texto'] for r in editados[0]['texto']['runs']] == ['HAH']
 
 
 # ------------------------------------------------------------------ a tela no Chromium sem janela (modo de teste)

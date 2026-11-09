@@ -171,7 +171,8 @@ def _aprovar(args):
     nucleo.registrar_evento(pasta, 'aprovacao_gravada', n_formatos=len(regs))
     return Resultado(comando='aprovar', situacao='ok', pasta_job=pasta, contagens={'aprovados': len(regs)},
                      o_que_fazer='A aprovação está em briefing/aprovacao.json, um registro por formato. Mudar o master, '
-                                 'o render, o briefing ou o arquivo final derruba a aprovação do formato.',
+                                 'o render, o que alimenta o formato no briefing ou o arquivo final derruba a aprovação '
+                                 'do formato.',
                      linhas_humanas=['%d formato(s) aprovado(s).' % len(regs)])
 
 

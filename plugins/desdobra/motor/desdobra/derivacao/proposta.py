@@ -14,8 +14,9 @@ formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A deri
     editado pelo DA), 'galeria' (a versao sem edicao), 'transformacao' (escala pura), 'regra' (solver);
   - o elemento apagado sai do formato e fica em apagados_pelo_da, com a origem de quem confirmou a familia; ele deixa
     de contar no inventario igual entre formatos;
-  - o texto editado vale so na familia onde o DA mexeu (171) e vai em texto_editado; o render dele chega no M7b (o
-    render recusa, desdobra.render.derivado);
+  - o texto editado vale so na familia onde o DA mexeu (171) e vai em texto_editado, com as quebras dele (as linhas
+    do DA e as que a medida do render da na largura da caixa, M7b, A7): nunca as quebras da proposta (quebras
+    'do_texto_editado');
   - a validacao obrigatoria do motor continua valendo: o layout confirmado que reprova volta ao DA com o nome da
     validacao, como na derivacao sem tela.
 A galeria e a mesma da tela (galeria_da_familia, com os formatos devolvidos da familia na ordem da tela). So le
@@ -29,6 +30,7 @@ MOTIVOS_DA_GALERIA = ('troca_forte_de_orientacao', 'troca_de_orientacao_quadrado
 ORIGEM_POR_CAMINHO = {'galeria': 'galeria', 'transform': 'transformacao', 'solver': 'regra', 'mestre_propria': 'da'}
 ORIGEM_DA = 'da'
 ORIGENS_DO_APAGADO = ('da', 'fixture_de_teste')
+QUEBRAS_DO_TEXTO_EDITADO = 'do_texto_editado'
 TEXTO_SOLVER = 'As restrições da folha e do KV não fecham nesta versão.'
 
 
@@ -131,7 +133,11 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
     for e in lay['elementos']:
         x = dict(e)
         o = antes.get(e['id'])
-        if o is not None:
+        if e['id'] in lay['textos']:
+            # o texto editado leva so as quebras do DA, nunca as da proposta junto com as linhas dele (M7b, A7)
+            x['quebras'] = QUEBRAS_DO_TEXTO_EDITADO
+            x.pop('quebras_camada', None)
+        elif o is not None:
             # as quebras aprovadas da familia ficam as da proposta derivada (o render as aplica)
             for k in ('quebras', 'quebras_camada'):
                 if k in o:

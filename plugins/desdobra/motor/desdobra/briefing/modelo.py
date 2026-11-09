@@ -468,9 +468,11 @@ def importar_teste(pasta, arquivo):
     return dados
 
 
-def gravar_com_historico(pasta, dados, *, disparo=None):
+def gravar_com_historico(pasta, dados, *, disparo=None, afetados=None):
     """Grava o briefing confirmado; a versao anterior, quando ha, fica em briefing/historico/<sha256>.json (proposta do
-    M7, parametros: toda gravacao guarda a anterior). Devolve o caminho da versao guardada, ou None.
+    M7, parametros: toda gravacao guarda a anterior), e a gravacao entra no indice encadeado (briefing.historico, M7b,
+    A4) com os formatos afetados (afetados: None quando quem grava nao os calculou). Devolve o caminho da versao
+    guardada, ou None.
     disparo: o do "briefing confirmar" (da tela ou do terminal), de uso unico, gasto aqui; a origem do cabecalho tem
     de ser a dele. Sem disparo, so o briefing de teste (origem fixture_de_teste, o importar --teste) e gravado
     (revisao do M7a): ErroBriefing para o resto, humano.ErroHumano com disparo sem conferencia."""
@@ -483,14 +485,17 @@ def gravar_com_historico(pasta, dados, *, disparo=None):
         if getattr(disparo, 'origem', None) != origem:
             raise humano.ErroHumano('disparo_de_outra_origem')
         humano.conferir(disparo, 'briefing confirmar', consumir=True)
+    from desdobra.briefing import historico
     atual = Path(pasta) / ARQUIVO
-    guardada = None
+    guardada, sha_anterior = None, None
     if atual.is_file():
         hist = Path(pasta) / PASTA_HISTORICO
         hist.mkdir(parents=True, exist_ok=True)
-        guardada = hist / ('%s.json' % arquivos.sha256_arquivo(atual))
+        sha_anterior = arquivos.sha256_arquivo(atual)
+        guardada = hist / ('%s.json' % sha_anterior)
         arquivos.gravar_bytes_atomico(guardada, atual.read_bytes())
     contratos.gravar(atual, dados, ESQUEMA)
+    historico.registrar(pasta, sha_anterior, arquivos.sha256_arquivo(atual), dados.get('cabecalho'), afetados=afetados)
     return guardada
 
 

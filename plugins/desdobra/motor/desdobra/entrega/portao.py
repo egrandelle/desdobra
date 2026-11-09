@@ -8,8 +8,8 @@ conferir() devolve, por formato do briefing, as falhas que impedem entregar (ou 
     job (parametros/entrega.json); em 0 e 180 graus, o sentido nao importa;
   - master e render: render/<formato>/master.png, render.json e contrato.json do mesmo formato e do mesmo job; o sha256
     do master e o do render.json, o do contrato e o do render.json;
-  - KV e briefing: o contrato e do KV que esta em entrada/ agora e o render.json e do briefing gravado agora. Como
-    todo formato e comparado com os mesmos valores do job, os formatos ficam coerentes entre si;
+  - KV e impressao: o contrato e do KV que esta em entrada/ agora e o render.json leva a impressao do formato de agora
+    (impressao_do_formato; M7b, A2): a mudanca do briefing que nao alimenta o formato nao derruba o render dele;
   - contrato refeito (nº 86): o contrato do formato e montado de novo, como o render faz (no derivado, a derivacao
     tambem e refeita), e tem de sair sem bloqueio, igual ao gravado e com as mesmas decisoes que o DA aceitou;
   - familia e proposta (so o entregar; decisoes-v1.md, 167): no briefing com as familias da tela (composicoes), o
@@ -48,14 +48,18 @@ DESCRICOES = {
     'master_diferente_do_render': 'O master.png não é o que o render gravou (sha256 diferente do render.json).',
     'contrato_diferente_do_render': 'O contrato.json não é o que o render usou (sha256 diferente do render.json).',
     'master_de_outro_kv': 'O master saiu de outro KV, e não do que está em entrada/ agora.',
-    'master_de_outro_briefing': 'O master saiu de outro briefing, e não do gravado agora.',
+    'master_de_outra_impressao': 'O master saiu de outra versão do que alimenta o formato (função, regra, âncora, '
+                                 'quebra, família, spec ou mestre da derivação dele). Rode a derivação e o render do '
+                                 'formato de novo.',
     'contrato_desatualizado': 'O contrato montado de novo, com os arquivos de agora, não é o que o render usou: rode o '
                               'render do formato de novo.',
     'aceites_diferentes': 'As decisões que o contrato de agora pede ao DA não são as que ele aceitou no render.',
     'familia_sem_confirmacao': 'O formato não está numa família confirmada pelo DA na tela ("Confirmar família").',
     'proposta_sem_confirmacao': 'O formato sai de uma proposta do motor que o DA não confirmou na tela.',
     'sem_aprovacao': 'O formato não tem aprovação do DA ("desdobra aprovar" num terminal interativo).',
-    'aprovacao_invalida': 'briefing/aprovacao.json não segue o contrato aprovacao/1.',
+    'aprovacao_invalida': 'briefing/aprovacao.json não segue o contrato aprovacao/2.',
+    'aprovacao_antiga': 'A aprovação do formato é de uma versão anterior do desdobra, que olhava o briefing inteiro, e '
+                        'caiu: aprove o formato de novo.',
     'aprovacao_de_outro_job': 'briefing/aprovacao.json é de outro job.',
     'aprovacao_caiu': 'A aprovação do formato caiu: algo mudou depois dela (veja os campos).',
 }
@@ -147,12 +151,25 @@ def kv_atual(pasta):
     return estado['job_id'], (estado['entradas'][rel_kv]['sha256'] if rel_kv else None)
 
 
-def _render_do_formato(pasta, formato, job_id, kv, briefing_sha):
+def impressao_do_formato(pasta, briefing, formato):
+    """A impressao do formato agora (M7b, A2): a de derivacao/<formato>.json com o briefing, o laudo e as folhas de
+    spec de agora (desdobra.derivacao.nucleo.impressao_de_agora). None sem derivacao legivel. A derivacao mexida ou a
+    entrada do formato mudada dao outra impressao; a mudanca do briefing fora do formato, nao."""
+    from desdobra.derivacao import nucleo as nd
+    arq = Path(pasta) / nd.PASTA / ('%s.json' % formato)
+    try:
+        d = contratos.ler(arq, nd.ESQUEMA) if arq.is_file() else None
+    except contratos.ErroContrato:
+        d = None
+    return nd.impressao_de_agora(pasta, d, briefing) if d is not None else None
+
+
+def _render_do_formato(pasta, formato, job_id, kv, impressao):
     """(atual, rel, falhas) dos arquivos de render/<formato>/: atual = os hashes medidos agora (None quando falta)."""
     from desdobra.render import execucao
     base = Path(pasta) / 'render' / formato
     arq_master, arq_rel, arq_contrato = base / 'master.png', base / 'render.json', base / 'contrato.json'
-    atual = {'briefing_sha256': briefing_sha,
+    atual = {'impressao_formato': impressao,
              'master_sha256': arquivos.sha256_arquivo(arq_master) if arq_master.is_file() else None,
              'render_json_sha256': arquivos.sha256_arquivo(arq_rel) if arq_rel.is_file() else None,
              'contrato_sha256': arquivos.sha256_arquivo(arq_contrato) if arq_contrato.is_file() else None}
@@ -177,8 +194,8 @@ def _render_do_formato(pasta, formato, job_id, kv, briefing_sha):
         gravado = None
     if gravado is None or gravado['origem'].get('kv_sha256') != kv:
         falhas.append(_falha('master_de_outro_kv'))
-    if (rel.get('derivacao') or {}).get('briefing_sha256') != briefing_sha:
-        falhas.append(_falha('master_de_outro_briefing'))
+    if impressao is None or (rel.get('derivacao') or {}).get('impressao_formato') != impressao:
+        falhas.append(_falha('master_de_outra_impressao'))
     if falhas:
         return atual, rel, falhas
     # o contrato de agora, montado como o render monta (nº 86; no derivado, com a derivacao refeita)
@@ -225,7 +242,6 @@ def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True):
             saida['formatos'][fid] = {'falhas': [_falha(saida['briefing'])], 'atual': {}, 'final': None}
         return saida
     job_id, kv = kv_atual(pasta)
-    briefing_sha = arquivos.sha256_arquivo(pasta / mb.ARQUIVO)
     try:
         params, erro_params = parametros_de_entrega(pasta), None
     except contratos.ErroContrato:
@@ -244,7 +260,7 @@ def conferir(pasta, formatos=None, *, origem=True, aprovacao=True, final=True):
         falhas += conferir_rotacao(do_briefing[fid], params.get(fid))
         if origem:
             falhas += conferir_familia(pasta, b, fid)
-        atual, _rel, f_render = _render_do_formato(pasta, fid, job_id, kv, briefing_sha)
+        atual, _rel, f_render = _render_do_formato(pasta, fid, job_id, kv, impressao_do_formato(pasta, b, fid))
         falhas += f_render
         arq_final, recusa = None, None
         if final and not falhas:
@@ -268,6 +284,8 @@ def _conferir_aprovacao(aprov, erro, formato, job_id, atual, final):
         return [_falha('sem_aprovacao')]
     if aprov['job_id'] != job_id:
         return [_falha('aprovacao_de_outro_job')]
+    if aprov['esquema'] != mod_aprovacao.ESQUEMA:
+        return [_falha('aprovacao_antiga', esquema=aprov['esquema'])]
     campos = mod_aprovacao.diferencas(aprov['formatos'][formato], job_id, atual, final)
     return [_falha('aprovacao_caiu', campos=campos)] if campos else []
 

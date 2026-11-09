@@ -8,6 +8,10 @@ transformacao do elemento a que a camada pertence (escala uniforme e deslocament
     canvas da mestre e acaba na borda dele);
   - texto: a matriz da camada recebe a escala e o deslocamento do elemento (as quebras e o tracking ficam os da
     mestre, so o tamanho muda); a regiao da pagina e a da origem transformada, com a margem do render;
+  - texto editado pelo DA no palco (decisoes-v1.md, 169 e 171; M7b, A7): o texto novo num trecho so, com o estilo do
+    primeiro trecho com tinta, as linhas do DA e a quebra no espaco na largura da caixa de tinta da camada (a mesma
+    da previa da tela), medida no Chromium pelo render; o cmap da face do job e conferido como na edicao, e a tinta
+    e conferida na borda do formato (a pagina cobre o formato inteiro: nada e cortado calado);
   - linkado: o quadrilatero de colocacao e a caixa recebem a transformacao.
 Camada "fora da peca" nao entra em entrada nenhuma. Camada sem elemento (estrutura, fora do quadro ou fora do
 canvas) sai do formato com registro. O ajuste global entra no bloco da cena que ele cobre; o que cobre conteudo, e o
@@ -23,8 +27,9 @@ import json
 import math
 from pathlib import Path
 
-from desdobra import arquivos, contratos, limites
+from desdobra import contratos, limites
 from desdobra.briefing import modelo as mb
+from desdobra.derivacao import impressao as mi
 from desdobra.derivacao import nucleo as nd
 from desdobra.render import contrato as mc
 
@@ -32,8 +37,8 @@ DESCRICOES = {
     'formato_sem_derivacao': 'O formato não tem derivacao/<formato>.json. Rode "desdobra derivar --job <pasta>".',
     'formato_devolvido': 'A derivação devolveu este formato ao DA (veja derivacao/devolucoes.json): não há layout '
                          'para renderizar.',
-    'texto_editado_sem_render': 'O DA editou o texto de um elemento na tela, e o render do texto novo chega na próxima '
-                                'versão: o render não desenha o texto antigo no lugar.',
+    'texto_editado_fora_da_fonte': 'O texto editado na tela tem caractere que a fonte do job não tem, e o render não '
+                                   'desenha o texto sem ele. Troque o caractere na tela ou envie a fonte que o tenha.',
     'derivacao_desatualizada': 'A derivação gravada não é a que o briefing, as specs, os parâmetros e os limites de agora '
                                'dão (arquivo mexido ou entrada mudada). Rode "desdobra derivar" de novo.',
     'briefing_desatualizado': 'O briefing é de outra versão do laudo, das specs, do design system ou das fontes.',
@@ -74,7 +79,13 @@ def _regiao(tr, regiao, W, H):
 
 
 def _sem_carimbo(d):
-    return {k: v for k, v in d.items() if k not in ('gerado_em', 'inventario_entre_formatos')}
+    # o sha do briefing e so registro de quando o formato foi derivado: a impressao_formato (comparada aqui) e que diz
+    # se o que alimenta o formato mudou (M7b, A2). Da proposta sai o que a impressao tambem deixa fora (o carimbo da
+    # confirmacao e o id da familia): o salvar seletivo (A6) guarda o arquivo do formato que so ganhou um destes
+    d = {k: v for k, v in d.items() if k not in ('gerado_em', 'inventario_entre_formatos', 'briefing_sha256')}
+    if 'proposta' in d:
+        d['proposta'] = mi.sem_carimbo(d['proposta'])
+    return d
 
 
 def _derivacao_confere(pasta, formato, gravada):
@@ -175,10 +186,51 @@ def tinta_fora_da_caixa(entradas, estatisticas, W, H):
         cortes = [lado for lado in st.get('toca_regiao') or []
                   if not ({'esq': reg[0] <= 0 and cv[0] <= tol, 'topo': reg[1] <= 0 and cv[1] <= tol,
                            'dir': reg[2] >= W and cv[2] >= W - tol, 'base': reg[3] >= H and cv[3] >= H - tol}[lado])]
+        if e.get('texto_editado'):
+            # o texto editado nao tem caixa validada pela derivacao: a pagina e o formato, e tinta na borda e corte
+            cortes = list(st.get('toca_regiao') or [])
         if excesso > tol or cortes:
             saida.append({'layer_id': e['layer_id'], 'excesso_px': round(excesso, 2), 'tolerancia_px': round(tol, 2),
                           'cortada_na_regiao': cortes})
     return saida
+
+
+def texto_editado_na_entrada(entrada, texto, caixa_tinta):
+    """A entrada de texto do contrato com o texto editado pelo DA (M7b, A7): um trecho so, com o estilo, a cor e a
+    face do primeiro trecho com tinta (como a previa da tela, desdobra.tela.edicao.trocar_texto), o paragrafo dele e
+    largura_quebra: a largura da caixa de tinta da camada no formato (caixa_tinta), levada ao espaco do texto, onde o
+    render quebra a linha no espaco (desdobra.render.texto.quebras_da_caixa), como a previa quebra na largura da
+    caixa. A matriz e a da entrada (ja no formato)."""
+    from desdobra.render import texto as rt
+    texto = texto.replace('\r\n', '\n').replace('\r', '\n')
+    t = entrada['texto']
+    r0 = next(r for r in t['runs'] if r.get('tem_tinta'))
+    par = rt._paragrafo_de(t.get('paragrafos') or [], r0['inicio'])
+    cor = entrada['cores_por_trecho'][str(r0['inicio'])]
+    novo = json.loads(json.dumps(entrada))
+    # o kerning manual era de um par do texto antigo
+    novo['texto']['runs'] = [dict(r0, inicio=0, fim=len(texto), texto=texto, kerning=None, tem_tinta=True)]
+    novo['texto']['paragrafos'] = [dict(par, inicio=0, fim=len(texto) + 1)] if par else []
+    novo['cores'] = [cor]
+    novo['cores_por_trecho'] = {'0': cor}
+    novo['valores_cor'] = {cor: entrada['valores_cor'][cor]}
+    novo['faces'] = {k: v for k, v in entrada['faces'].items() if k == r0.get('fonte_ps')}
+    xx, xy = (float(v) for v in t['matriz'][:2])
+    largura = (float(caixa_tinta[2]) - float(caixa_tinta[0])) / math.hypot(xx, xy)
+    novo['largura_quebra'] = round(largura, 4)  # numero-neutro: casas do px
+    novo['texto_editado'] = True
+    return novo
+
+
+def caracteres_fora_da_face(entrada, faces_do_job):
+    """Os caracteres do texto editado da entrada que a face do job nao cobre (a conferencia da edicao na tela,
+    desdobra.tela.edicao.caracteres_que_faltam, pelo cmap lido pelo filho das fontes)."""
+    from desdobra.tela import edicao
+    r = entrada['texto']['runs'][0]
+    face = next((f for f in faces_do_job if f['id'] == entrada['faces'].get(r.get('fonte_ps'))), None)
+    if face is None:
+        return []
+    return edicao.caracteres_que_faltam(r['texto'], face, r.get('font_caps') in ('ALL_CAPS', 'SMALL_CAPS'))
 
 
 def _efeitos_partidos(entradas, regs):
@@ -212,15 +264,12 @@ def montar(pasta_job, formato):
         return None, [_bloqueio('formato_sem_derivacao')], []
     if d['situacao'] != 'derivado':
         return None, [_bloqueio('formato_devolvido', motivo=d['devolucao']['motivo'])], []
-    editados = [e['id'] for e in d['elementos'] if e.get('texto_editado') is not None]
-    if editados:
-        # o texto editado no palco (decisoes-v1.md, 169 e 171) ainda nao vai ao render (M7b): nunca o texto velho calado
-        return None, [_bloqueio('texto_editado_sem_render', elementos=editados)], []
     briefing = mb.ler(pasta)
     bloqueios, confirmar = [], []
     if briefing is None or mb.desatualizado(pasta, briefing):
         bloqueios.append(_bloqueio('briefing_desatualizado'))
-    elif arquivos.sha256_arquivo(pasta / mb.ARQUIVO) != d['briefing_sha256']:
+    elif d.get('impressao_formato') is None or nd.impressao_de_agora(pasta, d, briefing) != d['impressao_formato']:
+        # a impressao do formato (M7b, A2): a mudanca do briefing que nao alimenta este formato nao trava o render dele
         bloqueios.append(_bloqueio('derivacao_desatualizada'))
     if not bloqueios and not _derivacao_confere(pasta, formato, d):
         bloqueios.append(_bloqueio('derivacao_desatualizada'))
@@ -264,6 +313,7 @@ def montar(pasta_job, formato):
             elemento_de[lid] = elemento_de[base]
     entradas, mesclas = [], []
     kv = origem['origem']['kv_sha256']
+    faces_do_job, fora_da_fonte = None, {}
 
     def nova_id():
         return 'e%02d' % (len(entradas) + 1)
@@ -296,12 +346,26 @@ def montar(pasta_job, formato):
             novo = json.loads(json.dumps(e))
             novo['id'] = nova_id()
             novo['texto']['matriz'] = [xx * s, xy * s, yx * s, yy * s, nx, ny]
-            novo.update(quebras_da_entrada(el, e))
-            # a caixa que a derivacao validou para este texto, no formato: a medida da quebra por familia, a caixa do
-            # DA na mestre propria (elemento de um texto so), ou a tinta da camada no KV transformada
             ct = (camadas_laudo.get(e['layer_id']) or {}).get('geometria') or {}
-            cv = caixa_validada_do_texto(el, e['layer_id'], ct.get('caixa_tinta') or e['regiao'])
-            alvo = regiao_da_pagina_de_texto(tr, e['regiao'], cv, W, H)
+            if el.get('texto_editado') is not None:
+                tinta_no_formato = _caixa(tr, ct.get('caixa_tinta') or e['regiao'])
+                novo = texto_editado_na_entrada(novo, el['texto_editado'], tinta_no_formato)
+                if faces_do_job is None:
+                    faces_do_job = mc.faces_do_job(pasta, contratos.ler(pasta / 'estado.json', 'estado/1'))
+                for ch in caracteres_fora_da_face(novo, faces_do_job):
+                    if ch not in fora_da_fonte.setdefault(el['id'], []):
+                        fora_da_fonte[el['id']].append(ch)
+                # sem caixa validada para o texto novo: a pagina e o formato inteiro, e a tinta e conferida na borda
+                # dele depois de compor (tinta_fora_da_caixa)
+                cv = alvo = [0, 0, W, H]
+                registros.append({'codigo': 'texto_editado_desenhado', 'layer_id': e['layer_id'],
+                                  'medidas': {'elemento': el['id']}})
+            else:
+                novo.update(quebras_da_entrada(el, e))
+                # a caixa que a derivacao validou para este texto, no formato: a medida da quebra por familia, a caixa
+                # do DA na mestre propria (elemento de um texto so), ou a tinta da camada no KV transformada
+                cv = caixa_validada_do_texto(el, e['layer_id'], ct.get('caixa_tinta') or e['regiao'])
+                alvo = regiao_da_pagina_de_texto(tr, e['regiao'], cv, W, H)
             if alvo[2] <= alvo[0] or alvo[3] <= alvo[1]:
                 registros.append({'codigo': 'texto_fora_do_formato', 'layer_id': e['layer_id']})
                 continue
@@ -328,6 +392,9 @@ def montar(pasta_job, formato):
             if e.get('caixa'):
                 novo['caixa'] = [int(round(v)) for v in _caixa(tr, e['caixa'])]
             entradas.append(novo)
+    if fora_da_fonte:
+        return None, [_bloqueio('texto_editado_fora_da_fonte', elementos=sorted(fora_da_fonte),
+                                caracteres=[c for k in sorted(fora_da_fonte) for c in fora_da_fonte[k]])], []
     partidos = _efeitos_partidos(entradas, regs)
     if partidos:
         return None, [_bloqueio('elemento_partido_no_render', camadas=partidos)], []
@@ -339,8 +406,8 @@ def montar(pasta_job, formato):
     contrato = dict(origem)
     contrato['formato'] = {'chave': formato, 'largura': W, 'altura': H,
                            'escala': round(W / float((d.get('mestre') or {}).get('largura') or W), 6)}
-    contrato['origem'] = dict(origem['origem'], funcoes='derivacao',
-                              derivacao_sha256=arquivos.sha256_arquivo(pasta / nd.PASTA / ('%s.json' % formato)))
+    # a impressao, e nao o sha do arquivo (que leva o carimbo): derivar de novo sem mudar o formato deixa o contrato igual
+    contrato['origem'] = dict(origem['origem'], funcoes='derivacao', derivacao_impressao=d['impressao_formato'])
     contrato['entradas'] = entradas
     contrato['fora_da_peca'] = fora
     contrato['registros'] = registros

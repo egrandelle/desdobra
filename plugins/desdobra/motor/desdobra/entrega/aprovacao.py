@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Aprovacao do DA por formato (aprovacao/1, arquitetura-v1.md, 5.4; decisoes-v1.md, 138).
+"""Aprovacao do DA por formato (aprovacao/2, arquitetura-v1.md, 5.4; decisoes-v1.md, 138).
 
-A aprovacao vale para o arquivo que vai para o veiculo: cada registro guarda os hashes do briefing, do master, do
-render.json e do contrato, o sha256 do arquivo final (desdobra.entrega.codificar) e os parametros do encoder. Mudar
+A aprovacao vale para o arquivo que vai para o veiculo: cada registro guarda a impressao do formato
+(desdobra.derivacao.impressao; M7b, A2: mudar o briefing fora do formato nao derruba a aprovacao dele), os hashes do
+master, do render.json e do contrato, o sha256 do arquivo final (desdobra.entrega.codificar) e os parametros do encoder. Mudar
 qualquer um derruba a aprovacao daquele formato, e diferencas() diz qual campo mudou. O registro leva o proprio
 sha256 (registro_sha256): registro mexido a mao cai. O selo e um sha256 sem segredo: pega mexida acidental, nao
 falsificacao (quem refaz o registro refaz o selo); contra o Claude, quem segura e o gancho PreToolUse e o Disparo, que o
@@ -22,13 +23,16 @@ from pathlib import Path
 
 from desdobra import arquivos, contratos, humano
 
-ESQUEMA = 'aprovacao/1'
+ESQUEMA = 'aprovacao/2'
+# a de antes do M7b (com o sha do briefing inteiro): ler() a aceita, e o portao a conta como aprovacao caida
+# (aprovacao_antiga); gravar() nao a carrega para o arquivo novo
+ESQUEMA_ANTIGO = 'aprovacao/1'
 ARQUIVO = Path('briefing') / 'aprovacao.json'
 PASTA_ENTREGA = Path('entrega')
 PASTA_ANTERIORES = 'anteriores'
 PASTA_PREVIA = PASTA_ENTREGA / 'previa'
 # os hashes que o registro guarda e o portao mede de novo (desdobra.entrega.portao, atual de cada formato)
-HASHES = ('briefing_sha256', 'master_sha256', 'render_json_sha256', 'contrato_sha256')
+HASHES = ('impressao_formato', 'master_sha256', 'render_json_sha256', 'contrato_sha256')
 
 
 def selo(registro):
@@ -51,9 +55,18 @@ def registro(formato, job_id, atual, final, disparo):
 
 
 def ler(pasta):
-    """A aprovacao gravada (aprovacao/1), ou None. ErroContrato quando o arquivo nao segue o contrato."""
+    """A aprovacao gravada (aprovacao/2, ou a antiga aprovacao/1, com o esquema dela no campo 'esquema'), ou None.
+    ErroContrato quando o arquivo nao segue nenhum dos dois."""
     arq = Path(pasta) / ARQUIVO
-    return contratos.ler(arq, ESQUEMA) if arq.is_file() else None
+    if not arq.is_file():
+        return None
+    try:
+        return contratos.ler(arq, ESQUEMA)
+    except contratos.ErroContrato as e:
+        try:
+            return contratos.ler(arq, ESQUEMA_ANTIGO)
+        except contratos.ErroContrato:
+            raise e from None
 
 
 def diferencas(reg, job_id, atual, final=None):
@@ -76,7 +89,7 @@ def diferencas(reg, job_id, atual, final=None):
 
 def gravar(pasta, registros, job_id, *, disparo):
     """Grava os registros (um por formato) em briefing/aprovacao.json, por cima dos registros dos mesmos formatos.
-    Os registros de outro job saem. humano.ErroHumano sem o disparo do "aprovar"."""
+    Os registros de outro job e os da aprovacao/1 (ja caidos) saem. humano.ErroHumano sem o disparo do "aprovar"."""
     humano.conferir(disparo, 'aprovar', consumir=True)
     pasta = Path(pasta).resolve()
     formatos = {}
@@ -84,7 +97,7 @@ def gravar(pasta, registros, job_id, *, disparo):
         velha = ler(pasta)
     except contratos.ErroContrato:
         velha = None
-    if velha is not None and velha['job_id'] == job_id:
+    if velha is not None and velha['job_id'] == job_id and velha['esquema'] == ESQUEMA:
         formatos = dict(velha['formatos'])
     for reg in registros:
         formatos[reg['formato']] = reg
