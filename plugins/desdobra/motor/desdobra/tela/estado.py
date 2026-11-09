@@ -15,7 +15,9 @@ assets do job.
     derivacao.grupo_proporcao_dif_max, por ligacao completa), qualquer que seja a familia da derivacao (a mestre que
     ela escolheu, ou SEM_FAMILIA para o formato que volta ao DA, fica como dado da composicao). Cada composicao
     (largura x altura depois do giro) lista os formatos que ela gera, com o giro, e marca a escala pura (o caminho
-    transform da derivacao: mesma proporcao da mestre);
+    transform da derivacao: mesma proporcao da mestre). O id de cada grupo e o id da familia, preso aos formatos dela
+    (revisao do M7b, fase A): o grupo fica com o id que o job ja conhece e com que divide mais formatos, e a tela avisa
+    o DA quando a familia ganhou ou perdeu formatos desde que ele mexeu nela;
   - previas: o palco de cada formato (palco), montado da derivacao do motor em memoria (derivacao.nucleo.preparar e
     derivar_em_memoria), nada gravado. Cada camada do elemento vira uma peca, na transformacao do elemento
     (destino + (caixa - origem) * s) e no recorte dele: a imagem da camada pelo asset por id, ou o texto com a face do
@@ -153,12 +155,183 @@ def agrupar_por_proporcao(composicoes):
     return grupos
 
 
-def abas(laudo, briefing, formatos, variantes=None):
-    """[{'id', 'rotulo', 'grupos': [{'id', 'proporcao': [menor, maior], 'escala_pura', 'composicoes': [{'id',
+def familias_conhecidas(pasta):
+    """{id da familia: [formatos] ou None} das familias que o job ja conhece (revisao do M7b, fase A): as do rascunho
+    da tela, com os formatos que a tela mostrava quando o DA mexeu nelas (ou, no rascunho de antes desta revisao, os
+    da confirmacao), e as composicoes do briefing gravado, mesmo de outra versao dos arquivos do job (o id e os
+    formatos dele continuam dizendo de onde as edicoes vieram). O rascunho vale sobre o briefing; None e o id do
+    rascunho velho sem formato nenhum (abas o deixa com o grupo da mesma posicao, como antes)."""
+    from desdobra import contratos
+    from desdobra.briefing import modelo as mb
+    from desdobra.tela import rascunho
+    saida = {}
+    try:
+        gravado = mb.ler(pasta)
+    except contratos.ErroContrato:
+        gravado = None
+    for c in (gravado or {}).get('composicoes') or []:
+        saida[c['familia']] = list(c['formatos'])
+    dados, _de_outro = rascunho.ler(pasta, rascunho.laudo_sha256(pasta))
+    for gid, f in ((dados or {}).get('familias') or {}).items():
+        fids = f.get('formatos')
+        if fids is None:
+            fids = (f.get('confirmacao') or {}).get('formatos')
+        if fids is not None:
+            saida[gid] = list(fids)
+        else:
+            saida.setdefault(gid, None)
+    return saida
+
+
+def marcas_das_familias(pasta):
+    """(editadas, cedidos) das familias que o job ja conhece, para a frase da tela (revisao do M7b, fase A).
+    editadas: os ids com edicao no palco (o rascunho vale sobre o briefing gravado), e so delas a frase diz que as
+    edicoes ficam guardadas; cedidos: {id: [formatos]} que outra familia levou depois que o DA mexeu nesta
+    (desdobra.tela.rascunho._ceder): o formato que volta para ela entrou de novo, mesmo estando na lista velha."""
+    from desdobra import contratos
+    from desdobra.briefing import modelo as mb
+    from desdobra.tela import rascunho
+    try:
+        gravado = mb.ler(pasta)
+    except contratos.ErroContrato:
+        gravado = None
+    editadas = {c['familia'] for c in (gravado or {}).get('composicoes') or [] if c.get('edicoes')}
+    dados, _de_outro = rascunho.ler(pasta, rascunho.laudo_sha256(pasta))
+    cedidos = {}
+    for gid, f in ((dados or {}).get('familias') or {}).items():
+        if f.get('edicoes'):
+            editadas.add(gid)
+        else:
+            editadas.discard(gid)
+        if f.get('cedidos'):
+            cedidos[gid] = list(f['cedidos'])
+    return editadas, cedidos
+
+
+def _chave_do_id(gid):
+    """A ordem dos ids no empate: '<orientacao>-<n>' pelo numero, os outros pelo texto depois deles."""
+    ori, _traco, n = gid.rpartition('-')
+    if ori in ORIENTACOES and n.isdigit():
+        return (0, ORIENTACOES.index(ori), int(n), '')
+    return (1, 0, 0, gid)
+
+
+def _serve_para(gid, ori):
+    """O id conhecido pode ir a um grupo desta orientacao: o '<outra orientacao>-<n>' nunca (o formato girado parte
+    da proposta, e as edicoes do id ficam para quando ele voltar); o id que nao diz orientacao segue os formatos."""
+    outra, _traco, n = gid.rpartition('-')
+    return not (outra in ORIENTACOES and n.isdigit() and outra != ori)
+
+
+def _lista(fids):
+    fids = sorted(fids)
+    return fids[0] if len(fids) == 1 else '%s e %s' % (', '.join(fids[:-1]), fids[-1])
+
+
+def _frase_dos_formatos(fids, um, varios):
+    return (um if len(fids) == 1 else varios) % _lista(fids)
+
+
+def aviso_da_familia(entraram, sairam, de_outra):
+    """A frase da tela para a familia que mudou de formatos desde que o DA mexeu nela (revisao do M7b, fase A).
+    entraram e sairam: os formatos que entraram e sairam da familia de mesmo id; de_outra: os que entraram vindos de
+    outra familia conhecida com edicao (as edicoes de la ficam guardadas no rascunho e nao valem aqui)."""
+    partes = []
+    if entraram:
+        partes.append(_frase_dos_formatos(entraram, 'entrou o formato %s', 'entraram os formatos %s'))
+    if sairam:
+        partes.append(_frase_dos_formatos(sairam, 'saiu o formato %s', 'saíram os formatos %s'))
+    texto = 'Esta família mudou desde a última vez: %s.' % ' e '.join(partes)
+    if de_outra:
+        texto += ' ' + _frase_dos_formatos(
+            de_outra, 'O que você editou para o formato %s em outra família fica guardado e não vale aqui.',
+            'O que você editou para os formatos %s em outra família fica guardado e não vale aqui.')
+    return texto + ' Olhe a família de novo e confirme outra vez.'
+
+
+def aviso_de_familia_nova(de_outra, com_edicoes=False):
+    """A frase da tela para a familia nova com formatos que estavam em outra familia conhecida (a parte que saiu de
+    uma familia dividida): ela parte da proposta, e, quando a familia de la tinha edicao (com_edicoes), sem elas."""
+    return (_frase_dos_formatos(de_outra, 'Esta família é nova: o formato %s estava em outra família.',
+                                'Esta família é nova: os formatos %s estavam em outra família.') +
+            (' Ela parte da proposta do desdobra, sem as edições de lá.' if com_edicoes else
+             ' Ela parte da proposta do desdobra.') + ' Olhe a família e confirme.')
+
+
+def _aviso(gid, fids, conhecidas, editadas, cedidos):
+    """A frase da familia gid, hoje com os formatos fids (um conjunto), contra o que o job conhece dela: conhecidas
+    {id: conjunto de formatos}, editadas (ids com edicao) e cedidos {id: formatos que outra familia levou depois}. O
+    formato cedido que esta de novo na familia entrou de novo: o DA mexeu nele em outra familia no meio tempo."""
+    de_editada = {f for g, fk in conhecidas.items() if g != gid and g in editadas for f in fk & fids}
+    if gid in conhecidas:
+        entraram = (fids - conhecidas[gid]) | (fids & set(cedidos.get(gid) or ()))
+        sairam = conhecidas[gid] - fids
+        return aviso_da_familia(entraram, sairam, de_editada & entraram) if entraram or sairam else ''
+    de_outra = {f for g, fk in conhecidas.items() if g != gid for f in fk & fids}
+    return aviso_de_familia_nova(de_outra, bool(de_editada)) if de_outra else ''
+
+
+def avisos_das_familias(pasta, familias):
+    """{id: frase} das familias que a tela mostra (familias: {id: [formatos]}, os ids ja dados por abas), contra o
+    que o job conhece agora: depois de um ato (a familia confirmada) a frase muda sem os ids mudarem. O id conhecido
+    sem formatos (o rascunho velho) vale com os formatos do grupo de mesmo id."""
+    conhecidas = {g: set(familias.get(g, ()) if f is None else f) for g, f in familias_conhecidas(pasta).items()}
+    editadas, cedidos = marcas_das_familias(pasta)
+    return {gid: _aviso(gid, set(fids), conhecidas, editadas, cedidos) for gid, fids in familias.items()}
+
+
+def _ids_das_familias(grupos, conhecidas, editadas=(), cedidos=None):
+    """Os ids dos grupos da tela, na ordem de grupos ([(orientacao, {formatos})], na ordem das abas), e o aviso de
+    cada um (revisao do M7b, fase A). Cada grupo fica com o id conhecido (conhecidas: {id: [formatos] ou None}) com
+    que divide mais formatos; no empate, o de menos diferenca, depois o grupo que vem antes nas abas e o id menor.
+    Cada id vai a um grupo so, e o grupo sem formato em comum com id nenhum ganha o menor '<orientacao>-<n>' que
+    nenhum id conhecido usa (o id que sumiu da tela fica reservado: as edicoes dele nunca passam para outros
+    formatos). Sem id conhecido, a numeracao e a posicao do grupo na orientacao, como antes desta revisao. O id
+    conhecido sem formatos (None, o rascunho velho) fica com os formatos do grupo da mesma posicao. editadas e
+    cedidos: marcas_das_familias (a frase de cada grupo, _aviso)."""
+    posicao, contagem = [], {}
+    for ori, _fids in grupos:
+        contagem[ori] = contagem.get(ori, 0) + 1
+        posicao.append('%s-%d' % (ori, contagem[ori]))
+    conhecidas = dict(conhecidas or {})
+    for gid in [g for g, f in conhecidas.items() if f is None]:
+        conhecidas[gid] = set(grupos[posicao.index(gid)][1]) if gid in posicao else set()
+    conhecidas = {g: set(f) for g, f in conhecidas.items()}
+    pares = []
+    for i, (ori, fids) in enumerate(grupos):
+        for gid, fk in conhecidas.items():
+            comum = len(fids & fk)
+            if comum and _serve_para(gid, ori):
+                pares.append(((-comum, len(fids ^ fk), i, _chave_do_id(gid)), i, gid))
+    ids, usados = [None] * len(grupos), set()
+    for _chave, i, gid in sorted(pares):
+        if ids[i] is None and gid not in usados:
+            ids[i] = gid
+            usados.add(gid)
+    reservados = set(conhecidas) | usados
+    for i, (ori, _fids) in enumerate(grupos):
+        if ids[i] is None:
+            n = 1
+            while '%s-%d' % (ori, n) in reservados:
+                n += 1
+            ids[i] = '%s-%d' % (ori, n)
+            reservados.add(ids[i])
+    avisos = [_aviso(ids[i], fids, conhecidas, set(editadas or ()), cedidos or {})
+              for i, (_ori, fids) in enumerate(grupos)]
+    return ids, avisos
+
+
+def abas(laudo, briefing, formatos, variantes=None, conhecidas=None, editadas=(), cedidos=None):
+    """[{'id', 'rotulo', 'grupos': [{'id', 'proporcao': [menor, maior], 'escala_pura', 'aviso', 'composicoes': [{'id',
     'largura', 'altura', 'proporcao', 'escala_pura', 'familia', 'rotulo_familia', 'formatos': [...]}]}]}] na ordem
     horizontal, quadrado, vertical. Dentro da orientacao, as composicoes de proporcao parecida formam um grupo (uma aba
     da tela; agrupar_por_proporcao), qualquer que seja a familia da derivacao: a faixa de familia deixa de separar o
-    que a tela agrupa (n 163). formatos: {id: derivacao/1}; variantes: {id: quantas variantes a galeria montou}."""
+    que a tela agrupa (n 163). formatos: {id: derivacao/1}; variantes: {id: quantas variantes a galeria montou}.
+    O id do grupo e o id da familia (o rascunho, os atos e o briefing gravam por ele): desde a revisao do M7b, fase A,
+    ele fica preso aos formatos, e nao a posicao do grupo na aba. conhecidas: {id: [formatos] ou None} das familias
+    que o job ja conhece (familias_conhecidas); a ordem das abas continua pela proporcao (_ids_das_familias). aviso: a
+    frase da tela quando a familia mudou de formatos desde que o DA mexeu nela, ou ''. editadas e cedidos:
+    marcas_das_familias (a frase so fala das edicoes que existem, e o formato que volta de outra familia entra)."""
     variantes = variantes or {}
     ordem_briefing = [f['id'] for f in briefing['formatos']]
     por_ori = {}
@@ -195,9 +368,14 @@ def abas(laudo, briefing, formatos, variantes=None):
                            'composicoes': membros})
         grupos.sort(key=lambda g: (-g['composicoes'][0]['largura'] / g['composicoes'][0]['altura'],
                                    g['composicoes'][0]['id']))
-        for n, g in enumerate(grupos, 1):
-            g['id'] = '%s-%d' % (ori, n)
-        saida.append({'id': ori, 'rotulo': ROTULOS[ori], 'grupos': [dict({'id': g.pop('id')}, **g) for g in grupos]})
+        saida.append({'id': ori, 'rotulo': ROTULOS[ori], 'grupos': grupos})
+    todos = [(o['id'], g) for o in saida for g in o['grupos']]
+    ids, avisos = _ids_das_familias([(ori, {x['id'] for c in g['composicoes'] for x in c['formatos']})
+                                     for ori, g in todos], conhecidas, editadas, cedidos)
+    for (_ori, g), gid, aviso in zip(todos, ids, avisos):
+        g['id'], g['aviso'] = gid, aviso
+    for o in saida:
+        o['grupos'] = [dict({'id': g.pop('id')}, **g) for g in o['grupos']]
     return saida
 
 
@@ -1153,10 +1331,12 @@ def _sem_previa(_dados, origem=None):
 def montar(pasta, teto=None):
     """Conteudo do servidor da tela para o job: {'estado', 'previas', 'assets', 'fontes', 'recarregar', 'editar',
     'familias', 'atualizar'}. editar(dados, origem) e a previa da edicao por familia (desdobra.tela.edicao.Editor.previa);
-    familias: {id: {'formatos', 'versoes'}} para o ato de confirmar a familia. ErroTela com o motivo (texto fixo do
+    familias: {id: {'formatos', 'versoes', 'pecas', 'por_confirmar', 'aviso'}} para o ato de confirmar a familia (o
+    id e o que o job ja conhece para esses formatos; familias_conhecidas e abas). ErroTela com o motivo (texto fixo do
     motor) quando o job nao tem o que mostrar. teto: o teto do modo de dados da linha de comando (o do estado.json entra
-    sozinho). recarregar() refaz o passo 1 e a lista do que falta depois de um ato da tela, sem derivar de novo: as
-    composicoes seguem as specs da abertura. atualizar() monta tudo de novo quando o passo 2 do rascunho mudou desde
+    sozinho). recarregar() refaz o passo 1, a lista do que falta e a frase de cada familia (aviso; a familia
+    confirmada deixa de dizer que mudou) depois de um ato da tela, sem derivar de novo: as composicoes e os ids das
+    familias seguem os da abertura. atualizar() monta tudo de novo quando o passo 2 do rascunho mudou desde
     esta montagem (None quando nao mudou): o GET do estado leva o passo 3 novo a pagina, sem abrir a tela de novo.
 
     No job novo, sem briefing confirmado, a tela parte do briefing de partida (desdobra.briefing.modelo.partida: os
@@ -1220,9 +1400,13 @@ def montar(pasta, teto=None):
     previas = {fid: palco(d, r['kv'], laudo, base) for fid, d in r['formatos'].items()}
     brutos = {}
     gals = {}
+    # os ids das familias que o job ja conhece: cada id fica com os formatos dele, e nao com a posicao do grupo
+    conhecidas = familias_conhecidas(pasta)
+    editadas, cedidos = marcas_das_familias(pasta)
     if espera is None:
-        gals = galerias(ctx, r['kv'], laudo, base, r['formatos'], abas(laudo, b, r['formatos']), specs=specs,
-                        arquivo_specs=arquivo_specs, params=params, brutos=brutos)
+        gals = galerias(ctx, r['kv'], laudo, base, r['formatos'],
+                        abas(laudo, b, r['formatos'], conhecidas=conhecidas, editadas=editadas, cedidos=cedidos),
+                        specs=specs, arquivo_specs=arquivo_specs, params=params, brutos=brutos)
     for fid, gal in gals.items():
         previas[fid]['galeria'] = gal
         dv = previas[fid]['devolucao']
@@ -1234,7 +1418,8 @@ def montar(pasta, teto=None):
     estado = {'esquema': ESQUEMA, 'job_id': estado_job['job_id'], 'somente_leitura': True,
               'briefing_origem': b['cabecalho']['origem'],
               'mestre': {'largura': laudo['documento']['largura'], 'altura': laudo['documento']['altura']},
-              'orientacoes': abas(laudo, b, r['formatos'], n_variantes), 'fontes': lista_fontes,
+              'orientacoes': abas(laudo, b, r['formatos'], n_variantes, conhecidas, editadas, cedidos),
+              'fontes': lista_fontes,
               'assets': [{'id': i} for i in sorted(assets)], 'devolucoes': len(r['devolucoes']),
               'lido': lido_,
               'funcoes': {'arvore': arvore(laudo, b, ctx['resolvidas'], quadro),
@@ -1245,6 +1430,7 @@ def montar(pasta, teto=None):
               'edicao': {'tolerancia_alinhamento': limites.valor('derivacao.alinhamento_intencao_tolerancia')}}
     familias = {g['id']: [x['id'] for co in g['composicoes'] for x in co['formatos']]
                 for o in estado['orientacoes'] for g in o['grupos']}
+    avisos = {g['id']: g['aviso'] for o in estado['orientacoes'] for g in o['grupos']}
     from desdobra.briefing import salvar
     estado['briefing'] = dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta))
     if espera is not None:
@@ -1258,10 +1444,18 @@ def montar(pasta, teto=None):
     estado['faltam'] = faltam(lido_, r['formatos'], n_variantes, familias,
                               familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas))
 
+    def com_os_avisos_de_agora():
+        # a familia confirmada (ou mexida) depois da montagem: os ids e os formatos ficam, e so a frase de cada uma
+        # segue o rascunho de agora, no estado e no que os atos leem (conteudo['familias'])
+        agora = avisos_das_familias(pasta, familias)
+        for gid, aviso in agora.items():
+            conteudo['familias'][gid]['aviso'] = aviso
+        return [dict(o, grupos=[dict(g, aviso=agora[g['id']]) for g in o['grupos']]) for o in estado['orientacoes']]
+
     def recarregar():
         novo_job = nucleo.ler_estado(pasta)
         novo_lido = com_previas_dos_quadros(lido(pasta, novo_job, laudo, b, r['formatos'], lista_fontes, teto))
-        return dict(estado, lido=novo_lido,
+        return dict(estado, lido=novo_lido, orientacoes=com_os_avisos_de_agora(),
                     faltam=faltam(novo_lido, r['formatos'], n_variantes, familias,
                                   familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas)),
                     briefing=dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta)))
@@ -1269,7 +1463,8 @@ def montar(pasta, teto=None):
     conteudo = {'estado': estado, 'previas': previas, 'assets': assets, 'fontes': fontes, 'recarregar': recarregar,
                 'editar': editor.previa if editor is not None else _sem_previa,
                 'familias': {gid: {'formatos': fids, 'versoes': versoes[gid], 'pecas': pecas[gid],
-                                   'por_confirmar': sorted(set(fids) & por_confirmar(r['formatos']))}
+                                   'por_confirmar': sorted(set(fids) & por_confirmar(r['formatos'])),
+                                   'aviso': avisos[gid]}
                              for gid, fids in familias.items()}}
 
     def atualizador(feita, atual):

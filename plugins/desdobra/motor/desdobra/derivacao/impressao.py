@@ -15,9 +15,9 @@ Entra na impressao de um formato:
   - o formato do briefing, a composicao da familia dele (versao e edicoes do DA; da confirmacao, a origem e o meio,
     sem o carimbo, aqui e na proposta da derivacao: confirmar de novo o mesmo nao muda o formato, decisoes-v1.md,
     175) e os valores da folha de spec dele (sem a fonte do campo). Da composicao e da proposta ficam fora o id da
-    familia, que e a posicao do grupo na tela (tela.estado.abas: o formato de outra proporcao que entra renumera os
-    grupos), e a lista dos formatos dela, que so alimenta o formato pela derivacao dele (o irmao novo que nao muda a
-    derivacao nao derruba o formato);
+    familia, so um nome (preso aos formatos dela desde a revisao do M7b, fase A, tela.estado.abas; a familia que se
+    divide ou se junta pode levar o formato a outro id sem mudar o que ele recebe), e a lista dos formatos dela, que
+    so alimenta o formato pela derivacao dele (o irmao novo que nao muda a derivacao nao derruba o formato);
   - a mestre usada: a propria do DA (caixas e quebras), com o formato e a folha dela; a do KV ja esta na derivacao.
 Todo numero com casas sai arredondado como na derivacao (nucleo._q, CASAS_ESCALA): a medicao do A0 deu derivacao
 igual em 60 rodadas (scratchpad/m7/medicoes/determinismo.txt), e o arredondamento e so guarda. Funcao pura: nao le
@@ -95,7 +95,7 @@ def entradas(derivacao_formato, briefing_resolvido, fid):
 def sem_carimbo(item):
     """A composicao do briefing ou a proposta da derivacao sem o que nao muda o formato: o carimbo da confirmacao
     (confirmar a familia de novo, com a mesma versao e as mesmas edicoes, como a mudanca do passo 2 pede de toda
-    familia; decisoes-v1.md, 175), o id da familia (a posicao do grupo na tela) e a lista dos formatos dela. A origem
+    familia; decisoes-v1.md, 175), o id da familia (so um nome; tela.estado.abas) e a lista dos formatos dela. A origem
     e o meio da confirmacao, a versao e as edicoes ficam. A trava do derivado (render.derivado) compara assim tambem."""
     if not isinstance(item, dict):
         return item

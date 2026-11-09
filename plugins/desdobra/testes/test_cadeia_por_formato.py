@@ -339,20 +339,20 @@ def test_formato_novo_na_familia_nao_derruba_o_irmao(job_aprovado, copia, monkey
     assert derivado.montar(job, 'mesma')[1] == []
 
 
-def _grupo_da_tela(job, fid):
+def _grupo_da_tela(job, fid, conhecidas=None):
     from desdobra.tela import estado
     b = contratos.ler(job / mb.ARQUIVO, 'briefing/1')
     laudo = contratos.ler(job / mb.ARQUIVO_LAUDO, 'laudo/1')
     ds = {f['id']: contratos.ler(job / nd.PASTA / ('%s.json' % f['id']), nd.ESQUEMA) for f in b['formatos']
           if (job / nd.PASTA / ('%s.json' % f['id'])).is_file()}
-    return next(g['id'] for o in estado.abas(laudo, b, ds) for g in o['grupos']
+    return next(g['id'] for o in estado.abas(laudo, b, ds, conhecidas=conhecidas) for g in o['grupos']
                 for c in g['composicoes'] for x in c['formatos'] if x['id'] == fid)
 
 
 def test_familia_renumerada_na_tela_nao_derruba_os_formatos_dela(job_aprovado, copia, monkeypatch):
-    """O id da familia e a posicao do grupo na tela (tela.estado.abas): o formato mais largo que entra no passo 1
-    empurra o grupo de mesma de horizontal-1 para horizontal-2. Confirmada de novo com a mesma versao e as mesmas
-    edicoes, so com o id novo, mesma fica: o render, a aprovacao e a trava do derivado."""
+    """Pela posicao do grupo na tela (tela.estado.abas sem os ids que o job ja conhece), o formato mais largo que
+    entra no passo 1 empurraria o grupo de mesma de horizontal-1 para horizontal-2. Mesmo confirmada de novo com a
+    mesma versao e as mesmas edicoes, so com o id novo, mesma fica: o render, a aprovacao e a trava do derivado."""
     from desdobra.render import derivado
     job = copia(job_aprovado)
     monkeypatch.setattr(codificar, 'arquivo_final', _encoder_de_teste)
@@ -366,6 +366,31 @@ def test_familia_renumerada_na_tela_nao_derruba_os_formatos_dela(job_aprovado, c
     def renumerar(b):
         next(c for c in b['composicoes'] if c['familia'] == 'familia-mesma')['familia'] = gid
     assert _salvar_seletivo(job, renumerar) == {}
+    assert _codigos(portao.conferir(job, ['mesma']), 'mesma') == []
+    assert _shas(job, *_rels_de('mesma')) == shas
+    assert derivado.montar(job, 'mesma')[1] == []
+
+
+def test_formato_mais_largo_nao_muda_o_id_da_familia_de_mesma(job_aprovado, copia, monkeypatch):
+    """Com os ids que o job ja conhece (tela.estado.familias_conhecidas: o briefing gravado e o rascunho da tela), o
+    grupo de mesma fica com o id de antes quando o formato mais largo entra no passo 1, e o salvar que so traz a
+    familia nova de largo nao derruba o render, a aprovacao nem a trava do derivado de mesma."""
+    from desdobra.render import derivado
+    from desdobra.tela import estado
+    job = copia(job_aprovado)
+    monkeypatch.setattr(codificar, 'arquivo_final', _encoder_de_teste)
+    gid_antes = _grupo_da_tela(job, 'mesma', estado.familias_conhecidas(job))
+    _mexer_briefing(job, lambda b: b['formatos'].append(ap.formato('largo', 1600, 320, rotacao=ROT0)))
+    nd.derivar(job, so=['largo'])
+    conhecidas = estado.familias_conhecidas(job)
+    gid, gid_largo = _grupo_da_tela(job, 'mesma', conhecidas), _grupo_da_tela(job, 'largo', conhecidas)
+    assert gid == gid_antes and gid_largo not in conhecidas
+    shas = _shas(job, *_rels_de('mesma'))
+
+    def com_largo(b):
+        b['composicoes'].append({'familia': gid_largo, 'formatos': ['largo'], 'versao': None, 'edicoes': [],
+                                 'confirmada': True, 'confirmacao': dict(CONF)})
+    assert 'mesma' not in _salvar_seletivo(job, com_largo)
     assert _codigos(portao.conferir(job, ['mesma']), 'mesma') == []
     assert _shas(job, *_rels_de('mesma')) == shas
     assert derivado.montar(job, 'mesma')[1] == []

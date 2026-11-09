@@ -15,6 +15,9 @@ fica salvo sozinho, a cada mudanca, neste arquivo. Regras:
     decisao de coberta numa camada que nao e coberta sao recusados (desdobra.tela.funcoes.conferir);
   - a familia confirmada (decisoes-v1.md, 167) so nasce do ato "Confirmar familia" da janela (confirmar_familia, com
     o Disparo da tela); a pagina nunca manda a confirmacao, e a familia que muda depois dela volta a confirmada falsa;
+  - cada familia guarda os formatos que a tela mostrava quando o DA mexeu nela pela ultima vez (revisao do M7b, fase
+    A; so o servidor grava, _com_os_formatos): a tela casa o id com o grupo que divide mais formatos com eles
+    (desdobra.tela.estado.abas), e a familia que a tela nao mostra mais fica aqui com as edicoes dela;
   - gravacao atomica, com o esquema rascunho-tela/1 conferido antes. A origem e 'rascunho', ou 'fixture_de_teste' no
     modo de teste da tela (proposta do M7, 159c).
 """
@@ -76,9 +79,11 @@ def origem_gravada(pasta):
     return dados.get('origem') if isinstance(dados, dict) else None
 
 
-def gravar(pasta, recebido, *, job_id, laudo_atual, origem):
+def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=None):
     """Confere o rascunho mandado pela pagina e grava de forma atomica. ErroRascunho quando ele e de outro job, de
-    outro laudo ou nao segue o esquema. Devolve o que foi gravado."""
+    outro laudo ou nao segue o esquema. familias_da_tela: {id: [formatos]} das familias que a tela mostra agora (o
+    servidor da tela); com elas, cada familia guarda os formatos de quando o DA mexeu nela (_com_os_formatos).
+    Devolve o que foi gravado."""
     from desdobra.briefing import modelo
     from desdobra.tela import funcoes
     if not isinstance(recebido, dict) or not set(CAMPOS_DA_PAGINA) <= set(recebido) or             not set(recebido) <= set(CAMPOS_DA_PAGINA + CAMPOS_DAS_ESCOLHAS):
@@ -89,6 +94,7 @@ def gravar(pasta, recebido, *, job_id, laudo_atual, origem):
         raise ErroRascunho('outro_laudo')
     familias = _familias_com_a_confirmacao(pasta, recebido['familias'], laudo_atual)
     anterior, _de_outro = ler(pasta, laudo_atual)
+    familias = _com_os_formatos(familias, (anterior or {}).get('familias') or {}, familias_da_tela or {})
     if any((recebido.get(k) or {}) != ((anterior or {}).get(k) or {}) for k in CAMPOS_DAS_ESCOLHAS):
         # a prancheta, o giro, o passo 2 e o Design system mudam o layout de todas as familias: nenhuma confirmacao
         # fica (revisao do M7a)
@@ -135,7 +141,7 @@ def _familias_com_a_confirmacao(pasta, familias, laudo_atual):
     for gid, f in familias.items():
         if not isinstance(f, dict):
             raise ErroRascunho('esquema')
-        f = {k: v for k, v in f.items() if k != 'confirmacao'}
+        f = {k: v for k, v in f.items() if k not in ('confirmacao', 'formatos', 'cedidos')}
         if f.get('confirmada') is True:
             g = gravadas.get(gid) or {}
             if not g.get('confirmada') or g.get('versao') != f.get('versao') or g.get('edicoes') != f.get('edicoes'):
@@ -143,6 +149,45 @@ def _familias_com_a_confirmacao(pasta, familias, laudo_atual):
             f['confirmacao'] = g['confirmacao']
         saida[gid] = f
     return saida
+
+
+def _com_os_formatos(familias, gravadas, tela):
+    """As familias da pagina com os formatos de cada uma (revisao do M7b, fase A), que so o servidor grava: a pagina
+    nunca os manda (o que ela manda ja saiu em _familias_com_a_confirmacao). A familia que o DA mexeu agora (versao ou
+    edicoes diferentes das gravadas, ou nova no rascunho) leva os formatos que a tela mostra para ela; a que nao mudou
+    guarda os de antes, e assim a tela continua avisando que ela ganhou ou perdeu formatos ate o DA mexer nela ou
+    confirma-la. A familia que a tela nao mostra mais guarda os formatos gravados, com as edicoes. Os formatos que a
+    familia mexida agora leva de outra familia ficam marcados nesta (cedidos, _ceder)."""
+    saida, mexidas = {}, []
+    for gid, f in familias.items():
+        g = gravadas.get(gid) or {}
+        mudou = not g or (g.get('versao'), g.get('edicoes') or []) != (f.get('versao'), f.get('edicoes') or [])
+        if mudou and gid in tela:
+            saida[gid] = dict(f, formatos=list(tela[gid]))
+            mexidas.append(gid)
+            continue
+        # o rascunho de antes desta revisao: os formatos da confirmacao, quando houver
+        fids = g.get('formatos', (g.get('confirmacao') or {}).get('formatos'))
+        if fids is None and gid in tela:
+            fids = tela[gid]
+        saida[gid] = dict(f, formatos=list(fids)) if fids is not None else dict(f)
+        if g.get('cedidos'):
+            saida[gid]['cedidos'] = list(g['cedidos'])
+    for gid in mexidas:
+        _ceder(saida, gid, tela[gid])
+    return saida
+
+
+def _ceder(familias, gid, formatos):
+    """A familia gid acabou de ser mexida (ou confirmada) com estes formatos: cada outra familia que ainda os tem na
+    lista dela (a lista de quando o DA mexeu nela, revisao do M7b, fase A) guarda em cedidos os que gid levou. A
+    lista fica, e a tela continua dizendo que o formato saiu; quando ele volta, ele entrou de novo (o DA mexeu nele
+    em outra familia no meio tempo), e a confirmacao velha nao vale (confirmada_para). Muda familias no lugar."""
+    levados = set(formatos)
+    for g, f in familias.items():
+        comum = levados & set(f.get('formatos') or ()) if g != gid else set()
+        if comum:
+            f['cedidos'] = sorted(comum | set(f.get('cedidos') or ()))
 
 
 def edicoes_gravadas(pasta, familia):
@@ -177,14 +222,18 @@ def mesma_vista(pasta, vista):
 
 
 def confirmada_para(familia, formatos, pecas=None):
-    """A familia do rascunho esta confirmada para estes formatos: o id da familia e uma posicao na tela
-    (desdobra.tela.estado), e a confirmacao guarda os formatos que o DA viu (revisao do M7a). pecas: a impressao do
-    que a tela mostra hoje da familia (desdobra.tela.estado.impressao_das_pecas); com ela, a confirmacao vale so se
-    foi feita sobre as mesmas pecas (a area de spec e a galeria de cada formato), e a confirmacao sem impressao nao
-    vale (revisao 3 da regra spec_por_confirmar)."""
+    """A familia do rascunho esta confirmada para estes formatos: a confirmacao guarda os formatos que o DA viu
+    (revisao do M7a), e a familia de mesmo id que ganhou ou perdeu formatos (desdobra.tela.estado.abas) pede a
+    confirmacao de novo. pecas: a impressao do que a tela mostra hoje da familia
+    (desdobra.tela.estado.impressao_das_pecas); com ela, a confirmacao vale so se foi feita sobre as mesmas pecas (a
+    area de spec e a galeria de cada formato), e a confirmacao sem impressao nao vale (revisao 3 da regra
+    spec_por_confirmar). O formato que outra familia levou depois da confirmacao (cedidos) e voltou tambem pede a
+    confirmacao de novo: no meio tempo o DA mexeu nele la (revisao do M7b, fase A)."""
     f = familia or {}
     conf = f.get('confirmacao') or {}
     if pecas is not None and conf.get('pecas') != pecas:
+        return False
+    if set(f.get('cedidos') or ()) & set(formatos):
         return False
     return bool(f.get('confirmada')) and conf.get('formatos') == list(formatos)
 
@@ -226,10 +275,17 @@ def confirmar_familia(pasta, familia, versao, *, disparo, job_id, laudo_atual, e
     conf = {'origem': disparo.origem, 'meio': disparo.meio, 'em': modelo.agora()}
     if formatos is not None:
         conf['formatos'] = list(formatos)
+        # a familia passa a ser destes formatos (revisao do M7b, fase A): o aviso de que ela mudou sai com a confirmacao
+        f['formatos'] = list(formatos)
+        f.pop('cedidos', None)
     if pecas is not None:
         conf['pecas'] = pecas
     f.update(versao=versao, confirmada=True, confirmacao=conf)
     dados['familias'] = dict(dados['familias'], **{familia: f})
+    if formatos is not None:
+        # as outras familias que ainda tinham estes formatos na lista guardam que esta os levou
+        dados['familias'] = {g: dict(x) for g, x in dados['familias'].items()}
+        _ceder(dados['familias'], familia, formatos)
     teste = disparo.origem == modelo.ORIGEM_FIXTURE
     dados.update(origem=modelo.ORIGEM_FIXTURE if teste else modelo.ORIGEM_RASCUNHO, atualizado_em=modelo.agora())
     contratos.gravar(Path(pasta) / ARQUIVO, dados, ESQUEMA)

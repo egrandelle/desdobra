@@ -144,6 +144,8 @@
   const CONTEUDO = ['titulo', 'texto_de_apoio', 'cta', 'icone_de_cta', 'url_ou_contato', 'texto_legal',
     'informacao_de_evento', 'destaque_numerico', 'logo_principal', 'assinatura_institucional', 'selo', 'logo_de_parceiro'];
   const SELO_CONFIRMADA = 'Família confirmada';
+  // a marca curta da familia que mudou de formatos, na lista das familias (a frase inteira vem do servidor)
+  const MINI_MUDOU = 'Mudou, confirme de novo';
   // o motivo do motor para o formato com valor de spec a espera do DA (desdobra.derivacao.nucleo.MOTIVO_SPEC_POR_CONFIRMAR)
   const MOTIVO_SEM_SPEC = 'spec_por_confirmar';
   // o formato que deriva da mestre propria cujo formato espera a spec (desdobra.derivacao.nucleo.MOTIVO_MESTRE_POR_CONFIRMAR)
@@ -265,7 +267,26 @@
     if (!document.getElementById('passo-pecas').hidden) iniciarPecas(null);
     mostrarAvisos(e);
     atualizarFaltam();
-    return montarLido(e.lido);
+    return Promise.resolve(montarLido(e.lido)).then(sincronizarConfirmacoes);
+  }
+  /* as familias que o servidor deixou de contar como confirmadas (um formato entrou ou saiu, ou voltou de outra
+     familia, com a tela aberta) deixam de estar confirmadas na pagina tambem: o DA pode confirmar de novo, e Salvar e
+     seguir espera. So tira a confirmacao, nunca poe, e as edicoes que esperam a gravacao ficam */
+  function sincronizarConfirmacoes() {
+    if (!escrita) return null;
+    return pedir('/api/rascunho').then(function (r) {
+      const gravadas = (r.rascunho && r.rascunho.familias) || {};
+      Object.keys(rascunho.familias).forEach(function (g) {
+        const f = rascunho.familias[g];
+        if (f && f.confirmada && !(gravadas[g] && gravadas[g].confirmada)) { f.confirmada = false; delete f.confirmacao; }
+      });
+      if (vista.familia) atualizarBotaoFamilia();
+      atualizarSalvar();
+    }).catch(function () { return null; });
+  }
+  /* as familias do estado sem a frase de cada uma: a frase que muda sozinha nao redesenha o passo 3 */
+  function semAvisos(orientacoes) {
+    return JSON.stringify(orientacoes, function (k, v) { return k === 'aviso' ? undefined : v; });
   }
   /* a faixa de avisos do servidor: a tela que nao se atualizou e o briefing salvo de outra versao dos arquivos */
   function mostrarAvisos(e) {
@@ -335,8 +356,9 @@
   function recarregarEstado() {
     return pedir('/api/estado').then(function (e) {
       // o ato de spec pode mudar os formatos e as familias: so entao o estado inteiro volta, como depois do rascunho
-      // gravado; nos outros atos o palco fica onde o DA estava
-      if (JSON.stringify(e.orientacoes) !== JSON.stringify(estado.orientacoes)) return aplicarEstado(e);
+      // gravado; nos outros atos o palco fica onde o DA estava, e so a frase da familia muda (a familia confirmada)
+      if (semAvisos(e.orientacoes) !== semAvisos(estado.orientacoes)) return aplicarEstado(e);
+      trocarAvisos(e.orientacoes || []);
       estado.lido = e.lido;
       estado.faltam = e.faltam;
       estado.briefing = e.briefing;
@@ -344,7 +366,7 @@
       salvoNaTela = !!(e.briefing && e.briefing.salvo);
       mostrarAvisos(e);
       atualizarFaltam();
-      return montarLido(e.lido);
+      return Promise.resolve(montarLido(e.lido)).then(sincronizarConfirmacoes);
     });
   }
   const depoisDoAto = {};
@@ -1417,6 +1439,8 @@
       const tipo = seloDoGrupo(g);
       const selo = el('span', SELOS_CURTOS[tipo], 'selo mini-selo selo-' + tipo);
       b.appendChild(selo);
+      b.dataset.rotulo = b.getAttribute('aria-label');
+      marcarMudou(b, g);
       b.addEventListener('click', function () { selecionar(no, b); grupo(g, null); });
       no.appendChild(b);
       previa(fs[0].id).then(function (m) {
@@ -1430,6 +1454,36 @@
       selecionar(no, inicial[0]);
       grupo(inicial[1], alvo);
     }
+  }
+  /* a familia que ganhou ou perdeu formatos desde que o DA mexeu nela: a marca curta na aba e, na familia aberta, a
+     frase inteira acima do palco; a marca e a frase saem quando o servidor deixa de mandar o aviso (a familia
+     confirmada) */
+  function marcarMudou(b, g) {
+    b.classList.toggle('mudou', !!g.aviso);
+    b.setAttribute('aria-label', b.dataset.rotulo + (g.aviso ? '. ' + MINI_MUDOU : ''));
+    const velha = b.querySelector('.mini-mudou');
+    if (velha) velha.remove();
+    if (g.aviso) b.appendChild(el('span', MINI_MUDOU, 'mini-mudou'));
+  }
+  function mostrarAvisoDaFamilia(g) {
+    const aviso = document.getElementById('aviso-familia');
+    aviso.textContent = g.aviso || '';
+    aviso.hidden = !g.aviso;
+  }
+  /* o estado novo com as mesmas familias e so outra frase em alguma: a frase muda no lugar, sem redesenhar o passo 3
+     nem tirar o DA da familia em que ele esta */
+  function trocarAvisos(orientacoes) {
+    const novos = {};
+    orientacoes.forEach(function (o) { o.grupos.forEach(function (g) { novos[g.id] = g.aviso || ''; }); });
+    const lista = document.getElementById('composicoes');
+    (estado.orientacoes || []).forEach(function (o) {
+      o.grupos.forEach(function (g) {
+        g.aviso = novos[g.id] || '';
+        const b = lista.querySelector('[data-grupo="' + g.id + '"]');
+        if (b) marcarMudou(b, g);
+        if (vista.familia === g.id) mostrarAvisoDaFamilia(g);
+      });
+    });
   }
   function fichaDeFormato(x, c) {
     const b = botao(null, 'ficha');
@@ -1456,6 +1510,8 @@
     vista.familia = g.id;
     vista.grupo = g;
     vista.variante = (rascunho.familias[g.id] || {}).versao || null;
+    // o id da familia segue os formatos dela; quando eles mudaram, a frase do servidor diz o que entrou ou saiu
+    mostrarAvisoDaFamilia(g);
     ed.previa = null;
     ed.selecionado = null;
     fecharEditorTexto();

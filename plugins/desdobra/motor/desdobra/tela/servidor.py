@@ -429,8 +429,9 @@ class ServidorTela:
         if laudo_agora != self.laudo_sha256:
             return None  # o PSD foi relido com a tela aberta: o rascunho desta pagina e de outro laudo
         try:
+            # cada familia mexida guarda os formatos que a tela mostra para ela agora (revisao do M7b, fase A)
             gravado = rascunho.gravar(self.pasta, dados, job_id=self.job_id, laudo_atual=laudo_agora,
-                                      origem=self.origem_rascunho)
+                                      origem=self.origem_rascunho, familias_da_tela=self.familias_da_tela)
         except rascunho.ErroRascunho:
             return None
         return 200, {'atualizado_em': gravado['atualizado_em']}  # numero-neutro: codigo HTTP

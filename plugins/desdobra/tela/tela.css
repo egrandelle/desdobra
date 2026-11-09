@@ -616,6 +616,9 @@ main { flex: 1; min-height: 0; display: flex; }
 .mini-medidas { font-weight: 600; font-size: 12px; overflow-wrap: anywhere; }
 .mini-arquivos { color: var(--mais-suave); font-size: 11px; white-space: nowrap; }
 .mini-selo { margin-top: 4px; }
+/* a familia que ganhou ou perdeu formatos desde que o DA mexeu nela (revisao do M7b, fase A) */
+.mini-mudou { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; color: var(--aviso); font-size: 11px; }
+.mini-mudou::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--aviso); transform: translateY(-1px); }
 
 /* ---------------------------------------------------------------- mesa do palco */
 .mesa { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--mesa); }

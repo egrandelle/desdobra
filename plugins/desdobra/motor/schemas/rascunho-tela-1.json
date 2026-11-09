@@ -36,7 +36,7 @@
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
     },
     "familias": {
-      "description": "Por id da familia da tela (orientacao e numero, por exemplo vertical-1).",
+      "description": "Por id da familia da tela (orientacao e numero, por exemplo vertical-1). Desde a revisao do M7b, fase A, o id fica preso aos formatos da familia, e nao a posicao do grupo na aba: o numero nasce do menor livre na orientacao. O id que a tela nao mostra mais continua aqui, com as edicoes dele.",
       "type": "object",
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9_-]*$"
@@ -198,6 +198,21 @@
             "$ref": "#/$defs/edicao"
           }
         },
+        "formatos": {
+          "description": "Os formatos da familia na tela quando o DA mexeu nela pela ultima vez (escolheu a versao, editou ou confirmou; revisao do M7b, fase A). So o servidor grava; o que a pagina manda e jogado fora. A tela casa o id da familia com o grupo que divide mais formatos com esta lista, e a edicao nunca passa para um grupo sem formato em comum com ela. Ausente no rascunho de antes desta revisao.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cedidos": {
+          "description": "Os formatos desta lista que outra familia levou depois que o DA mexeu nesta: o DA mexeu na outra familia (ou a confirmou) com eles (revisao do M7b, fase A). So o servidor grava; o que a pagina manda e jogado fora, e o campo sai quando o DA mexe nesta familia ou a confirma. O formato cedido que volta para esta familia entrou de novo: a tela avisa e a confirmacao velha nao vale.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
         "confirmacao": {
           "description": "Quem confirmou a familia e como (decisoes-v1.md, 167): so o ato Confirmar familia da janela grava; a pagina nunca manda. Some quando a familia muda depois da confirmacao.",
           "type": "object",
@@ -225,7 +240,7 @@
               "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
             },
             "formatos": {
-              "description": "Os formatos da familia quando o DA confirmou (revisao do M7a): o id da familia e uma posicao na tela, e a confirmacao nao passa para outro conjunto de formatos.",
+              "description": "Os formatos da familia quando o DA confirmou (revisao do M7a): a confirmacao nao passa para outro conjunto de formatos, mesmo com o id da familia igual.",
               "type": "array",
               "items": {
                 "type": "string"
