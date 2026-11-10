@@ -15,6 +15,11 @@ fica salvo sozinho, a cada mudanca, neste arquivo. Regras:
     decisao de coberta numa camada que nao e coberta sao recusados (desdobra.tela.funcoes.conferir);
   - a familia confirmada (decisoes-v1.md, 167) so nasce do ato "Confirmar familia" da janela (confirmar_familia, com
     o Disparo da tela); a pagina nunca manda a confirmacao, e a familia que muda depois dela volta a confirmada falsa;
+  - a quebra de linha que o DA poe ou tira na familia (M7b, C1; decisoes-v1.md, 167 e 171) e edicao da familia: muda a
+    familia como a versao e as edicoes, e a posicao inserida tem de cair num espaco do texto de agora (o do KV ou o
+    editado na familia; _conferir_quebras). A quebra que o DA poe ou tira vale aprovada pelo proprio ato (origem da);
+    a que o desdobra propos (origem proposta, o texto editado que quebra na largura da caixa, M7b, C4) espera o clique
+    "Aprovar quebra" da pagina, e a familia com quebra por aprovar nunca e confirmada (por_aprovar);
   - cada familia guarda os formatos que a tela mostrava quando o DA mexeu nela pela ultima vez (revisao do M7b, fase
     A; so o servidor grava, _com_os_formatos): a tela casa o id com o grupo que divide mais formatos com eles
     (desdobra.tela.estado.abas), e a familia que a tela nao mostra mais fica aqui com as edicoes dela;
@@ -79,11 +84,12 @@ def origem_gravada(pasta):
     return dados.get('origem') if isinstance(dados, dict) else None
 
 
-def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=None):
+def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=None, elementos_da_tela=None):
     """Confere o rascunho mandado pela pagina e grava de forma atomica. ErroRascunho quando ele e de outro job, de
     outro laudo ou nao segue o esquema. familias_da_tela: {id: [formatos]} das familias que a tela mostra agora (o
     servidor da tela); com elas, cada familia guarda os formatos de quando o DA mexeu nela (_com_os_formatos).
-    Devolve o que foi gravado."""
+    elementos_da_tela: {id do elemento: [layer_ids]} da mestre que a tela mostra agora; com eles, a quebra de linha
+    so cita o elemento que existe e uma camada dele (_conferir_quebras). Devolve o que foi gravado."""
     from desdobra.briefing import modelo
     from desdobra.tela import funcoes
     if not isinstance(recebido, dict) or not set(CAMPOS_DA_PAGINA) <= set(recebido) or             not set(recebido) <= set(CAMPOS_DA_PAGINA + CAMPOS_DAS_ESCOLHAS):
@@ -107,6 +113,12 @@ def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=Non
         contratos.validar(dados, ESQUEMA)
     except contratos.ErroContrato:
         raise ErroRascunho('esquema') from None
+    if any(f.get('quebras') for f in familias.values()):
+        # a quebra cita a camada de texto e a posicao no texto de agora: confere contra o laudo
+        laudo = _laudo(pasta)
+        if laudo is None:
+            raise ErroRascunho('laudo')
+        _conferir_quebras(familias, laudo, elementos_da_tela)
     if any(k in dados for k in CAMPOS_DO_PASSO_2):
         # o passo 2 cita camadas: confere contra o laudo (indeterminado sem observacao, camada que nao existe)
         laudo = _laudo(pasta)
@@ -128,11 +140,45 @@ def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=Non
     return dados
 
 
+def _escolhas_da_familia(f):
+    """O que o DA escolheu e editou na familia: a versao, as edicoes e as quebras de linha (M7b, C1). Mudar qualquer
+    uma tira a confirmacao."""
+    return (f.get('versao'), f.get('edicoes') or [], f.get('quebras') or [])
+
+
+def por_aprovar(f):
+    """As quebras de linha da familia f (do rascunho) que o desdobra propos e o DA ainda nao aprovou (M7b, C4)."""
+    return [q for q in (f or {}).get('quebras') or [] if q.get('origem') == 'proposta' and not q.get('aprovada')]
+
+
+def _conferir_quebras(familias, laudo, elementos=None):
+    """As quebras de linha de cada familia contra o laudo (M7b, C1): uma por texto na familia, camada de texto do
+    laudo, e os indices e as posicoes no texto de agora (o do KV, ou o editado pelo DA na familia, decisoes-v1.md, 171;
+    desdobra.derivacao.quebras.conferir_da_familia). Com os elementos da tela ({id: [layer_ids]}), o elemento citado
+    existe e tem a camada, como a previa confere (desdobra.tela.edicao.Editor._quebras_conferem; revisao 2 do C): o
+    texto editado que conta e o desse elemento. ErroRascunho('quebras') no resto. O briefing confere de novo, com o
+    elemento resolvido pelas funcoes (desdobra.briefing.modelo.conferir)."""
+    from desdobra.derivacao import quebras as mq
+    camadas = {c['identidade']['layer_id']: c for c in laudo['camadas']}
+    for f in familias.values():
+        vistos = set()
+        for q in f.get('quebras') or []:
+            c = camadas.get(q['layer_id'])
+            if q['layer_id'] in vistos or c is None or c.get('tipo') != 'texto':
+                raise ErroRascunho('quebras')
+            if elementos is not None and q['layer_id'] not in (elementos.get(q['elemento']) or ()):
+                raise ErroRascunho('quebras')
+            vistos.add(q['layer_id'])
+            editado = mq.texto_editado(f.get('edicoes'), q['elemento'])
+            if mq.conferir_da_familia(c, q['manter'], q['inseridas'], editado) is not None:
+                raise ErroRascunho('quebras')
+
+
 def _familias_com_a_confirmacao(pasta, familias, laudo_atual):
     """As familias da pagina com a confirmacao que so o ato da janela grava (decisoes-v1.md, 167): a pagina nunca manda
     a confirmacao (o que ela manda e jogado fora); uma familia marcada confirmada so passa quando ja estava confirmada
-    no rascunho gravado, com a mesma versao e as mesmas edicoes, e leva a confirmacao gravada. Mexer depois da
-    confirmacao pede confirmada falsa. ErroRascunho('confirmacao') no resto."""
+    no rascunho gravado, com a mesma versao, as mesmas edicoes e as mesmas quebras, e leva a confirmacao gravada.
+    Mexer depois da confirmacao pede confirmada falsa. ErroRascunho('confirmacao') no resto."""
     if not isinstance(familias, dict):
         raise ErroRascunho('esquema')
     anterior, _de_outro = ler(pasta, laudo_atual)
@@ -144,7 +190,7 @@ def _familias_com_a_confirmacao(pasta, familias, laudo_atual):
         f = {k: v for k, v in f.items() if k not in ('confirmacao', 'formatos', 'cedidos')}
         if f.get('confirmada') is True:
             g = gravadas.get(gid) or {}
-            if not g.get('confirmada') or g.get('versao') != f.get('versao') or g.get('edicoes') != f.get('edicoes'):
+            if not g.get('confirmada') or _escolhas_da_familia(g) != _escolhas_da_familia(f):
                 raise ErroRascunho('confirmacao')
             f['confirmacao'] = g['confirmacao']
         saida[gid] = f
@@ -153,15 +199,15 @@ def _familias_com_a_confirmacao(pasta, familias, laudo_atual):
 
 def _com_os_formatos(familias, gravadas, tela):
     """As familias da pagina com os formatos de cada uma (revisao do M7b, fase A), que so o servidor grava: a pagina
-    nunca os manda (o que ela manda ja saiu em _familias_com_a_confirmacao). A familia que o DA mexeu agora (versao ou
-    edicoes diferentes das gravadas, ou nova no rascunho) leva os formatos que a tela mostra para ela; a que nao mudou
-    guarda os de antes, e assim a tela continua avisando que ela ganhou ou perdeu formatos ate o DA mexer nela ou
-    confirma-la. A familia que a tela nao mostra mais guarda os formatos gravados, com as edicoes. Os formatos que a
-    familia mexida agora leva de outra familia ficam marcados nesta (cedidos, _ceder)."""
+    nunca os manda (o que ela manda ja saiu em _familias_com_a_confirmacao). A familia que o DA mexeu agora (versao,
+    edicoes ou quebras diferentes das gravadas, ou nova no rascunho) leva os formatos que a tela mostra para ela; a que
+    nao mudou guarda os de antes, e assim a tela continua avisando que ela ganhou ou perdeu formatos ate o DA mexer
+    nela ou confirma-la. A familia que a tela nao mostra mais guarda os formatos gravados, com as edicoes. Os formatos
+    que a familia mexida agora leva de outra familia ficam marcados nesta (cedidos, _ceder)."""
     saida, mexidas = {}, []
     for gid, f in familias.items():
         g = gravadas.get(gid) or {}
-        mudou = not g or (g.get('versao'), g.get('edicoes') or []) != (f.get('versao'), f.get('edicoes') or [])
+        mudou = not g or _escolhas_da_familia(g) != _escolhas_da_familia(f)
         if mudou and gid in tela:
             saida[gid] = dict(f, formatos=list(tela[gid]))
             mexidas.append(gid)
@@ -202,15 +248,22 @@ def versao_gravada(pasta, familia):
     return ((((dados or {}).get('familias') or {}).get(familia)) or {}).get('versao')
 
 
+def quebras_gravadas(pasta, familia):
+    """As quebras de linha da familia no rascunho gravado agora ([] sem a familia, sem quebra ou sem rascunho
+    valido)."""
+    dados, _de_outro = ler(pasta, laudo_sha256(pasta))
+    return ((((dados or {}).get('familias') or {}).get(familia)) or {}).get('quebras') or []
+
+
 def _vista_das_familias(familias):
-    return {g: (f.get('versao'), f.get('edicoes') or [], bool(f.get('confirmada')))
+    return {g: _escolhas_da_familia(f) + (bool(f.get('confirmada')),)
             for g, f in familias.items() if isinstance(f, dict)}
 
 
 def mesma_vista(pasta, vista):
     """A vista da pagina (o rascunho como a janela o mostra, no formato que a pagina grava) e igual ao rascunho
-    gravado agora: as familias (versao, edicoes e confirmada) e o passo 2 e o Design system. O ato "Salvar e seguir"
-    so vale para o que o DA viu (revisao do M7a)."""
+    gravado agora: as familias (versao, edicoes, quebras e confirmada) e o passo 2 e o Design system. O ato "Salvar e
+    seguir" so vale para o que o DA viu (revisao do M7a)."""
     dados, _de_outro = ler(pasta, laudo_sha256(pasta))
     if dados is None or not isinstance(vista, dict) or not isinstance(vista.get('familias'), dict):
         return False
@@ -253,11 +306,13 @@ def sem_confirmacao_velha(dados, familias, pecas=None):
 
 
 def confirmar_familia(pasta, familia, versao, *, disparo, job_id, laudo_atual, edicoes=None, formatos=None,
-                      pecas=None):
+                      pecas=None, quebras=None):
     """O ato "Confirmar familia" da janela (decisoes-v1.md, 167): a familia fica confirmada no rascunho, com a versao
     mostrada e as edicoes gravadas, e a confirmacao leva a origem e o meio do Disparo da tela e os formatos da familia.
-    edicoes: as que a janela mostrou; diferentes das gravadas, ErroRascunho('mudou') e nada e gravado. O Disparo vale
-    um ato so. Devolve a familia gravada."""
+    edicoes e quebras: as edicoes e as quebras de linha que a janela mostrou (revisao do C: a quebra e edicao da
+    familia); diferentes das gravadas, ErroRascunho('mudou') e nada e gravado. A familia com
+    quebra de linha proposta pelo desdobra e ainda sem a aprovacao do DA nao e confirmada:
+    ErroRascunho('quebra_proposta') (M7b, C4). O Disparo vale um ato so. Devolve a familia gravada."""
     from desdobra import humano
     from desdobra.briefing import modelo
     humano.conferir(disparo, COMANDO_FAMILIA, consumir=True)
@@ -269,9 +324,14 @@ def confirmar_familia(pasta, familia, versao, *, disparo, job_id, laudo_atual, e
     f = dict(dados['familias'].get(familia) or {'edicoes': []})
     if edicoes is not None and (f.get('edicoes') or []) != edicoes:
         raise ErroRascunho('mudou')
+    if quebras is not None and (f.get('quebras') or []) != quebras:
+        raise ErroRascunho('mudou')
     if f.get('versao') != versao:
         # a versao confirmada e a que o DA clicou na galeria, gravada no rascunho (revisao do M7a)
         raise ErroRascunho('mudou')
+    if por_aprovar(f):
+        # a quebra que o desdobra propos pede o clique do DA antes (arquitetura-v1.md, item 9)
+        raise ErroRascunho('quebra_proposta')
     conf = {'origem': disparo.origem, 'meio': disparo.meio, 'em': modelo.agora()}
     if formatos is not None:
         conf['formatos'] = list(formatos)

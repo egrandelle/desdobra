@@ -85,6 +85,12 @@ DESCRICOES = {
                                           'texto: não há como saber de qual texto são as posições.',
     'quebra_aprovada_invalida': 'A quebra aprovada por família (quebras_por_familia) cita camada que não é texto com '
                                 'quebra gravada, ou índice de quebra que o texto não tem.',
+    'quebra_fora_de_espaco': 'A quebra que o DA pôs na família cai numa posição que não é espaço do texto. O texto é o '
+                             'do KV ou o que o DA editou na família.',
+    'quebra_fora_da_familia': 'A quebra da família cita uma família que o briefing não tem, ou formatos diferentes dos '
+                              'dessa família.',
+    'quebra_proposta_sem_aprovacao': 'A família confirmada tem uma quebra proposta pelo motor que o DA ainda não '
+                                     'aprovou.',
     'composicao_com_formato_inexistente': 'Uma família confirmada na tela (composicoes) cita formato que o briefing não '
                                           'tem.',
     'formato_em_duas_composicoes': 'Um formato está em duas famílias confirmadas na tela (composicoes).',
@@ -302,6 +308,35 @@ def ancora_do_elemento(briefing, raiz, funcao):
     return tuple(saida)
 
 
+def _mesma_quebra(a, b):
+    """Duas quebras aprovadas do mesmo texto que dizem o mesmo: as quebras gravadas que ficam e as inseridas."""
+    return (sorted(a['quebras']['valor']), sorted(a.get('inseridas') or ())) == \
+        (sorted(b['quebras']['valor']), sorted(b.get('inseridas') or ()))
+
+
+def _conferir_quebra_da_familia(item, onde, comps, camadas, elemento_da_camada):
+    """Erros da quebra da familia da tela (M7b, C1): a familia e os formatos dela no briefing, texto de ponto, os
+    indices e as posicoes no texto de agora (o do KV ou o editado pelo DA na familia, decisoes-v1.md, 171) e, na
+    familia confirmada, a quebra proposta pelo motor so com a aprovacao do DA."""
+    from desdobra.derivacao import quebras as mod_quebras
+    lid = item['layer_id']
+    comp = comps.get(item['familia'])
+    if comp is None or sorted(item.get('formatos') or ()) != sorted(comp['formatos']):
+        return [_erro('quebra_fora_da_familia', onde, layer_id=lid, familia=item['familia'])]
+    c = camadas.get(lid)
+    if c is None or c.get('tipo') != 'texto':
+        return [_erro('quebra_aprovada_invalida', onde, layer_id=lid)]
+    if (c.get('texto') or {}).get('tipo_caixa') == 'paragrafo':
+        # caixa de paragrafo: o render refaz a quebra automatica na largura da caixa (revisao 3, A2)
+        return [_erro('quebra_em_caixa_de_paragrafo', onde, layer_id=lid)]
+    editado = mod_quebras.texto_editado(comp.get('edicoes'), elemento_da_camada.get(lid))
+    codigo = mod_quebras.conferir_da_familia(c, item['quebras']['valor'], item.get('inseridas'), editado)
+    erros = [_erro(codigo, onde, layer_id=lid)] if codigo else []
+    if comp.get('confirmada') and not item.get('aprovada'):
+        erros.append(_erro('quebra_proposta_sem_aprovacao', onde, layer_id=lid))
+    return erros
+
+
 def conferir(laudo, briefing, job_id=None):
     """Erros de conteudo do briefing (lista vazia quando vale). O motor recusa o briefing com pendente obrigatorio e
     a funcao indeterminado sem observacao (arquitetura-v1.md, 5.3)."""
@@ -351,10 +386,15 @@ def conferir(laudo, briefing, job_id=None):
     from desdobra.derivacao import quebras as mod_quebras
     camadas = camadas_do_laudo(laudo)
     ids = [f['id'] for f in briefing['formatos']]
+    comps = {c['familia']: c for c in briefing.get('composicoes') or []}
+    elemento_da_camada = {x: e['id'] for e in mestre['elementos'] for x in e['layer_ids']}
     for k, item in enumerate(briefing.get('quebras_por_familia') or []):
         onde = '/quebras_por_familia/%d' % k
         if not _decisao_valida(item['quebras']):
             erros.append(_erro('pendente_obrigatorio', onde))
+            continue
+        if item.get('familia') is not None:
+            erros += _conferir_quebra_da_familia(item, onde, comps, camadas, elemento_da_camada)
             continue
         c = camadas.get(item['layer_id'])
         n = len(mod_quebras.posicoes_de_quebra(c)) if c is not None and c.get('tipo') == 'texto' else 0
@@ -374,7 +414,11 @@ def conferir(laudo, briefing, job_id=None):
     validas = [i for i in briefing.get('quebras_por_familia') or [] if _decisao_valida(i['quebras'])]
     for a_k, a in enumerate(validas):
         for b in validas[a_k + 1:]:
-            if a['layer_id'] != b['layer_id'] or sorted(a['quebras']['valor']) == sorted(b['quebras']['valor']):
+            if a['layer_id'] != b['layer_id'] or _mesma_quebra(a, b):
+                continue
+            if (a.get('familia') is None) != (b.get('familia') is None):
+                # a quebra da familia da tela e a da faixa (M5) nao se medem uma contra a outra: nos formatos da
+                # familia vale a da tela (impressao e, no C2, a derivacao)
                 continue
             if a.get('formatos') or b.get('formatos'):
                 junto = set(a.get('formatos') or ()) & set(b.get('formatos') or ())
@@ -661,7 +705,8 @@ def retomada(pasta, gravado):
     giro que o DA ja decidiu segue o formato pela chave da folha. Com o mesmo laudo, as decisoes das camadas (prancheta, funcoes, cobertas, regras, ancoras, blocos e
     quebras) e as mestres continuam, menos o que cita formato que as specs nao tem mais; com outro laudo, nenhuma
     decisao das camadas volta (os ids sao de outra leitura do PSD). As familias confirmadas ficam so no rascunho da
-    tela. O cabecalho e o do rascunho do motor: o briefing gravado continua o de antes ate o DA salvar. Nao grava."""
+    tela, e com elas a quebra de linha de cada familia. O cabecalho e o do rascunho do motor: o briefing gravado
+    continua o de antes ate o DA salvar. Nao grava."""
     import copy
     dados = partida(pasta, {f['chave']: f['id'] for f in gravado.get('formatos') or [] if f.get('chave')})
     giro = {f['chave']: f['rotacao'] for f in gravado.get('formatos') or [] if f.get('rotacao') is not None}
@@ -676,8 +721,11 @@ def retomada(pasta, gravado):
                 dados[k] = copy.deepcopy(gravado[k])
         dados['mestres'] = [copy.deepcopy(m) for m in gravado['mestres']
                             if m['tipo'] != 'propria' or m.get('formato') in ids]
-        if 'quebras_por_familia' in gravado:
-            dados['quebras_por_familia'] = [copy.deepcopy(q) for q in gravado['quebras_por_familia']
+        # a quebra da familia da tela (M7b, C1) segue a composicao dela: as duas ficam so no rascunho da tela e
+        # voltam ao briefing em "Salvar e seguir" (revisao 2 do C); a quebra da faixa (M5) e decisao das camadas
+        faixas = [q for q in gravado.get('quebras_por_familia') or [] if 'familia' not in q]
+        if faixas:
+            dados['quebras_por_familia'] = [copy.deepcopy(q) for q in faixas
                                             if all(f in ids for f in q.get('formatos') or ())]
     contratos.validar(dados, ESQUEMA)
     return dados

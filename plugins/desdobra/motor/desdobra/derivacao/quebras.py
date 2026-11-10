@@ -12,6 +12,17 @@ linha mais larga da mestre) e a altura menos uma entrelinha por quebra tirada; a
 ponto de ancora do texto nao muda). Com a tinta de cada linha medida no Chromium (M7a, fatia 4), as bordas seguem a
 tinta, como o render a desenha. A caixa nunca e cortada no canvas da mestre.
 
+A quebra da familia da tela (M7b, C1; decisoes-v1.md, 167 e 171) usa o mesmo campo, com familia: vale para os formatos
+da familia, juntando quebras gravadas (os indices que ficam) e inserindo quebra num espaco (inseridas, as posicoes,
+como a mestre propria). As posicoes contam no texto de agora: o do KV, ou o editado pelo DA na familia
+(texto_editado). Na derivacao (M7b, C2), a quebra da familia vence a da faixa nos formatos da familia, e a caixa do
+texto do KV e medida como a da faixa, com as linhas juntadas e as inseridas (com_juntadas, caixa_medida: uma entrelinha
+a mais por quebra inserida). No texto editado, a quebra vale sobre o texto novo, sem medida: o render quebra na largura
+da caixa (render.derivado.quebras_do_texto_editado).
+
+O controle da quebra no palco (M7b, C4) le o texto de agora com as posicoes que pode quebrar (texto_para_quebrar), e a
+previa desenha o texto editado nas linhas da quebra da familia (linhas_do_editado).
+
 Funcao pura do laudo, do briefing e da medida.
 """
 from desdobra.briefing import modelo as mb
@@ -46,12 +57,137 @@ def juntadas(camada, manter):
     return [p for k, p in enumerate(posicoes_de_quebra(camada)) if k not in manter]
 
 
-def chave(layer_id, manter):
-    return '%d:%s' % (int(layer_id), ','.join(str(int(x)) for x in sorted(manter)))
+def chave(layer_id, manter, inseridas=()):
+    """A chave da medida de um texto com as quebras que ficam e as inseridas. Sem inseridas, a chave de antes do C2 (a
+    medida da faixa do M5 e a da familia que so junta sao a mesma)."""
+    base = '%d:%s' % (int(layer_id), ','.join(str(int(x)) for x in sorted(manter)))
+    if not inseridas:
+        return base
+    return '%s+%s' % (base, ','.join(str(int(x)) for x in sorted(inseridas)))
 
 
 def entradas_validas(briefing):
-    return [i for i in briefing.get('quebras_por_familia') or [] if mb._decisao_valida(i['quebras'])]
+    """As quebras aprovadas por faixa ou por lista de formatos (M5). A quebra da familia da tela (com familia, M7b, C1)
+    fica de fora: ela vale por cima destas nos formatos da familia (da_familia)."""
+    return [i for i in briefing.get('quebras_por_familia') or []
+            if mb._decisao_valida(i['quebras']) and i.get('familia') is None]
+
+
+# ------------------------------------------------------------------ a quebra da familia da tela (M7b, C1)
+def da_familia(briefing, layer_id, formato_id):
+    """A quebra da familia da tela que vale para o texto no formato (a entrada com familia que lista o formato), ou
+    None. Com duas, a conferencia do briefing recusa (quebras_conflitantes); aqui vale a primeira."""
+    for item in briefing.get('quebras_por_familia') or []:
+        if item.get('familia') is not None and item['layer_id'] == layer_id and \
+                formato_id in (item.get('formatos') or ()) and mb._decisao_valida(item['quebras']):
+            return item
+    return None
+
+
+def normalizar_editado(texto):
+    """O texto editado como o render o desenha (desdobra.render.derivado.texto_editado_na_entrada): CR LF e CR viram
+    LF. As posicoes da quebra da familia contam neste texto."""
+    return texto.replace('\r\n', '\n').replace('\r', '\n')
+
+
+def texto_editado(edicoes, elemento):
+    """O texto editado pelo DA no elemento, nas edicoes da familia (desdobra.tela.edicao.aplicar: vale a ultima edicao
+    de texto, e o elemento apagado nao tem texto), normalizado (normalizar_editado); None sem edicao de texto."""
+    if elemento is None:
+        return None
+    texto = None
+    for ed in edicoes or ():
+        if ed.get('elemento') != elemento:
+            continue
+        if ed.get('acao') == 'apagar':
+            return None
+        if ed.get('acao') == 'texto' and isinstance(ed.get('texto'), str):
+            texto = ed['texto']
+    return None if texto is None else normalizar_editado(texto)
+
+
+def da_familia_no_formato(briefing, layer_ids, formato_id):
+    """[(layer_id, entrada)] das quebras da familia da tela que valem nos textos layer_ids no formato."""
+    saida = []
+    for lid in layer_ids:
+        item = da_familia(briefing, lid, formato_id)
+        if item is not None:
+            saida.append((lid, item))
+    return saida
+
+
+def item_da_familia(layer_id, entrada):
+    """O item de quebras.familia do elemento na derivacao/1 (M7b, C2): os indices que ficam e as posicoes inseridas.
+    A caixa medida (caixa_doc) entra so no texto do KV; o texto editado nao tem medida."""
+    return {'layer_id': layer_id, 'aprovadas': sorted(entrada['quebras']['valor']),
+            'inseridas': sorted(entrada.get('inseridas') or ())}
+
+
+def origem_das(entradas):
+    """quebras_origem do elemento: 'da' quando alguma das quebras da familia dele e do DA, senao 'proposta'."""
+    return 'da' if any(x.get('origem') == 'da' for x in entradas) else 'proposta'
+
+
+def do_da(entradas):
+    """A quebra e decisao do DA (a dele, ou a proposta que ele aprovou): a caixa que ela da tem origem 'da'."""
+    return bool(entradas) and all(x.get('origem') == 'da' or x.get('aprovada') for x in entradas)
+
+
+def editado_no_formato(briefing, elemento, formato_id):
+    """O texto editado pelo DA no elemento, na familia do formato (as edicoes da composicao dele, 171), ou None."""
+    comp = next((c for c in briefing.get('composicoes') or [] if formato_id in c['formatos']), None)
+    return texto_editado((comp or {}).get('edicoes'), elemento)
+
+
+def texto_de_agora(camada, editado=None):
+    """A camada de texto como a quebra da familia a le: a do laudo, ou so o conteudo editado pelo DA na familia."""
+    return {'texto': {'conteudo': editado}} if editado is not None else camada
+
+
+def espacos(camada):
+    """Posicoes dos espacos (U+0020) do texto, onde a quebra pode entrar."""
+    return [k for k, ch in enumerate(_conteudo(camada)) if ch == ' ']
+
+
+def texto_para_quebrar(camada, editado=None):
+    """O texto de agora como o controle da quebra no palco o le (M7b, C4): {'texto', 'gravadas', 'espacos'}, o texto
+    (o do KV, ou o editado pelo DA na familia, normalizado), as posicoes das quebras gravadas que abrem linha e as dos
+    espacos. As quebras do fim do texto saem do texto: elas nao abrem linha, e as posicoes de antes nao mudam."""
+    alvo = texto_de_agora(camada, None if editado is None else normalizar_editado(editado))
+    texto = _conteudo(alvo)
+    while texto and texto[-1] in casamento.CONTROLES_DE_QUEBRA:
+        texto = texto[:-1]
+    return {'texto': texto, 'gravadas': posicoes_de_quebra(alvo), 'espacos': espacos(alvo)}
+
+
+def linhas_do_editado(texto, manter, inseridas):
+    """As linhas do texto editado pelo DA com a quebra da familia (M7b, C4), como o render as desenha
+    (render.derivado.quebras_do_texto_editado): a quebra gravada fora de manter vira espaco, e o espaco inserido vira
+    quebra. O render ainda quebra na largura da caixa a linha que nao cabe."""
+    t = normalizar_editado(texto)
+    juntar = set(juntadas({'texto': {'conteudo': t}}, manter))
+    novas = set(inseridas or ())
+
+    def trocar(k, ch):
+        if k in juntar:
+            return ' '
+        return '\n' if k in novas and ch == ' ' else ch
+    return ''.join(trocar(k, ch) for k, ch in enumerate(t)).split('\n')
+
+
+def conferir_da_familia(camada, manter, inseridas, editado=None):
+    """O codigo do erro da quebra da familia no texto de agora (a camada, ou o texto editado na familia), ou None.
+    quebra_aprovada_invalida: indice de quebra gravada que o texto nao tem, ou repetido; quebra_fora_de_espaco: posicao
+    inserida que nao e espaco do texto, ou repetida."""
+    alvo = texto_de_agora(camada, editado)
+    n = len(posicoes_de_quebra(alvo))
+    manter, inseridas = list(manter or ()), list(inseridas or ())
+    if any(x >= n for x in manter) or len(set(manter)) != len(manter):
+        return 'quebra_aprovada_invalida'
+    livres = set(espacos(alvo))
+    if any(p not in livres for p in inseridas) or len(set(inseridas)) != len(inseridas):
+        return 'quebra_fora_de_espaco'
+    return None
 
 
 def aprovadas_para(briefing, layer_id, formato, largura, altura):
@@ -72,26 +208,37 @@ def aprovadas_para(briefing, layer_id, formato, largura, altura):
 
 
 def pedidos(briefing):
-    """[(layer_id, manter)] de todas as quebras aprovadas do briefing (o que a medida tem de medir)."""
+    """[(layer_id, manter, inseridas)] de todas as quebras aprovadas do briefing, as da faixa (sem inseridas) e as da
+    familia da tela (o que a medida tem de medir)."""
     vistos = []
-    for item in entradas_validas(briefing):
-        p = (item['layer_id'], tuple(sorted(item['quebras']['valor'])))
+    for item in briefing.get('quebras_por_familia') or []:
+        if not mb._decisao_valida(item['quebras']):
+            continue
+        p = (item['layer_id'], tuple(sorted(item['quebras']['valor'])), tuple(sorted(item.get('inseridas') or ())))
         if p not in vistos:
             vistos.append(p)
     return vistos
 
 
-def com_juntadas(camada, manter):
-    """Copia da camada de texto com as quebras juntadas trocadas por espaco (para a pagina de medida)."""
+def com_juntadas(camada, manter, inseridas=()):
+    """Copia da camada de texto com as quebras juntadas trocadas por espaco e os espacos inseridos trocados por quebra
+    (para a pagina de medida)."""
     import copy
     c = copy.deepcopy(camada)
     pos = set(juntadas(camada, manter))
+    novas = set(inseridas or ())
+    q = '\r'  # a quebra de paragrafo, como o Photoshop a grava
+
+    def trocar(k, ch):
+        if k in pos:
+            return ' '
+        return q if k in novas and ch == ' ' else ch
     t = c.get('texto') or {}
     if t.get('conteudo'):
-        t['conteudo'] = ''.join(' ' if k in pos else ch for k, ch in enumerate(t['conteudo']))
+        t['conteudo'] = ''.join(trocar(k, ch) for k, ch in enumerate(t['conteudo']))
     for r in t.get('runs') or []:
         s = r.get('texto') or ''
-        r['texto'] = ''.join(' ' if r['inicio'] + k in pos else ch for k, ch in enumerate(s))
+        r['texto'] = ''.join(trocar(r['inicio'] + k, ch) for k, ch in enumerate(s))
     return c
 
 
@@ -122,9 +269,10 @@ def escala_y(camada):
     return sy if sy > 0 else None
 
 
-def caixa_medida(camada, caixa, manter, medida):
-    """Caixa da tinta do texto (espaco do documento) com so as quebras de indice em manter, pela medida
-    {'largura_texto', 'largura_texto_mestre'} (no espaco de texto da pagina de medida).
+def caixa_medida(camada, caixa, manter, medida, inseridas=()):
+    """Caixa da tinta do texto (espaco do documento) com so as quebras de indice em manter e as inseridas nos espacos
+    (a quebra da familia da tela, M7b, C2), pela medida {'largura_texto', 'largura_texto_mestre'} (no espaco de texto
+    da pagina de medida). Cada quebra inserida soma uma entrelinha, como cada quebra tirada subtrai uma.
 
     Com a tinta medida no Chromium (medida['tinta_mestre'] e medida['tinta']: {'esq', 'dir', 'sobe', 'desce'} do
     bloco, no espaco de texto) e a matriz do texto, a caixa segue a tinta como o render a desenha: as bordas da tinta
@@ -133,7 +281,7 @@ def caixa_medida(camada, caixa, manter, medida):
     medida e a altura menos as entrelinhas, o que deixava a caixa menor que a tinta do render quando a linha juntada
     ganha acento, descendente ou o espaco lateral dos glifos (uns 21 px num titulo do corpus, revisao do M7a0)."""
     x0, y0, x1, y1 = (float(v) for v in caixa)
-    tiradas = len(juntadas(camada, manter))
+    tiradas = len(juntadas(camada, manter)) - len(set(inseridas or ()))
     h = max((y1 - y0) - tiradas * entrelinha_px(camada), 1.0)  # numero-neutro: altura minima de um px
     just = ((camada.get('texto') or {}).get('justificacao') or 'LEFT').upper()
     tm, tj, sx, sy = medida.get('tinta_mestre'), medida.get('tinta'), escala_x(camada), escala_y(camada)

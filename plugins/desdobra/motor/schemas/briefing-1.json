@@ -116,7 +116,7 @@
     },
     "quebras_por_familia": {
       "type": "array",
-      "description": "Quebras aprovadas pelo DA para um texto numa familia de formatos (decisoes-v1.md, 77, estendida as familias na rodada 3 do M5): quais quebras gravadas do texto ficam (indices, 0 e a primeira quebra; sem texto). A familia e uma faixa de proporcao do formato (largura / altura) ou uma lista de formatos",
+      "description": "Quebras aprovadas pelo DA para um texto numa familia de formatos (decisoes-v1.md, 77, estendida as familias na rodada 3 do M5): quais quebras gravadas do texto ficam (indices, 0 e a primeira quebra; sem texto). A familia e uma faixa de proporcao do formato (largura / altura) ou uma lista de formatos. A quebra da familia da tela (M7b, C1; decisoes-v1.md, 167 e 171) leva familia (o id da composicao), os formatos dela, as quebras gravadas do texto de agora que ficam (quebras), as posicoes de espaco que viram quebra (inseridas, como na mestre propria), quem fez a quebra (origem) e a aprovacao. O texto de agora e o do KV ou o editado pelo DA na familia",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -126,8 +126,21 @@
           "razao_min": {"type": ["number", "null"], "exclusiveMinimum": 0},
           "razao_max": {"type": ["number", "null"], "exclusiveMinimum": 0},
           "formatos": {"type": "array", "items": {"type": "string"}},
-          "quebras": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"anyOf": [{"type": "array", "items": {"type": "integer", "minimum": 0}}, {"type": "null"}]}}}]}
-        }
+          "quebras": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"anyOf": [{"type": "array", "items": {"type": "integer", "minimum": 0}}, {"type": "null"}]}}}]},
+          "familia": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "description": "Quebra da familia da tela: o id da composicao (composicoes[].familia); formatos e a lista dos formatos dela"},
+          "inseridas": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 0}, "description": "Posicoes de espaco do texto de agora (o do KV ou o editado na familia, com CR LF e CR trocados por LF como o render desenha) que viram quebra"},
+          "origem": {"enum": ["da", "proposta"], "description": "da: o DA pos ou tirou a quebra, e o proprio ato aprova; proposta: o motor propos (o reflow do texto editado, a versao da galeria), e vale so com a aprovacao do DA"},
+          "aprovada": {"type": "boolean", "description": "A quebra aprovada pelo DA; a familia confirmada nao aceita quebra proposta sem aprovacao"}
+        },
+        "allOf": [
+          {"if": {"required": ["familia"]},
+           "then": {"required": ["formatos", "inseridas", "origem", "aprovada"],
+                    "not": {"anyOf": [{"required": ["razao_min"]}, {"required": ["razao_max"]}]}}},
+          {"if": {"anyOf": [{"required": ["inseridas"]}, {"required": ["origem"]}, {"required": ["aprovada"]}]},
+           "then": {"required": ["familia"]}},
+          {"if": {"required": ["origem"], "properties": {"origem": {"const": "da"}}},
+           "then": {"properties": {"aprovada": {"const": true}}}}
+        ]
       }
     },
     "regras_bloco": {

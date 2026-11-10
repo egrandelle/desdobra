@@ -450,6 +450,51 @@ def test_briefing_salvo_de_outras_specs_abre_a_tela_do_rascunho(novo):
     assert te.montar(job)['estado']['briefing'] == {'salvo': True, 'em': b['cabecalho']['quando'], 'avisos': []}
 
 
+def test_briefing_salvo_com_quebra_da_familia_e_de_outras_specs_abre_o_passo_3(novo):
+    """Revisao 2 do M7b, fase C: o briefing salvo tem a quebra de linha de uma familia (M7b, C1) e depois fica de outra
+    versao das specs. A retomada nao leva as composicoes (as familias ficam no rascunho da tela), entao tambem nao leva
+    a quebra da familia: as duas voltam do rascunho em "Salvar e seguir". O passo 3 abre com as familias, e salvar
+    passa. A quebra da faixa (M5), que nao e de familia, continua."""
+    job, funcoes = novo
+    lid = next(k for k, v in funcoes.items() if v == 'texto_de_apoio')
+    conteudo, s = _servidor(job)
+    try:
+        biscoito = tts._entrar(s)
+        _ate_salvar(s, biscoito, job, funcoes)
+        b = mb.ler(job)
+        comp = b['composicoes'][0]
+        da_familia = {'layer_id': lid, 'familia': comp['familia'], 'formatos': list(comp['formatos']),
+                      'quebras': {'valor': [], 'situacao': 'confirmado',
+                                  'origem': {'tipo': 'fixture_de_teste', 'ref': None}},
+                      'inseridas': [3], 'origem': 'da', 'aprovada': True}
+        b['quebras_por_familia'] = [da_familia]
+        contratos.gravar(job / mb.ARQUIVO, b, 'briefing/1')
+        alvo = next(x for x in te.specs_pendentes(job) if not x['leituras'])
+        assert _ato(s, biscoito, 'spec_valor', {'valor_id': alvo['valor_id']}) == (200, 200)
+        assert mb.desatualizado(job, mb.ler(job)) == ['specs_sha256']
+    finally:
+        s.parar()
+    base = mb.base_da_tela(job)
+    assert not base.get('quebras_por_familia') and not base.get('composicoes')
+    laudo = contratos.ler(job / mb.ARQUIVO_LAUDO, 'laudo/1')
+    job_id = contratos.ler(job / 'estado.json', 'estado/1')['job_id']
+    assert 'quebra_fora_da_familia' not in {e['codigo'] for e in mb.conferir(laudo, base, job_id)}
+    # a quebra da faixa (sem familia) e decisao das camadas, e continua na retomada
+    faixa = {'layer_id': lid, 'razao_min': 0.1, 'razao_max': 10.0,
+             'quebras': {'valor': [], 'situacao': 'confirmado', 'origem': {'tipo': 'fixture_de_teste', 'ref': None}}}
+    gravado = dict(mb.ler(job), quebras_por_familia=[faixa, da_familia])
+    assert mb.retomada(job, gravado)['quebras_por_familia'] == [faixa]
+    conteudo, s = _servidor(job)
+    try:
+        biscoito = tts._entrar(s)
+        e = _estado(s, biscoito)
+        assert e['passo_3']['aguarda_passo_2'] is False, e['passo_3']['texto']
+        assert conteudo['familias']
+        assert _ato(s, biscoito, 'salvar', {'rascunho': _vista(job)}) == (200, 200)
+    finally:
+        s.parar()
+
+
 def test_retomada_nao_reaproveita_decisao_de_outro_psd(novo):
     """Revisao do M7a, beco 5: o briefing de partida com o que ainda vale do briefing salvo. Com o mesmo PSD, as decisoes
     das camadas ficam; com outro PSD, so o giro (que e do formato da folha) fica, e o aviso diz o que mudou."""

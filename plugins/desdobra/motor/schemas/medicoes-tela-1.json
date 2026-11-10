@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:medicoes-tela:1",
+  "title": "Cronometro da mestre na tela (medicoes-tela/1)",
+  "description": "medicoes/tela.json, gravado so pelo servidor da tela (desdobra.tela.cronometro; M7b, C5; arquitetura-v1.md, 9.8, Editor de mestre). Mede, por familia, o tempo para desenhar a mestre: do primeiro clique que abre a familia ate o ato Confirmar familia, com o tempo ativo (sem as pausas acima de tela.mestre_pausa_max_s sem clique nem tecla) e o tempo total, e quantas edicoes e quantas mudancas de quebra de linha o DA fez. Uma sessao por janela aberta; familias soma as sessoes. Fica fora do briefing e fora da impressao de cada formato: nenhuma fase, derivacao ou aprovacao le este arquivo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "pausa_max_s", "atualizado_em", "sessoes", "familias"],
+  "properties": {
+    "esquema": {"const": "medicoes-tela/1"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "pausa_max_s": {"description": "A pausa sem clique nem tecla acima da qual o tempo deixa de contar como ativo.", "type": "number", "exclusiveMinimum": 0},
+    "atualizado_em": {"type": "string"},
+    "sessoes": {"type": "array", "items": {"$ref": "#/$defs/sessao"}},
+    "familias": {
+      "description": "A soma das sessoes, por familia.",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"},
+      "additionalProperties": {"$ref": "#/$defs/total"}
+    }
+  },
+  "$defs": {
+    "tempo": {"type": "number", "minimum": 0},
+    "contagem": {"type": "integer", "minimum": 0},
+    "quando": {"type": ["string", "null"]},
+    "sessao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aberta_em", "ultima_atividade_em", "origem", "ativo_s", "total_s", "familias"],
+      "properties": {
+        "id": {"description": "A janela da sessao: cada gravacao troca so a sessao da propria janela, e duas janelas abertas no mesmo job guardam as duas (revisao 2 do M7b, fase C). A sessao gravada antes da revisao nao tem.", "type": "string", "pattern": "^[0-9a-f]{16}$"},
+        "aberta_em": {"description": "Quando a janela da tela abriu.", "type": "string"},
+        "ultima_atividade_em": {"$ref": "#/$defs/quando"},
+        "origem": {"enum": ["da", "fixture_de_teste"]},
+        "ativo_s": {"description": "A soma do tempo ativo das familias nesta sessao.", "$ref": "#/$defs/tempo"},
+        "total_s": {"description": "Da abertura da janela ate o ultimo clique ou tecla.", "$ref": "#/$defs/tempo"},
+        "familias": {
+          "type": "object",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"},
+          "additionalProperties": {"$ref": "#/$defs/familia"}
+        }
+      }
+    },
+    "familia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aberta_em", "ultima_atividade_em", "confirmada_em", "ativo_s", "total_s", "edicoes", "quebras"],
+      "properties": {
+        "aberta_em": {"description": "O primeiro clique ou tecla com a familia aberta nesta sessao.", "type": "string"},
+        "ultima_atividade_em": {"type": "string"},
+        "confirmada_em": {"description": "O ato Confirmar familia; null enquanto o cronometro corre.", "$ref": "#/$defs/quando"},
+        "ativo_s": {"$ref": "#/$defs/tempo"},
+        "total_s": {"description": "Da abertura ate a confirmacao (ou ate o ultimo clique, sem confirmacao).", "$ref": "#/$defs/tempo"},
+        "edicoes": {"$ref": "#/$defs/contagem"},
+        "quebras": {"description": "Mudancas de quebra de linha feitas pelo DA (a aprovacao da quebra proposta nao conta).", "$ref": "#/$defs/contagem"}
+      }
+    },
+    "total": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessoes", "confirmada_em", "ativo_s", "total_s", "edicoes", "quebras"],
+      "properties": {
+        "sessoes": {"type": "integer", "minimum": 1},
+        "confirmada_em": {"description": "A confirmacao da ultima sessao em que a familia apareceu; null quando ela ficou aberta.", "$ref": "#/$defs/quando"},
+        "ativo_s": {"$ref": "#/$defs/tempo"},
+        "total_s": {"$ref": "#/$defs/tempo"},
+        "edicoes": {"$ref": "#/$defs/contagem"},
+        "quebras": {"$ref": "#/$defs/contagem"}
+      }
+    }
+  }
+}

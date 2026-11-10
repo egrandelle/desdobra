@@ -55,7 +55,8 @@
           "regra_aplicada": {"type": "object", "required": ["funcao", "regra", "caminho", "classe"]},
           "transformacao": {"type": "object", "required": ["s", "origem_doc", "destino", "recorte_doc"]},
           "origem_geometria": {"enum": ["da", "regra", "transformacao", "sugestao_citada", "galeria"], "description": "De onde veio a caixa: da (editada ou desenhada pelo DA), regra (solver), transformacao (escala pura), sugestao_citada, galeria (versao da galeria sem edicao)"},
-          "texto_editado": {"type": "string", "description": "O texto que o DA editou no palco, so na familia dele (decisoes-v1.md, 169 e 171)"}
+          "texto_editado": {"type": "string", "description": "O texto que o DA editou no palco, so na familia dele (decisoes-v1.md, 169 e 171)"},
+          "quebras_origem": {"enum": ["da", "proposta"], "description": "De onde veio a quebra de linha da familia da tela no texto do elemento (M7b, C2; decisoes-v1.md, 167 e 171): da (o DA pos ou tirou a quebra) ou proposta (o motor propos, e o DA aprova). Sem o campo, as quebras sao as do KV, as da faixa (M5) ou as da mestre propria. Os itens de quebras.familia da quebra da tela levam inseridas (as posicoes de espaco que viram quebra) e, no texto do KV, a caixa medida (caixa_doc)"}
         }
       }
     },

@@ -149,14 +149,17 @@ def atos_do_job(pasta, teto=None, conteudo=None):
 def _ato_da_familia(pasta, conteudo):
     """O ato "Confirmar familia" (decisoes-v1.md, 167): um clique, com a confirmacao na janela, confirma a familia
     inteira como a tela mostra, com a versao escolhida e as edicoes do rascunho. As familias ({id: {'formatos',
-    'versoes'}}) sao as do conteudo da tela agora (desdobra.tela.estado.montar)."""
+    'versoes'}}) sao as do conteudo da tela agora (desdobra.tela.estado.montar). A familia com quebra de linha
+    proposta pelo desdobra e ainda nao aprovada e recusada antes do dialogo (M7b, C4). O pedido leva as quebras de
+    linha que a janela mostra, como leva as edicoes (a quebra e edicao da familia, decisoes-v1.md, 171): sem o campo,
+    a janela nao mostra quebra (revisao do C)."""
     from desdobra.tela import rascunho
     from desdobra.tela.servidor import Ato
 
     def valido(d):
         familias = conteudo.get('familias') or {}
-        if not _chaves(d, 'familia', 'versao', 'edicoes') or not isinstance(d['familia'], str) or \
-                d['familia'] not in familias:
+        if not (_chaves(d, 'familia', 'versao', 'edicoes') or _chaves(d, 'familia', 'versao', 'edicoes', 'quebras')) \
+                or not isinstance(d['familia'], str) or d['familia'] not in familias:
             return False
         if familias[d['familia']].get('por_confirmar'):
             # um formato da familia tem valor de spec a espera do DA, sem galeria: a confirmacao seria as cegas
@@ -168,9 +171,14 @@ def _ato_da_familia(pasta, conteudo):
                 return False
         elif not isinstance(d['versao'], str) or d['versao'] not in versoes:
             return False
-        # as edicoes e a versao que a janela mostra sao as do rascunho gravado: a versao vale so depois do clique do DA
-        # na galeria, que a grava no rascunho (revisao do M7a)
+        if rascunho.por_aprovar({'quebras': rascunho.quebras_gravadas(pasta, d['familia'])}):
+            # a quebra de linha que o desdobra propos espera o clique "Aprovar quebra" do DA (M7b, C4)
+            return False
+        # as edicoes, as quebras de linha e a versao que a janela mostra sao as do rascunho gravado: a versao vale so
+        # depois do clique do DA na galeria, que a grava no rascunho (revisao do M7a); a quebra que a gravacao nao
+        # levou nunca e confirmada as cegas (revisao do C)
         return rascunho.edicoes_gravadas(pasta, d['familia']) == d['edicoes'] and \
+            rascunho.quebras_gravadas(pasta, d['familia']) == d.get('quebras', []) and \
             rascunho.versao_gravada(pasta, d['familia']) == d['versao']
 
     def ordem_da_versao(d):
@@ -196,6 +204,7 @@ def _ato_da_familia(pasta, conteudo):
         f = rascunho.confirmar_familia(pasta, d['familia'], d['versao'], disparo=disparo,
                                        job_id=conteudo['estado'].get('job_id'),
                                        laudo_atual=rascunho.laudo_sha256(pasta), edicoes=d['edicoes'],
+                                       quebras=d.get('quebras', []),
                                        formatos=conteudo['familias'][d['familia']]['formatos'],
                                        pecas=conteudo['familias'][d['familia']].get('pecas'))
         return {'familia': d['familia'], 'confirmada': f['confirmada']}

@@ -502,6 +502,18 @@
    "nota": "A pagina grava o rascunho quando o DA para de mexer por este tempo (cada mudanca nova recomeca a espera), e o servidor entrega o valor na rota de leitura do rascunho. Origem: os 500 ms da proposta do M7 (INFERENCIA, sem medicao)."
   },
   {
+   "id": "tela.mestre_pausa_max_s",
+   "valor": 60,
+   "unidade": "segundos sem clique nem tecla acima dos quais o cronometro da mestre deixa de contar o tempo como ativo",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "9.8, Editor de mestre (o tempo para desenhar uma mestre e medido e registrado); plano do M7b, passo C5 e pergunta 9"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O cronometro da mestre (desdobra.tela.cronometro) conta, por familia, o tempo entre dois cliques ou teclas so quando ele fica ate este teto; a pausa mais longa entra so no tempo total. O resultado vai a medicoes/tela.json, fora do briefing. Origem: os 60 s da resposta recomendada a pergunta 9 do plano do M7b (INFERENCIA, sem medicao de como o DA pausa)."
+  },
+  {
    "id": "leitor.filhos_paralelos",
    "valor": 4,
    "unidade": "processos filhos de smart object ao mesmo tempo",

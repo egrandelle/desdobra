@@ -132,7 +132,9 @@
   };
   const NOTA_GALERIA_RASCUNHO = 'Escolha uma versão para começar. A escolha fica salva no rascunho.';
   /* edicao por familia (fatia 4) */
-  const ed = { previa: null, pedido: 0, selecionado: null, tecla: 0, arraste: null };
+  const ed = { previa: null, pedido: 0, selecionado: null, tecla: 0, arraste: null, esperaQuebra: null };
+  /* M7b, C3: a quebra de linha mudada pede a previa (e a medida no desdobra) so depois de 300 ms sem clique */
+  const ESPERA_QUEBRA_MS = 300;
   const PASSO_SETA = 1;
   const PASSO_SETA_LONGO = 10;
   const FATOR_TECLA = 1.05;
@@ -342,6 +344,54 @@
     if (typeof atualizarBotaoFamilia === 'function') atualizarBotaoFamilia();
   }
 
+  /* ---------------------------------------------------------------- cronometro da mestre (M7b, C5)
+     cada clique ou tecla manda ao servidor um sinal com a familia aberta no passo 3 (ou nenhuma, fora dele) e as
+     edicoes e as quebras mudadas desde o sinal anterior. Sai no maximo um sinal por segundo; o que espera leva o
+     atraso do ultimo clique. O servidor mede com o relogio dele (desdobra/tela/cronometro.py), e nada aparece na tela */
+  const SINAL_MS = 1000;
+  const cron = { pendente: null, ultimoEnvio: -Infinity, espera: null };
+  function familiaDoSinal() {
+    return !document.getElementById('passo-pecas').hidden && vista.familia ? vista.familia : null;
+  }
+  function anotarSinal(familia, edicoes, quebras) {
+    if (!escrita) return;
+    // a familia mudou: o sinal da anterior sai antes, com o tempo dela
+    if (cron.pendente && cron.pendente.familia !== familia) enviarSinal();
+    if (!cron.pendente) cron.pendente = { familia: familia, edicoes: 0, quebras: 0, em: 0 };
+    cron.pendente.edicoes += edicoes;
+    cron.pendente.quebras += quebras;
+    cron.pendente.em = performance.now();
+    raiz.dataset.sinal = 'esperando';
+    const falta = cron.ultimoEnvio + SINAL_MS - performance.now();
+    if (falta <= 0) enviarSinal();
+    else if (!cron.espera) cron.espera = setTimeout(enviarSinal, falta);
+  }
+  function enviarSinal() {
+    clearTimeout(cron.espera);
+    cron.espera = null;
+    const p = cron.pendente;
+    if (!p) return;
+    cron.pendente = null;
+    const agora = performance.now();
+    cron.ultimoEnvio = agora;
+    raiz.dataset.sinal = 'enviando';
+    const corpo = { familia: p.familia, edicoes: p.edicoes, quebras: p.quebras,
+      atraso_ms: Math.max(0, Math.round(agora - p.em)) };
+    // a medicao nunca atrapalha o DA: o sinal recusado ou perdido so fica de fora
+    enviar('/api/medicao', corpo).catch(function () { return null; }).then(function () {
+      if (!cron.pendente && !cron.espera) raiz.dataset.sinal = 'enviado';
+    });
+  }
+  function contarNoCronometro(tipo) {
+    anotarSinal(familiaDoSinal(), tipo === 'edicoes' ? 1 : 0, tipo === 'quebras' ? 1 : 0);
+  }
+  /* o sinal sai depois dos tratadores do clique: o clique na aba de uma familia ja conta para ela */
+  ['pointerdown', 'click', 'keydown'].forEach(function (tipo) {
+    document.addEventListener(tipo, function () {
+      setTimeout(function () { anotarSinal(familiaDoSinal(), 0, 0); }, 0);
+    }, true);
+  });
+
   /* ---------------------------------------------------------------- confirmacao na janela (decisao 159) */
   function confirmarNaJanela(p) {
     const d = document.getElementById('confirmacao');
@@ -403,11 +453,13 @@
     });
   }
   const depoisDoAto = {};
-  /* o ato leva o que a janela mostra: o servidor confere contra o rascunho gravado, no pedido e no Confirmar */
+  /* o ato leva o que a janela mostra: o servidor confere contra o rascunho gravado, no pedido e no Confirmar. Na
+     familia, as edicoes e as quebras de linha (a quebra e edicao da familia; a quebra que nao gravou nunca e
+     confirmada as cegas) */
   function comVista(nome, dados) {
     if (nome === 'familia') {
       const f = rascunho.familias[dados.familia];
-      return Object.assign({}, dados, { edicoes: (f && f.edicoes) || [] });
+      return Object.assign({}, dados, { edicoes: (f && f.edicoes) || [], quebras: (f && f.quebras) || [] });
     }
     if (nome === 'salvar') return { rascunho: corpoDoRascunho() };
     return dados;
@@ -938,7 +990,7 @@
     return out;
   }
   function atualizarFaltam() {
-    montarFaltam((estado.faltam || []).concat(p2idx.opcoes ? pendenciasP2() : []));
+    montarFaltam((estado.faltam || []).concat(p2idx.opcoes ? pendenciasP2() : [], escrita ? pendenciasDasQuebras() : []));
     atualizarSalvar();
   }
   function idsDasFamilias() {
@@ -1430,7 +1482,7 @@
       document.getElementById('palco').dataset.pronto = '1';
       // sem familia (o passo 3 espera o passo 2): nada de familia antiga no palco
       ['palco', 'fichas'].forEach(function (id) { limpar(document.getElementById(id)); });
-      ['galeria', 'membros', 'variante-palco', 'barra-edicao', 'editor-texto'].forEach(function (id) {
+      ['galeria', 'membros', 'variante-palco', 'barra-edicao', 'editor-texto', 'editor-quebra', 'quebra-proposta'].forEach(function (id) {
         document.getElementById(id).hidden = true;
       });
       vista.familia = null;
@@ -1559,6 +1611,8 @@
     ed.previa = null;
     ed.selecionado = null;
     fecharEditorTexto();
+    fecharControle();
+    mostrarProposta();
     mostrarFormato(fid);
   }
   function mostrarSelo(texto, tipo) {
@@ -1936,11 +1990,18 @@
     document.getElementById('barra-edicao').hidden = false;
     return pedirPrevia();
   }
-  /* a edicao vai ao motor, que a leva a cada arquivo da familia; o pedido mais novo vence */
+  /* a edicao vai ao motor, que a leva a cada arquivo da familia; o pedido mais novo vence. As quebras de linha do
+     rascunho da familia (M7b, C3) vao sempre junto, a lista vazia quando o DA tirou a ultima: o motor mede o texto
+     com elas e refaz os membros, e nunca volta a quebra do briefing de antes */
   function pedirPrevia() {
+    clearTimeout(ed.esperaQuebra);
+    ed.esperaQuebra = null;
     const n = ++ed.pedido;
-    const dados = { familia: vista.familia, versao: versaoDaFamilia(), edicoes: edicoesDa() };
+    const fam = rascunho.familias[vista.familia];
+    const dados = { familia: vista.familia, versao: versaoDaFamilia(), edicoes: edicoesDa(),
+      quebras: (fam && fam.quebras) || [] };
     raiz.dataset.previa = 'pedindo';
+    atualizarBotaoFamilia();
     return enviar('/api/familia/previa', dados).then(function (r) {
       if (n !== ed.pedido) return null;
       ed.previa = r;
@@ -1949,17 +2010,33 @@
       ed.textoPendente = null;
       return desenharDaPrevia();
     }).then(function () {
-      if (n === ed.pedido) raiz.dataset.previa = 'pronta';
+      if (n !== ed.pedido) return;
+      raiz.dataset.previa = 'pronta';
+      atualizarBotaoFamilia();
     }).catch(function () {
       if (n !== ed.pedido) return;
       raiz.dataset.previa = 'erro';
+      atualizarBotaoFamilia();
       mensagem('A tela não conseguiu refazer a família. A última mudança continua no rascunho; tente de novo.');
     });
   }
+  /* a quebra de linha mudada no palco (o controle da quebra chama aqui): a previa espera 300 ms sem clique, e cada
+     clique nesse meio tempo recomeca a espera; o pedido leva as quebras que estiverem no rascunho na hora */
+  function pedirPreviaDaQuebra() {
+    clearTimeout(ed.esperaQuebra);
+    ed.esperaQuebra = setTimeout(pedirPrevia, ESPERA_QUEBRA_MS);
+    atualizarBotaoFamilia();
+  }
+  /* a previa da familia ainda nao mostra a ultima mudanca: a espera da quebra ou o pedido no caminho */
+  function esperandoPrevia() { return !!ed.esperaQuebra || raiz.dataset.previa === 'pedindo'; }
+  document.addEventListener('pointerdown', function () {
+    if (ed.esperaQuebra) pedirPreviaDaQuebra();
+  }, true);
   function tirarRecusadas(recusas) {
     const ids = new Set(recusas.map(function (x) { return x.elemento; }));
     const f = familiaAtual();
     f.edicoes = f.edicoes.filter(function (e) { return !(e.acao === 'texto' && ids.has(e.elemento)); });
+    ids.forEach(tirarQuebra);
     mudouRascunho();
     if (!document.getElementById('editor-texto').hidden) {
       const campo = document.getElementById('ed-campo-texto');
@@ -1983,7 +2060,7 @@
     const quem = ed.ultimaEdicao;
     ed.ultimaEdicao = null;
     return desenharPalco(area, m.palco, { usarVista: true, editavel: true }).then(function () {
-      if (edicoesDa().length) descreverMembro(m);
+      if (comEdicoes()) descreverMembro(m);
       atualizarSelo();
       marcarSelecao();
       atualizarBarra();
@@ -1992,8 +2069,17 @@
         const alvo = area.querySelector('.rotulo[data-elemento="' + ed.selecionado + '"]');
         if (alvo) alvo.focus();
       }
+      // a quebra de linha (M7b, C4): a proposta do desdobra marcada no palco, o controle com o texto de agora e o
+      // texto editado que quebrou na largura da caixa, que vira proposta e pede a previa com ela
+      marcarQuebrasNoPalco();
+      mostrarProposta();
+      if (controleAberto()) desenharControle(null);
+      if (proporQuebras()) return pedirPrevia();
+      return null;
     });
   }
+  /* a familia tem edicao do DA: as edicoes do palco ou uma quebra de linha mudada (M7b, C4) */
+  function comEdicoes() { return edicoesDa().length > 0 || quebrasDa(vista.familia).length > 0; }
   /* o desdobra alinha de novo depois de cada edicao (decisao 168), tambem a das setas e do + e -, que nao passam pelo
      encaixe do arraste: quando a ultima edicao encostou na linha de outro elemento, a mesma linha discreta do
      arraste fica no palco e a tela diz o que aconteceu */
@@ -2020,7 +2106,7 @@
   }
   function atualizarSelo() {
     if (familiaConfirmada()) mostrarSelo(SELO_CONFIRMADA, 'confirmada');
-    else if (edicoesDa().length) mostrarSelo('Com as suas edições: ' + SELO_VARIANTE, 'proposta');
+    else if (comEdicoes()) mostrarSelo('Com as suas edições: ' + SELO_VARIANTE, 'proposta');
   }
   function montarMembros(r) {
     const sec = document.getElementById('membros');
@@ -2056,6 +2142,9 @@
     const partes = [];
     if (r.textos_editados.length) partes.push('Texto editado nesta família: ' + nomes(r.textos_editados) + '.');
     if (r.apagados.length) partes.push('Tirado desta família: ' + nomes(r.apagados) + '.');
+    const quebras = quebrasDa(vista.familia).length;
+    if (quebras) partes.push(quebras === 1 ? 'Quebra de linha mudada em 1 texto desta família.' :
+      'Quebra de linha mudada em ' + quebras + ' textos desta família.');
     document.getElementById('resumo-edicao').textContent = partes.join(' ');
   }
   function atualizarBotaoFamilia() {
@@ -2072,10 +2161,16 @@
     const semSpecProprio = doGrupo.some(function (x) { return x.motivo === MOTIVO_SEM_SPEC; });
     const semSpecDaMestre = doGrupo.some(function (x) { return x.motivo === MOTIVO_SEM_SPEC_DA_MESTRE; });
     const semSpec = semSpecProprio || semSpecDaMestre;
+    // a quebra de linha proposta pelo desdobra espera o clique do DA (M7b, C4): o servidor recusa tambem
+    const semQuebra = porAprovar(vista.familia).length > 0;
+    // a previa da ultima mudanca ainda nao voltou (revisao 2 do C): o DA confirma a familia que viu, e a quebra que o
+    // texto editado ganha na largura da caixa so vira proposta quando a previa volta
+    const semPrevia = esperandoPrevia();
     b.textContent = conf ? SELO_CONFIRMADA : 'Confirmar família';
-    b.disabled = conf || semEscolha || semSpec;
+    b.disabled = conf || semEscolha || semSpec || semQuebra || semPrevia;
     b.title = semSpecProprio ? FAMILIA_SEM_SPEC : (semSpecDaMestre ? FAMILIA_SEM_SPEC_DA_MESTRE :
-      (semEscolha ? 'Escolha uma versão na galeria antes de confirmar a família.' : ''));
+      (semEscolha ? 'Escolha uma versão na galeria antes de confirmar a família.' : (semQuebra ? QUEBRA_SEM_APROVAR :
+        (semPrevia ? FAMILIA_ESPERA_PREVIA : ''))));
     b.dataset.ato = 'familia';
     b.dataset.dados = JSON.stringify({ familia: vista.familia, versao: versao });
   }
@@ -2087,6 +2182,7 @@
       ult.dy = fracao(ult.dy + e.dy);
     } else {
       f.edicoes.push(e);
+      contarNoCronometro('edicoes'); // a seta que junta com a anterior e a mesma edicao
     }
     if (temGaleria()) f.versao = versaoDaFamilia();
     f.confirmada = false;
@@ -2107,13 +2203,19 @@
   }
   function apagar(id) {
     ed.selecionado = null;
+    fecharControle();
+    tirarQuebra(id); // o texto apagado nao tem mais linha para quebrar
+    marcarQuebrasNoPalco();
+    mostrarProposta();
     mensagem('O elemento saiu de todos os arquivos desta família. Desfazer traz de volta.');
     return novaEdicao({ elemento: id, acao: 'apagar' }, false);
   }
   function desfazer() {
     const f = familiaAtual();
     if (!f || !f.edicoes.length) return null;
-    f.edicoes.pop();
+    const desfeita = f.edicoes.pop();
+    // o texto volta ao de antes: a quebra que contava no texto desfeito sai com ele
+    if (desfeita.acao === 'texto') tirarQuebra(desfeita.elemento);
     f.confirmada = false;
     delete f.confirmacao;
     mensagem('A última edição foi desfeita.');
@@ -2125,6 +2227,8 @@
   function selecionarElemento(id) {
     ed.selecionado = id;
     fecharEditorTexto();
+    // o controle da quebra aberto segue o texto escolhido, e fecha no elemento sem texto para quebrar
+    if (controleAberto()) { if (id && textoDaQuebra(id)) desenharControle(null); else fecharControle(); }
     marcarSelecao();
     atualizarBarra();
   }
@@ -2159,6 +2263,7 @@
       'setas, + e - ou Delete pelo teclado e Ctrl+Z para desfazer. Cada mudança vale para a família inteira.';
     ['ed-diminuir', 'ed-aumentar', 'ed-apagar'].forEach(function (i) { document.getElementById(i).disabled = !e; });
     document.getElementById('ed-texto').disabled = !e || pecasDeTexto(e.id).length !== 1;
+    document.getElementById('ed-quebra').disabled = !e || !textoDaQuebra(e.id);
     document.getElementById('ed-desfazer').disabled = !edicoesDa().length;
   }
   function nosDoElemento(area, id) {
@@ -2287,6 +2392,7 @@
   function abrirEditorTexto() {
     const ps = ed.selecionado ? pecasDeTexto(ed.selecionado) : [];
     if (ps.length !== 1) return;
+    fecharControle();
     const campo = document.getElementById('ed-campo-texto');
     campo.value = ps[0].linhas.map(function (ln) {
       return ln.trechos.map(function (t) { return t.texto; }).join('');
@@ -2317,8 +2423,316 @@
     campo.removeAttribute('aria-invalid');
     const f = familiaAtual();
     f.edicoes = f.edicoes.filter(function (e) { return !(e.acao === 'texto' && e.elemento === id); });
+    // as posicoes da quebra contam no texto de antes: a quebra deste texto sai, e a tela olha o texto novo de novo
+    tirarQuebra(id);
     ed.textoPendente = id;
     return novaEdicao({ elemento: id, acao: 'texto', texto: campo.value.replace(/\r\n?/g, '\n') }, false);
+  }
+
+  /* ------------------------------------------------ quebra de linha (M7b, C4; decisoes 167 e 171)
+     Com um texto escolhido, "Quebrar linha" abre o controle embaixo do palco: o texto de agora (o do KV ou o editado
+     nesta familia), nas linhas de agora e com a fonte do job. O clique entre duas palavras poe a quebra ali, e o
+     clique na marca da quebra junta as linhas. A quebra vale para a familia inteira, como o texto editado, e fica no
+     rascunho (quebras, uma por texto), aprovada pelo proprio clique do DA. A previa dos membros espera 300 ms sem
+     clique (pedirPreviaDaQuebra). O texto editado que nao cabe na caixa quebra na largura dela, como no render: a tela
+     le onde o Chromium quebrou e grava a quebra como proposta do desdobra, marcada no palco ate o DA aprovar com um
+     clique ou mudar a quebra. "Confirmar familia" espera a aprovacao (o servidor recusa tambem). As posicoes vem do
+     motor (textos_da_quebra da previa); o texto do cliente entra so por textContent. */
+  const QUEBRA_UMA = 'O texto editado não coube na caixa. O desdobra quebrou a linha na largura dela. Aprove a quebra ou mude a quebra antes de confirmar a família.';
+  const QUEBRA_FALTA_UMA = 'Uma quebra de linha proposta pelo desdobra espera a sua aprovação.';
+  const QUEBRA_SEM_APROVAR = 'Aprove a quebra de linha proposta pelo desdobra, ou mude a quebra, antes de confirmar a família.';
+  const FAMILIA_ESPERA_PREVIA = 'Espere a família aparecer com a sua última mudança.';
+  const MARCA_QUEBRA = 'quebra proposta';
+  const SITUACAO_QUEBRA = {
+    kv: 'As quebras são as do KV.',
+    editado: 'As linhas são as que você escreveu.',
+    da: 'Esta quebra é sua e vale para todos os arquivos desta família.',
+    proposta: 'O desdobra propôs esta quebra. Aprove a quebra ou mude a quebra.',
+    aprovada: 'Você aprovou a quebra proposta pelo desdobra. Ela vale para todos os arquivos desta família.'
+  };
+  function textosDaQuebra() { return (ed.previa && ed.previa.textos_da_quebra) || []; }
+  function textoDaQuebra(id) {
+    return textosDaQuebra().find(function (t) { return t.elemento === id; }) || null;
+  }
+  function quebrasDa(gid) { const f = rascunho.familias[gid]; return (f && f.quebras) || []; }
+  function quebraDo(id) { return quebrasDa(vista.familia).find(function (q) { return q.elemento === id; }) || null; }
+  function porAprovar(gid) {
+    return quebrasDa(gid).filter(function (q) { return q.origem === 'proposta' && !q.aprovada; });
+  }
+  function emOrdem(s) { return Array.from(s).sort(function (a, b) { return a - b; }); }
+  function todasGravadas(t) { return t.gravadas.map(function (_p, k) { return k; }); }
+  /* tira a quebra do texto sem gravar: quem chama grava (a edicao de texto, apagar, desfazer) */
+  function tirarQuebra(id) {
+    const f = rascunho.familias[vista.familia];
+    if (!f || !f.quebras) return;
+    f.quebras = f.quebras.filter(function (q) { return q.elemento !== id; });
+    if (!f.quebras.length) delete f.quebras;
+  }
+  /* a quebra nova do texto (ou nenhuma) e edicao da familia: tira a confirmacao e vai ao rascunho */
+  function guardarQuebra(id, q) {
+    const f = familiaAtual();
+    tirarQuebra(id);
+    if (q) f.quebras = (f.quebras || []).concat([q]);
+    if (temGaleria()) f.versao = versaoDaFamilia();
+    f.confirmada = false;
+    delete f.confirmacao;
+    mudouRascunho();
+    atualizarBotaoFamilia();
+    atualizarFaltam();
+    marcarQuebrasNoPalco();
+    mostrarProposta();
+  }
+  /* as quebras que valem agora no texto: as gravadas que ficam e as inseridas */
+  function quebrasAtivas(t, q) {
+    const s = new Set();
+    t.gravadas.forEach(function (p, k) { if (!q || q.manter.indexOf(k) >= 0) s.add(p); });
+    if (q) q.inseridas.forEach(function (p) { s.add(p); });
+    return s;
+  }
+  function trocarQuebra(id, pos) {
+    const t = textoDaQuebra(id);
+    if (!t) return;
+    const q = quebraDo(id);
+    const manter = new Set(q ? q.manter : todasGravadas(t));
+    const inseridas = new Set(q ? q.inseridas : []);
+    const k = t.gravadas.indexOf(pos);
+    const lista = k >= 0 ? manter : inseridas;
+    const valor = k >= 0 ? k : pos;
+    if (k < 0 && t.espacos.indexOf(pos) < 0) return;
+    if (lista.has(valor)) lista.delete(valor); else lista.add(valor);
+    const novo = { elemento: id, layer_id: t.layer_id, manter: emOrdem(manter), inseridas: emOrdem(inseridas),
+      origem: 'da', aprovada: true };
+    // de volta as quebras do KV, a quebra sai do rascunho; no texto editado ela fica, para a tela nao propor de novo
+    const comoNoKv = !novo.inseridas.length && novo.manter.length === t.gravadas.length;
+    guardarQuebra(id, comoNoKv && !t.editado ? null : novo);
+    contarNoCronometro('quebras');
+    desenharControle(pos);
+    pedirPreviaDaQuebra();
+  }
+  function controleAberto() { return !document.getElementById('editor-quebra').hidden; }
+  /* com o controle aberto, o palco fica com o espaco (revisao do C): .quebrando tira as miniaturas da frente, como
+     no editor de texto, e o resumo da familia fica; a frase da ultima acao sai, e o controle diz a situacao */
+  function abrirControle() {
+    if (!ed.selecionado || !textoDaQuebra(ed.selecionado)) return;
+    fecharEditorTexto();
+    mensagem('');
+    document.getElementById('editor-quebra').hidden = false;
+    document.querySelector('.mesa-palco').classList.add('quebrando');
+    document.getElementById('ed-quebra').setAttribute('aria-pressed', 'true');
+    desenharControle(null);
+    const primeiro = document.querySelector('#quebra-linhas button');
+    if (primeiro) primeiro.focus();
+  }
+  function fecharControle() {
+    const no = document.getElementById('editor-quebra');
+    if (no) no.hidden = true;
+    const mesa = document.querySelector('.mesa-palco');
+    if (mesa) mesa.classList.remove('quebrando');
+    const b = document.getElementById('ed-quebra');
+    if (b) b.setAttribute('aria-pressed', 'false');
+    if (document.getElementById('quebra-proposta')) mostrarProposta();
+  }
+  function botaoDaQuebra(pos, classe, rotulo) {
+    const b = botao(null, classe);
+    b.dataset.pos = String(pos);
+    b.setAttribute('aria-label', rotulo);
+    b.title = rotulo;
+    b.addEventListener('click', function () { trocarQuebra(ed.selecionado, pos); });
+    return b;
+  }
+  function marcaDaQuebra(pos, tipo) {
+    const b = botaoDaQuebra(pos, 'quebra-marca' + (tipo ? ' ' + tipo : ''), 'Juntar com a linha de baixo');
+    const svg = noSvg('svg', { viewBox: '0 0 16 16', width: '14', height: '14', 'aria-hidden': 'true', focusable: 'false' });
+    svg.appendChild(noSvg('path', { d: 'M12.5 3.5v5a2 2 0 0 1-2 2h-7M6 8l-2.5 2.5L6 13', fill: 'none',
+      stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    b.appendChild(svg);
+    return b;
+  }
+  /* o texto em linhas, com o vao entre as palavras e a marca no fim de cada linha quebrada: a do KV discreta, a do DA
+     no acento e a proposta do desdobra tracejada. foco: a posicao do botao que fica com o foco depois */
+  function desenharControle(foco) {
+    const caixa = document.getElementById('quebra-linhas');
+    const t = ed.selecionado ? textoDaQuebra(ed.selecionado) : null;
+    if (!t) { fecharControle(); return; }
+    const tinhaFoco = caixa.contains(document.activeElement);
+    const q = quebraDo(t.elemento);
+    const ativas = quebrasAtivas(t, q);
+    const propostas = new Set(q && q.origem === 'proposta' && !q.aprovada ? q.inseridas : []);
+    const separa = new Set(t.gravadas.concat(t.espacos));
+    limpar(caixa);
+    const p = pecasDeTexto(t.elemento)[0];
+    const tr0 = p && p.linhas[0] && p.linhas[0].trechos[0];
+    caixa.style.fontFamily = tr0 && tr0.face && familiaCss.has(tr0.face) ? '"' + familiaCss.get(tr0.face) + '"' : '';
+    let linha = el('div', null, 'quebra-linha');
+    let palavra = '';
+    let n = 0;
+    function fecharPalavra() { linha.appendChild(el('span', palavra, 'trecho quebra-palavra')); palavra = ''; n += 1; }
+    for (let i = 0; i < t.texto.length; i++) {
+      if (!separa.has(i)) { palavra += t.texto[i]; continue; }
+      fecharPalavra();
+      if (ativas.has(i)) {
+        const tipo = propostas.has(i) ? 'proposta' : (t.gravadas.indexOf(i) >= 0 && !t.editado ? 'do-kv' : '');
+        linha.appendChild(marcaDaQuebra(i, tipo));
+        caixa.appendChild(linha);
+        linha = el('div', null, 'quebra-linha');
+      } else {
+        linha.appendChild(botaoDaQuebra(i, 'quebra-vao', 'Quebrar a linha depois da palavra ' + n));
+      }
+    }
+    fecharPalavra();
+    caixa.appendChild(linha);
+    let situacao = t.editado ? 'editado' : 'kv';
+    if (q) situacao = q.origem === 'da' ? 'da' : (q.aprovada ? 'aprovada' : 'proposta');
+    document.getElementById('quebra-situacao').textContent = SITUACAO_QUEBRA[situacao];
+    const volta = document.getElementById('ed-quebra-kv');
+    volta.hidden = !q;
+    volta.textContent = t.editado ? 'Voltar às linhas do texto' : 'Voltar às quebras do KV';
+    // a proposta deste texto se aprova aqui mesmo; a faixa de cima sai quando so ela esperava (mostrarProposta)
+    document.getElementById('ed-quebra-aprovar').hidden = situacao !== 'proposta';
+    mostrarProposta();
+    if (tinhaFoco && foco !== null && foco !== undefined) {
+      const alvo = caixa.querySelector('button[data-pos="' + foco + '"]');
+      if (alvo) alvo.focus();
+    }
+  }
+  /* as linhas do texto de agora com a quebra da familia q (ou sem ela), como o motor as manda ao palco
+     (desdobra.derivacao.quebras.linhas_do_editado): a quebra gravada fora de manter vira espaco e o espaco inserido
+     vira quebra. Cada linha leva a posicao do texto onde ela comeca */
+  function linhasComQuebra(t, q) {
+    const juntar = new Set();
+    const novas = new Set(q ? q.inseridas : []);
+    if (q) t.gravadas.forEach(function (p, k) { if (q.manter.indexOf(k) < 0) juntar.add(p); });
+    const linhas = [];
+    let atual = '';
+    let inicio = 0;
+    for (let i = 0; i < t.texto.length; i++) {
+      const quebra = (t.gravadas.indexOf(i) >= 0 && !juntar.has(i)) || (novas.has(i) && t.texto[i] === ' ');
+      if (quebra) {
+        linhas.push({ texto: atual, inicio: inicio });
+        atual = '';
+        inicio = i + 1;
+      } else {
+        atual += juntar.has(i) ? ' ' : t.texto[i];
+      }
+    }
+    linhas.push({ texto: atual, inicio: inicio });
+    return linhas;
+  }
+  /* onde o Chromium quebrou o texto editado na largura da caixa: a posicao do espaco antes de cada palavra que desceu
+     de linha, no texto de agora (o espaco, ou a quebra gravada que o DA juntou). So com o palco desenhado com a
+     quebra q de agora, linha a linha como o motor o mandou; o palco de um pedido anterior da null */
+  function quebrasDaLargura(no, t, q) {
+    const linhas = linhasComQuebra(t, q);
+    const nos = Array.from(no.querySelectorAll('.linha'));
+    if (nos.length !== linhas.length) return null;
+    const r = document.createRange();
+    const saida = [];
+    for (let i = 0; i < linhas.length; i++) {
+      const parte = linhas[i].texto;
+      const s = nos[i].querySelector('.trecho');
+      const tn = s ? s.firstChild : null;
+      if (!parte) continue;
+      if (!tn || tn.nodeType !== 3 || tn.data !== parte) return null;
+      let topo = null;
+      for (let k = 0; k < parte.length; k++) {
+        if (parte[k] === ' ' || (k > 0 && parte[k - 1] !== ' ')) continue;
+        r.setStart(tn, k);
+        r.setEnd(tn, k + 1);
+        const c = r.getClientRects()[0];
+        if (!c) continue;
+        const pos = linhas[i].inicio + k - 1;
+        const cabe = t.espacos.indexOf(pos) >= 0 || t.gravadas.indexOf(pos) >= 0;
+        if (topo !== null && c.top > topo + c.height / 2 && cabe) saida.push(pos);
+        topo = c.top;
+      }
+    }
+    return saida;
+  }
+  /* o texto editado que quebrou na largura da caixa vira a quebra proposta pelo desdobra, com as quebras que ja
+     valiam. Tambem quando o DA juntou ou aprovou as linhas e uma delas ainda nao cabe: o render quebra ali do mesmo
+     jeito, e essa quebra volta marcada ate o DA aprovar ou mudar (revisao do C). Abrir a familia confirmada nao
+     propoe: a confirmacao e do DA, e so cai quando ele mexe na familia */
+  const QUEBRA_DE_NOVO = 'Uma linha não coube na caixa. O desdobra quebrou a linha de novo na largura dela. Aprove a quebra ou mude a quebra.';
+  function proporQuebras() {
+    if (!editavel() || familiaConfirmada()) return false;
+    const area = document.getElementById('palco');
+    let propos = false;
+    let deNovo = false;
+    textosDaQuebra().forEach(function (t) {
+      if (!t.editado) return;
+      const q = quebraDo(t.elemento);
+      const no = area.querySelector('.recorte[data-elemento="' + t.elemento + '"] .texto.editado');
+      const pos = no ? quebrasDaLargura(no, t, q) : null;
+      if (!pos || !pos.length) return;
+      const manter = new Set(q ? q.manter : todasGravadas(t));
+      const inseridas = new Set(q ? q.inseridas : []);
+      pos.forEach(function (p) {
+        const k = t.gravadas.indexOf(p);
+        if (k >= 0) manter.add(k); else inseridas.add(p);
+      });
+      const novo = { elemento: t.elemento, layer_id: t.layer_id, manter: emOrdem(manter), inseridas: emOrdem(inseridas),
+        origem: 'proposta', aprovada: false };
+      if (q && JSON.stringify([q.manter, q.inseridas]) === JSON.stringify([novo.manter, novo.inseridas])) return;
+      guardarQuebra(t.elemento, novo);
+      propos = true;
+      if (q) deNovo = true;
+    });
+    if (deNovo) mensagem(QUEBRA_DE_NOVO);
+    return propos;
+  }
+  function aprovarQuebra() {
+    const lista = porAprovar(vista.familia);
+    const q = lista.find(function (x) { return x.elemento === ed.selecionado; }) || lista[0];
+    if (!q) return;
+    guardarQuebra(q.elemento, Object.assign({}, q, { aprovada: true }));
+    mensagem('A quebra proposta pelo desdobra está aprovada. Ela vale para todos os arquivos desta família.');
+    if (controleAberto()) desenharControle(null);
+  }
+  function verQuebraProposta() {
+    const q = porAprovar(vista.familia)[0];
+    if (!q) return;
+    selecionarElemento(q.elemento);
+    abrirControle();
+  }
+  /* a faixa da quebra proposta, acima da barra, e a marca no palco no elemento dela. Com o controle aberto no texto
+     da unica proposta, a faixa sai: o controle diz o mesmo e tem o "Aprovar quebra" */
+  function mostrarProposta() {
+    const no = document.getElementById('quebra-proposta');
+    const lista = editavel() ? porAprovar(vista.familia) : [];
+    const n = lista.length;
+    const noControle = controleAberto() && lista.every(function (q) { return q.elemento === ed.selecionado; });
+    no.hidden = !n || noControle;
+    document.getElementById('quebra-proposta-texto').textContent = n === 1 ? QUEBRA_UMA :
+      'O desdobra propôs ' + n + ' quebras de linha nesta família. Aprove cada quebra ou mude a quebra antes de confirmar a família.';
+  }
+  function marcarQuebrasNoPalco() {
+    const area = document.getElementById('palco');
+    const pendentes = new Set((editavel() ? porAprovar(vista.familia) : []).map(function (q) { return q.elemento; }));
+    area.querySelectorAll('.rotulo.editavel').forEach(function (r) {
+      const sim = pendentes.has(r.dataset.elemento);
+      const e = elementoDoPalco(r.dataset.elemento);
+      const et = r.querySelector('.etiqueta');
+      if (r.classList.contains('quebra-proposta') === sim || !e) return;
+      r.classList.toggle('quebra-proposta', sim);
+      const rotulo = rotuloElemento(e) + (sim ? ' · ' + MARCA_QUEBRA : '');
+      r.setAttribute('aria-label', 'Mexer em ' + rotulo);
+      if (et) et.textContent = rotulo;
+    });
+    reajustar(area);
+  }
+  /* o que falta: a familia com quebra proposta ainda sem aprovacao leva a ela */
+  function pendenciasDasQuebras() {
+    const out = [];
+    (estado.orientacoes || []).forEach(function (o) {
+      o.grupos.forEach(function (g) {
+        const n = porAprovar(g.id).length;
+        const fs = formatosDoGrupo(g);
+        if (!n || !fs.length) return;
+        out.push({ texto: n === 1 ? QUEBRA_FALTA_UMA : n + ' quebras de linha propostas pelo desdobra esperam a sua aprovação.',
+          detalhe: fs.map(function (x) { return x.id; }).join(', '), ir: { passo: 'pecas', formato: fs[0].id } });
+      });
+    });
+    return out;
   }
   function ligarEdicao() {
     const area = document.getElementById('palco');
@@ -2362,8 +2776,40 @@
       document.getElementById('ed-texto').focus();
     });
     document.getElementById('ed-texto-aplicar').addEventListener('click', aplicarTexto);
+    // a quebra de linha (M7b, C4): o botao da barra abre e fecha o controle; Esc fecha e volta ao elemento
+    document.getElementById('ed-quebra').addEventListener('click', function () {
+      if (controleAberto()) fecharControle(); else abrirControle();
+    });
+    document.getElementById('ed-quebra-fechar').addEventListener('click', function () {
+      fecharControle();
+      document.getElementById('ed-quebra').focus();
+    });
+    document.getElementById('ed-quebra-kv').addEventListener('click', function () {
+      const id = ed.selecionado;
+      if (!id || !quebraDo(id)) return;
+      guardarQuebra(id, null);
+      contarNoCronometro('quebras');
+      desenharControle(null);
+      pedirPreviaDaQuebra();
+    });
+    document.getElementById('editor-quebra').addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      fecharControle();
+      document.getElementById('ed-quebra').focus();
+    });
+    document.getElementById('aprovar-quebra').addEventListener('click', aprovarQuebra);
+    document.getElementById('ed-quebra-aprovar').addEventListener('click', function () {
+      aprovarQuebra();
+      // o botao some com a proposta aprovada: o foco fica no controle
+      document.getElementById('ed-quebra-fechar').focus();
+    });
+    document.getElementById('ver-quebra').addEventListener('click', verQuebraProposta);
     depoisDoAto.familia = function () {
-      return lerRascunho().then(function () { atualizarSelo(); atualizarBotaoFamilia(); atualizarSalvar(); });
+      return lerRascunho().then(function () {
+        atualizarSelo(); atualizarBotaoFamilia(); atualizarSalvar(); mostrarProposta(); marcarQuebrasNoPalco();
+      });
     };
     depoisDoAto.salvar = function () {
       atualizarSalvar();

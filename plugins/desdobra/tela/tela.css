@@ -974,6 +974,160 @@ img.peca { user-select: none; pointer-events: none; }
 .erro-campo { color: var(--aviso); font-size: 12px; }
 .erro-campo:empty { display: none; }
 .editor-acoes { display: flex; justify-content: flex-end; gap: 8px; }
+/* ---------------------------------------------------------------- quebra de linha (M7b, C4)
+   O controle fica embaixo do palco, como o editor de texto: o texto na fonte do job, em linhas, com um vao clicavel
+   entre as palavras e a marca da quebra no fim de cada linha. A quebra do KV fica discreta, a do DA no acento e a
+   proposta do desdobra tracejada, ate o DA aprovar. Um acento so. Com o controle aberto (.quebrando, revisao do C), o
+   palco guarda a altura para o DA ler a quebra: as miniaturas passam para uma coluna ao lado do palco (revisao 2 do
+   C: o DA ve a quebra em cada membro), a frase "Com as suas edicoes" sem aviso sai da frente, so a etiqueta do
+   escolhido e a da proposta aparecem, e o controle e baixo, com o texto a esquerda e a situacao e os botoes a
+   direita na janela larga. */
+.faixa-quebra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--acento-fundo);
+  border-top: 1px solid var(--acento-linha);
+  color: var(--acento);
+  flex: none;
+  animation: surgir 0.24s var(--curva);
+}
+.faixa-quebra[hidden] { display: none; }
+.faixa-quebra p { flex: 1; min-width: 0; font-size: 12px; line-height: 1.45; }
+.faixa-quebra .botao { height: 28px; font-size: 12px; }
+.botao-acento { background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600; }
+.botao-acento:hover:not(:disabled) { border-color: var(--tinta); }
+.editor-quebra {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  background: var(--superficie-2);
+  border-top: 1px solid var(--linha);
+  flex: none;
+  animation: entrar 0.2s var(--curva);
+}
+.editor-quebra[hidden] { display: none; }
+.quebra-topo { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; }
+.quebra-topo .nota { font-size: 12px; }
+.quebra-linhas {
+  display: grid;
+  gap: 2px;
+  max-height: 168px;
+  overflow: auto;
+  padding: 10px 12px;
+  background: var(--superficie);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-p);
+  color: var(--tinta);
+  font-size: 20px;
+  line-height: 1.25;
+}
+.quebra-linha { display: flex; flex-wrap: wrap; align-items: center; min-height: 30px; animation: subir 0.22s var(--curva) both; }
+.quebra-palavra { white-space: pre; }
+.quebra-vao {
+  position: relative;
+  width: 16px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.15s var(--curva);
+}
+.quebra-vao::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--acento);
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition: opacity 0.15s var(--curva), transform 0.2s var(--curva);
+}
+.quebra-vao:hover::after, .quebra-vao:focus-visible::after { opacity: 1; transform: none; }
+.quebra-vao:focus-visible { outline: 2px solid var(--foco); outline-offset: 0; }
+.quebra-vao:active { transform: scale(0.94); }
+.quebra-marca {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0;
+  border: 1px solid var(--acento-linha);
+  border-radius: 999px;
+  background: var(--acento-fundo);
+  color: var(--acento);
+  cursor: pointer;
+  transition: border-color 0.2s var(--curva), transform 0.15s var(--curva);
+}
+.quebra-marca:hover { border-color: var(--acento); }
+.quebra-marca:active { transform: scale(0.94); }
+.quebra-marca:focus-visible { outline: 2px solid var(--foco); outline-offset: 1px; }
+.quebra-marca.do-kv { border-color: var(--linha-forte); background: var(--superficie-2); color: var(--suave); }
+.quebra-marca.proposta { border-style: dashed; border-color: var(--acento); background: var(--superficie); }
+.quebra-pe { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.quebra-situacao { flex: 1; min-width: 0; color: var(--suave); font-size: 12px; }
+.rotulo.quebra-proposta { border: 1.5px dashed var(--acento); }
+.rotulo.quebra-proposta .etiqueta { background: var(--acento-fundo); color: var(--acento); }
+/* com o controle aberto, as miniaturas dos membros viram uma coluna ao lado do palco (revisao 2 do C): o DA ve a
+   quebra em cada arquivo da familia enquanto clica, e o palco so cede largura, que sobra quando a peca e baixa */
+.mesa-palco.quebrando {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+  grid-template-areas: "aviso aviso" "palco membros" "faixa faixa" "barra barra" "texto texto" "quebra quebra";
+}
+.mesa-palco.quebrando > .variante-palco { grid-area: aviso; }
+.mesa-palco.quebrando > .area-palco { grid-area: palco; }
+.mesa-palco.quebrando > .faixa-quebra { grid-area: faixa; }
+.mesa-palco.quebrando > .barra-edicao { grid-area: barra; }
+.mesa-palco.quebrando > .editor-texto { grid-area: texto; }
+.mesa-palco.quebrando > .editor-quebra { grid-area: quebra; }
+.mesa-palco.quebrando > .membros {
+  grid-area: membros;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px 8px 8px 10px;
+  border-top: 0;
+  border-left: 1px solid var(--linha);
+  animation: entrar 0.2s var(--curva);
+}
+.mesa-palco.quebrando > .membros[hidden] { display: none; }
+.mesa-palco.quebrando .membros-topo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.mesa-palco.quebrando .membros-lista { flex-direction: column; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; gap: 4px; }
+.mesa-palco.quebrando .membro { grid-template-columns: auto; grid-template-areas: "quadro" "nome" "medida"; }
+.mesa-palco.quebrando .variante-palco:not(:has(.var-palco-aviso)) { display: none; }
+.mesa-palco.quebrando .rotulo:not(.selecionado):not(.quebra-proposta) .etiqueta { display: none; }
+.mesa-palco.quebrando .faixa-quebra { padding-top: 6px; padding-bottom: 6px; }
+@media (min-width: 1100px) {
+  .editor-quebra {
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+    grid-template-areas: "topo topo" "linhas pe";
+    align-items: start;
+    gap: 6px 16px;
+    padding: 10px 16px 12px;
+  }
+  .editor-quebra .quebra-topo { grid-area: topo; }
+  .editor-quebra .quebra-linhas { grid-area: linhas; max-height: 112px; padding: 6px 12px; }
+  .editor-quebra .quebra-pe { grid-area: pe; flex-direction: column; align-items: stretch; gap: 8px; }
+  .editor-quebra .quebra-pe .editor-acoes { flex-wrap: wrap; }
+}
 .membros { flex: none; background: var(--superficie); border-top: 1px solid var(--linha); padding: 8px 16px 10px; }
 .membros-topo { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 6px; }
 .membros-topo h2 { font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }

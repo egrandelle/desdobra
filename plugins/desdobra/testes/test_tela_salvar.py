@@ -388,6 +388,109 @@ def test_editar_depois_de_salvar_tira_o_salvo_da_tela(job, modelo):
     assert te.montar(job)['estado']['briefing']['salvo'] is False
 
 
+# ------------------------------------------------------------------ quebra de linha da familia (M7b, C1)
+def _apoio(modelo):
+    """(elemento, layer_id) do texto de apoio ('VOX AH': o espaco na posicao 3)."""
+    lid = next(k for k, v in modelo['funcoes'].items() if v == 'texto_de_apoio')
+    return 'el%d' % lid, lid
+
+
+def _quebra_do_apoio(modelo, inseridas=(3,), origem='da', aprovada=True):
+    el, lid = _apoio(modelo)
+    return {'elemento': el, 'layer_id': lid, 'manter': [], 'inseridas': list(inseridas), 'origem': origem,
+            'aprovada': aprovada}
+
+
+def test_quebra_da_familia_vai_do_rascunho_ao_briefing_e_rele_igual(job, modelo):
+    conteudo = te.montar(job)
+    gv = _familia_de(conteudo, 'v1')
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        escolhas = _escolhas(conteudo)
+        escolhas[gv]['quebras'] = [_quebra_do_apoio(modelo)]
+        assert _gravar_rascunho(s, biscoito, escolhas, _passo_2(modelo['funcoes'])) == 200
+        assert _ato(s, biscoito, 'modo_dados', {'modo': 'c'})[1] == 200
+        _confirmar_todas(s, biscoito, escolhas)
+        assert bs.pendencias(job, conteudo) == []
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    _el, lid = _apoio(modelo)
+    b = mb.ler(job)
+    da_familia = [q for q in b['quebras_por_familia'] if q.get('familia') is not None]
+    assert da_familia == [{'layer_id': lid, 'familia': gv, 'formatos': conteudo['familias'][gv]['formatos'],
+                           'quebras': {'valor': [], 'situacao': 'confirmado',
+                                       'origem': {'tipo': mb.ORIGEM_FIXTURE, 'ref': bs.REF_RASCUNHO}},
+                           'inseridas': [3], 'origem': 'da', 'aprovada': True}]
+    assert mb.conferir(contratos.ler(job / 'laudo' / 'laudo.json', 'laudo/1'), b) == []
+    # fechar e reabrir: o briefing e o rascunho releem iguais, e a tela diz que esta salvo
+    assert mb.ler(job) == b
+    lido, outro = tr.ler(job, tr.laudo_sha256(job))
+    assert outro is False and lido['familias'][gv]['quebras'] == [_quebra_do_apoio(modelo)]
+    assert te.montar(job)['estado']['briefing']['salvo'] is True
+
+
+def test_rascunho_recusa_quebra_fora_de_espaco_do_texto_de_agora(job, modelo):
+    conteudo = te.montar(job)
+    gv = _familia_de(conteudo, 'v1')
+    el, _lid = _apoio(modelo)
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        escolhas = _escolhas(conteudo)
+        p2 = _passo_2(modelo['funcoes'])
+        for pos in (1, 6, 40):
+            escolhas[gv]['quebras'] = [_quebra_do_apoio(modelo, inseridas=(pos,))]
+            assert _gravar_rascunho(s, biscoito, escolhas, p2) == 403, pos
+        assert not (job / tr.ARQUIVO).exists()
+        # no texto editado na familia, o espaco que vale e o dele (decisoes-v1.md, 171)
+        escolhas[gv]['edicoes'] = escolhas[gv]['edicoes'] + [{'elemento': el, 'acao': 'texto', 'texto': 'AH VOX'}]
+        escolhas[gv]['quebras'] = [_quebra_do_apoio(modelo, inseridas=(3,))]
+        assert _gravar_rascunho(s, biscoito, escolhas, p2) == 403
+        escolhas[gv]['quebras'] = [_quebra_do_apoio(modelo, inseridas=(2,))]
+        assert _gravar_rascunho(s, biscoito, escolhas, p2) == 200
+        # a quebra do DA vale aprovada pelo proprio ato; a proposta pelo motor espera a aprovacao
+        escolhas[gv]['quebras'] = [_quebra_do_apoio(modelo, inseridas=(2,), aprovada=False)]
+        assert _gravar_rascunho(s, biscoito, escolhas, p2) == 403
+        escolhas[gv]['quebras'] = [_quebra_do_apoio(modelo, inseridas=(2,), origem='proposta', aprovada=False)]
+        assert _gravar_rascunho(s, biscoito, escolhas, p2) == 200
+    finally:
+        s.parar()
+
+
+def test_mudar_a_quebra_pede_confirmar_a_familia_de_novo(job, modelo):
+    # a quebra mudada e edicao da familia (decisoes-v1.md, 167 e 171): a confirmacao velha nao vale para ela
+    conteudo = te.montar(job)
+    gv = _familia_de(conteudo, 'v1')
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        escolhas = _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert _salvar(s, biscoito, job)[1] == 200
+        p2 = _passo_2(modelo['funcoes'])
+        confirmadas = {g: dict(f, confirmada=True) for g, f in escolhas.items()}
+        com_quebra = dict(confirmadas, **{gv: dict(confirmadas[gv], quebras=[_quebra_do_apoio(modelo)])})
+        # a pagina nunca confirma: a familia com a quebra nova e confirmada falsa
+        assert _gravar_rascunho(s, biscoito, com_quebra, p2) == 403
+        com_quebra[gv]['confirmada'] = False
+        assert _gravar_rascunho(s, biscoito, com_quebra, p2) == 200
+        assert tr.ler(job, s.laudo_sha256)[0]['familias'][gv]['confirmada'] is False
+        assert te.montar(job)['estado']['briefing']['salvo'] is False
+        # confirmada de novo com a quebra, a tela so diz salvo depois de "Salvar e seguir"
+        f = escolhas[gv]
+        # o pedido sem a quebra que o rascunho tem (a janela que nao a mostra) e recusado (revisao do C)
+        assert _ato(s, biscoito, 'familia', {'familia': gv, 'versao': f['versao'], 'edicoes': f['edicoes']})[0] \
+            != 200
+        assert _ato(s, biscoito, 'familia', {'familia': gv, 'versao': f['versao'], 'edicoes': f['edicoes'],
+                                             'quebras': com_quebra[gv]['quebras']})[1] == 200
+        assert te.montar(job)['estado']['briefing']['salvo'] is False
+        assert _salvar(s, biscoito, job)[1] == 200
+        assert te.montar(job)['estado']['briefing']['salvo'] is True
+    finally:
+        s.parar()
+
+
 # ------------------------------------------------------------------ salvar seletivo (M7b, A6)
 def _shas_da_derivacao(job):
     return {fid: arquivos.sha256_arquivo(job / nd.PASTA / ('%s.json' % fid)) for fid, _w, _h in FORMATOS}
@@ -395,7 +498,9 @@ def _shas_da_derivacao(job):
 
 def _confirmar_todas(s, biscoito, escolhas):
     for gid, f in escolhas.items():
-        assert _ato(s, biscoito, 'familia', {'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']})[1] == 200, gid
+        # o ato leva as quebras que a janela mostra, como as edicoes (revisao do C)
+        assert _ato(s, biscoito, 'familia', {'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes'],
+                                             'quebras': f.get('quebras') or []})[1] == 200, gid
 
 
 def _eventos(job, nome):

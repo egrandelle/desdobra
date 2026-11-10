@@ -198,6 +198,14 @@
             "$ref": "#/$defs/edicao"
           }
         },
+        "quebras": {
+          "description": "As quebras de linha que o DA pos ou tirou na familia (M7b, C1; decisoes-v1.md, 167 e 171), uma por texto: valem para todos os formatos da familia, como o texto editado. Vao ao briefing em quebras_por_familia, com a familia e os formatos dela. Ausente sem quebra mudada.",
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/quebra"
+          }
+        },
         "formatos": {
           "description": "Os formatos da familia na tela quando o DA mexeu nela pela ultima vez (escolheu a versao, editou ou confirmou; revisao do M7b, fase A). So o servidor grava; o que a pagina manda e jogado fora. A tela casa o id da familia com o grupo que divide mais formatos com esta lista, e a edicao nunca passa para um grupo sem formato em comum com ela. Ausente no rascunho de antes desta revisao.",
           "type": "array",
@@ -271,6 +279,75 @@
           "required": [
             "confirmacao"
           ]
+        }
+      }
+    },
+    "quebra": {
+      "description": "A quebra de linha de um texto na familia (M7b, C1). As posicoes contam no texto de agora: o do KV ou o editado pelo DA nesta familia (a ultima edicao de texto do elemento, com CR LF e CR trocados por LF como o render desenha).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "elemento",
+        "layer_id",
+        "manter",
+        "inseridas",
+        "origem",
+        "aprovada"
+      ],
+      "properties": {
+        "elemento": {
+          "description": "O elemento do palco que tem o texto (el e o layer_id da raiz), para achar o texto editado na familia.",
+          "type": "string",
+          "pattern": "^el[0-9]{1,9}$"
+        },
+        "layer_id": {
+          "description": "A camada de texto do laudo.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "manter": {
+          "description": "Os indices das quebras gravadas do texto de agora que ficam (0 e a primeira); as outras viram espaco.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 2000,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "inseridas": {
+          "description": "As posicoes de espaco do texto de agora que viram quebra.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 2000,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "origem": {
+          "description": "da: o DA pos ou tirou a quebra, e o proprio ato aprova; proposta: o motor propos, e a quebra espera a aprovacao do DA.",
+          "enum": [
+            "da",
+            "proposta"
+          ]
+        },
+        "aprovada": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "origem": {
+            "const": "da"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "aprovada": {
+            "const": true
+          }
         }
       }
     },

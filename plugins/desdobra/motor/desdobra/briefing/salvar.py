@@ -11,11 +11,13 @@ Disparo da tela) e o "desdobra briefing confirmar" do terminal fica so para os t
     briefing/modo-dados.json, e as familias levam a versao e as edicoes que o DA confirmou;
   - a prancheta da peca (quadro) e o giro de cada formato sao escolhas do passo 1, no rascunho (escolhas_do_passo_1;
     revisao do M7a); sem o giro de todos os formatos, nada e gravado;
-  - o que a tela ainda nao decide (formatos, mestres, parametros das familias, quebras e regras de bloco) vem do
-    briefing gravado, com a origem que cada decisao ja tinha; no job novo, sem briefing gravado, vem do briefing de
-    partida (desdobra.briefing.modelo.partida: os formatos das specs do job, a mestre do KV e o quadro pendente), e o
-    primeiro briefing confirmado nasce aqui; com o gravado de outra versao dos arquivos do job, vem da retomada
-    (desdobra.briefing.modelo.retomada: o de partida com o que ainda vale do gravado);
+  - a quebra de linha que o DA pos ou tirou numa familia da tela (M7b, C1) vai do rascunho para quebras_por_familia,
+    com a familia e os formatos dela (quebras_da_familia);
+  - o que a tela ainda nao decide (formatos, mestres, parametros das familias, quebras por faixa e regras de bloco)
+    vem do briefing gravado, com a origem que cada decisao ja tinha; no job novo, sem briefing gravado, vem do
+    briefing de partida (desdobra.briefing.modelo.partida: os formatos das specs do job, a mestre do KV e o quadro
+    pendente), e o primeiro briefing confirmado nasce aqui; com o gravado de outra versao dos arquivos do job, vem da
+    retomada (desdobra.briefing.modelo.retomada: o de partida com o que ainda vale do gravado);
   - o texto editado tem de ter todos os caracteres na fonte do job (a mesma conferencia da previa da tela);
   - grava briefing/briefing-confirmado.json com a origem e o meio do Disparo (da e tela; da e terminal; no modo de
     teste da tela, fixture_de_teste e medicao, que o entregar recusa), guarda a versao anterior em
@@ -115,8 +117,32 @@ def montar(pasta, conteudo, dados, *, origem, meio, por, quando, modo):
                                     'confirmada': bool(f.get('confirmada')),
                                     'confirmacao': None if conf is None else
                                     {k: v for k, v in conf.items() if k not in ('formatos', 'pecas')}})
+    _quebras_das_familias(novo, conteudo, dados, tipo)
     novo['cabecalho'] = dict(mb.hashes_atuais(pasta), origem=origem, meio=meio, por=dict(por), quando=quando)
     return novo
+
+
+def quebras_da_familia(gid, formatos, f, tipo):
+    """As entradas de quebras_por_familia (briefing/1) das quebras de linha da familia gid do rascunho (M7b, C1): a
+    familia e os formatos dela, os indices que ficam como decisao do DA (com a origem do rascunho), as posicoes
+    inseridas, quem fez a quebra e a aprovacao."""
+    return [{'layer_id': q['layer_id'], 'familia': gid, 'formatos': list(formatos),
+             'quebras': {'valor': list(q['manter']), 'situacao': 'confirmado',
+                         'origem': {'tipo': tipo, 'ref': REF_RASCUNHO}},
+             'inseridas': list(q['inseridas']), 'origem': q['origem'], 'aprovada': bool(q['aprovada'])}
+            for q in (f or {}).get('quebras') or []]
+
+
+def _quebras_das_familias(novo, conteudo, dados, tipo):
+    """As quebras de linha das familias da tela no briefing novo (M7b, C1): as da faixa e da lista de formatos (M5),
+    que vem do gravado, ficam; as de familia da tela saem todas e entram as do rascunho de agora. Sem quebra nenhuma,
+    o campo fica como estava (o briefing sem quebra nao ganha campo vazio). Muda novo no lugar."""
+    antes = [q for q in novo.get('quebras_por_familia') or [] if q.get('familia') is None]
+    da_tela = []
+    for gid, fam in conteudo['familias'].items():
+        da_tela += quebras_da_familia(gid, fam['formatos'], dados['familias'].get(gid), tipo)
+    if da_tela or 'quebras_por_familia' in novo:
+        novo['quebras_por_familia'] = antes + da_tela
 
 
 def pendencias(pasta, conteudo, origem=None):
@@ -300,9 +326,16 @@ def _gravar_mudancas(pasta, mudancas):
     contratos.gravar(Path(pasta) / PASTA_MUDANCAS / ('%d.json' % entrada['seq']), dados, ESQUEMA_MUDANCAS)
 
 
+def _sem_origem_da_decisao(quebras):
+    """As quebras da familia sem a origem da decisao (da ou fixture_de_teste), para comparar o gravado com o
+    rascunho."""
+    return [dict(q, quebras={k: v for k, v in q['quebras'].items() if k != 'origem'}) for q in quebras]
+
+
 def situacao_na_tela(pasta, familias):
     """{'salvo', 'em'} para a tela: salvo quando o briefing gravado traz as familias da tela como o rascunho as tem
-    confirmadas agora (mesma versao, mesmas edicoes) e vale para os arquivos do job. familias: {id: [formatos]}."""
+    confirmadas agora (mesma versao, mesmas edicoes, mesmas quebras de linha) e vale para os arquivos do job.
+    familias: {id: [formatos]}."""
     from desdobra.briefing import modelo as mb
     nao = {'salvo': False, 'em': None}
     try:
@@ -323,6 +356,11 @@ def situacao_na_tela(pasta, familias):
         c, f = comps[gid], dados['familias'].get(gid) or {}
         if c['formatos'] != list(fids) or not f.get('confirmada') or not c['confirmada'] or \
                 (c['versao'], c['edicoes']) != (f.get('versao'), f.get('edicoes')):
+            return nao
+        # a quebra de linha da familia tambem (M7b, C1): confirmada de novo com outra quebra, pede "Salvar e seguir"
+        gravadas = [q for q in b.get('quebras_por_familia') or [] if q.get('familia') == gid]
+        no_rascunho = quebras_da_familia(gid, c['formatos'], f, None)
+        if _sem_origem_da_decisao(gravadas) != _sem_origem_da_decisao(no_rascunho):
             return nao
     # a prancheta e o giro do passo 1 tambem: escolhidos de novo depois de salvar, pedem outro "Salvar e seguir"
     giro = dados.get('rotacoes') or {}

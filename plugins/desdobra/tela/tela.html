@@ -105,12 +105,18 @@
         <div class="mesa-palco">
           <div id="variante-palco" class="variante-palco" aria-live="polite" hidden></div>
           <div id="palco" class="area-palco" aria-label="Palco"></div>
+          <div id="quebra-proposta" class="faixa-quebra" role="status" hidden>
+            <p id="quebra-proposta-texto"></p>
+            <button type="button" id="ver-quebra" class="botao">Ver a quebra</button>
+            <button type="button" id="aprovar-quebra" class="botao botao-acento">Aprovar quebra</button>
+          </div>
           <div id="barra-edicao" class="barra-edicao" role="toolbar" aria-label="Edição do elemento escolhido" hidden>
             <p id="elemento-escolhido" class="elemento-escolhido">Clique num elemento do palco para mexer nele.</p>
             <div class="barra-grupo">
               <button type="button" id="ed-diminuir" class="botao-vista" disabled>Diminuir</button>
               <button type="button" id="ed-aumentar" class="botao-vista" disabled>Aumentar</button>
               <button type="button" id="ed-texto" class="botao-vista" disabled>Editar texto</button>
+              <button type="button" id="ed-quebra" class="botao-vista" aria-pressed="false" aria-controls="editor-quebra" disabled>Quebrar linha</button>
               <button type="button" id="ed-apagar" class="botao-vista" disabled>Apagar</button>
               <span class="controles-divisor" aria-hidden="true"></span>
               <button type="button" id="ed-desfazer" class="botao-vista" disabled>Desfazer</button>
@@ -125,6 +131,21 @@
             <div class="editor-acoes">
               <button type="button" id="ed-texto-cancelar" class="botao">Cancelar</button>
               <button type="button" id="ed-texto-aplicar" class="botao botao-primario">Aplicar texto</button>
+            </div>
+          </div>
+          <div id="editor-quebra" class="editor-quebra" role="group" aria-labelledby="t-quebra" hidden>
+            <div class="quebra-topo">
+              <p id="t-quebra" class="editor-rotulo">Quebras de linha deste texto, só nesta família</p>
+              <p class="nota">Clique entre duas palavras para quebrar a linha ali. Clique na marca do fim da linha para juntar com a linha de baixo.</p>
+            </div>
+            <div id="quebra-linhas" class="quebra-linhas"></div>
+            <div class="quebra-pe">
+              <p id="quebra-situacao" class="quebra-situacao" role="status" aria-live="polite"></p>
+              <div class="editor-acoes">
+                <button type="button" id="ed-quebra-aprovar" class="botao botao-acento" hidden>Aprovar quebra</button>
+                <button type="button" id="ed-quebra-kv" class="botao" hidden>Voltar às quebras do KV</button>
+                <button type="button" id="ed-quebra-fechar" class="botao">Fechar</button>
+              </div>
             </div>
           </div>
           <section id="membros" class="membros" aria-labelledby="t-membros" hidden>

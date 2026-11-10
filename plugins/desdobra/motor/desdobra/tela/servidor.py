@@ -14,6 +14,11 @@ Regras (cada uma com teste em testes/test_tela_servidor.py e testes/test_tela_es
     403 ou 404, sem corpo e sem dizer o motivo;
   - rascunho (POST e GET /api/rascunho): briefing/rascunho.json (desdobra.tela.rascunho), com a chave do hash do
     laudo; o rascunho de outro laudo e recusado na gravacao e nunca volta calado na leitura;
+  - cronometro da mestre (POST /api/medicao; M7b, C5): o sinal de clique ou tecla da pagina, com a familia aberta e as
+    edicoes e as quebras feitas, vai ao cronometro da janela (desdobra.tela.cronometro), que grava so
+    medicoes/tela.json; o ato "Confirmar familia" feito para o cronometro da familia. Se a familia esta confirmada, o
+    cronometro pergunta ao servidor, que le o rascunho sob a trava de escrita e com a regra da confirmacao velha da
+    tela (_confirmada_na_tela). A resposta e 204, sem corpo;
   - atos humanos (/api/ato/pedir, /api/ato/confirmar, /api/ato/cancelar; decisoes-v1.md, 159; proposta do M7, 159b):
     o clique do DA pede um ato da tabela do servidor (Ato); o servidor devolve um pedido de uso unico e o texto do
     dialogo, que a janela mostra sem opcao marcada. So o confirmar com o pedido vivo e a resposta "confirmar" emite o
@@ -84,9 +89,11 @@ METODOS = ('GET', 'POST')
 # rotas de escrita: caminho exato -> chave da contagem (so POST, so com a pasta do job)
 # /api/familia/previa nao grava: e a previa da edicao por familia (desdobra.tela.edicao), que passa pelas mesmas
 # conferencias da escrita porque leva as edicoes do DA no corpo
+# /api/medicao nao decide nada: e o sinal do cronometro da mestre (desdobra.tela.cronometro; M7b, C5), que grava so
+# medicoes/tela.json, fora do briefing, e passa pelas mesmas conferencias da escrita
 ESCRITAS = {'/api/rascunho': 'rascunho', '/api/ato/pedir': 'ato_pedir', '/api/ato/confirmar': 'ato_confirmar',
             '/api/ato/cancelar': 'ato_cancelar', '/api/familia/previa': 'familia_previa',
-            '/api/tarefa/cancelar': 'tarefa_cancelar'}
+            '/api/tarefa/cancelar': 'tarefa_cancelar', '/api/medicao': 'medicao'}
 # escritas recusadas enquanto uma tarefa longa roda (a edicao fica bloqueada; M7b, B1): a previa disputaria o fio do
 # HiGHS com o render (decisoes-v1.md, 172), e todo ato pega a trava do job, que fica com a tarefa
 BLOQUEADAS_NA_TAREFA = ('familia_previa', 'ato_pedir', 'ato_confirmar')
@@ -237,9 +244,10 @@ class ServidorTela:
     pasta: a pasta do job; sem ela o servidor e so de leitura (sem POST). Com ela, a sessao humana da tela abre aqui
     (humano.abrir_sessao_tela), e o job precisa ter laudo.
     modo_teste: o modo de teste da tela (proposta do M7, 159c), so para os testes com job sintetico.
-    atos: {nome: Ato} dos botoes que pedem confirmacao na janela."""
+    atos: {nome: Ato} dos botoes que pedem confirmacao na janela.
+    relogio: o relogio do cronometro da mestre (desdobra.tela.cronometro; padrao time.time, o falso nos testes)."""
 
-    def __init__(self, conteudo, pasta=None, modo_teste=False, atos=None):
+    def __init__(self, conteudo, pasta=None, modo_teste=False, atos=None, relogio=None):
         from desdobra import humano, limites
         from desdobra.briefing import modelo
         from desdobra.tela import estatico, rascunho
@@ -255,6 +263,8 @@ class ServidorTela:
         self.familias_da_tela = {g: list(f.get('formatos') or ())
                                  for g, f in (conteudo.get('familias') or {}).items()}
         self.pecas_da_tela = {g: f.get('pecas') for g, f in (conteudo.get('familias') or {}).items()}
+        # {id do elemento: [layer_ids]} da mestre da tela: a quebra de linha do rascunho cita um deles (revisao 2 do C)
+        self.elementos_da_tela = conteudo.get('elementos')
         self.previas = dict(conteudo.get('previas') or {})
         self.assets = dict(conteudo.get('assets') or {})
         self.fontes = dict(conteudo.get('fontes') or {})
@@ -298,6 +308,8 @@ class ServidorTela:
         self._recarregar_depois = False
         # {formato: (sha256, extensao)} dos arquivos finais que o portao gerou nesta janela (mostrar_final; M7b, B3)
         self._finais = {}
+        # o cronometro da mestre desta janela (M7b, C5), so no servidor que grava
+        self.cronometro = None
         if self.pasta is not None:
             self.laudo_sha256 = rascunho.laudo_sha256(self.pasta)
             self.job_id = (conteudo.get('estado') or {}).get('job_id')
@@ -307,8 +319,11 @@ class ServidorTela:
                 raise ValueError('o modo de teste da tela so roda em job sintetico')
             self.csrf = secrets.token_hex(16)  # numero-neutro: bytes de entropia do token CSRF
             self._sessao_humana = humano.abrir_sessao_tela(teste=self.modo_teste)
-            from desdobra.tela import tarefas
+            from desdobra.tela import cronometro, tarefas
             self.tarefas = tarefas.Tarefas(self.pasta)
+            self.cronometro = cronometro.Cronometro(self.pasta, self.job_id, relogio=relogio,
+                                                    origem=modelo.ORIGEM_FIXTURE if self.modo_teste else 'da',
+                                                    confirmada=self._confirmada_na_tela)
         if '/' in self.estaticos:
             # o token CSRF vai so na pagina, na meta dsd-csrf (vazia no servidor so de leitura)
             pagina, tipo = self.estaticos['/']
@@ -567,6 +582,7 @@ class ServidorTela:
         self.editar = novo.get('editar')
         self.familias_da_tela = {g: list(f.get('formatos') or ()) for g, f in (novo.get('familias') or {}).items()}
         self.pecas_da_tela = {g: f.get('pecas') for g, f in (novo.get('familias') or {}).items()}
+        self.elementos_da_tela = novo.get('elementos')
         self._pendente = None  # o pedido de ato aberto e de antes do passo 3 novo
 
     def _avisar(self, texto):
@@ -595,6 +611,8 @@ class ServidorTela:
             return self._previa_da_familia(dados)
         if chave == 'tarefa_cancelar':
             return self._cancelar_tarefa(dados)
+        if chave == 'medicao':
+            return self._sinal_do_cronometro(dados)
         with self._trava_escrita:
             if chave == 'rascunho':
                 return self._gravar_rascunho(dados)
@@ -613,6 +631,44 @@ class ServidorTela:
             r = self.editar(dados, origem=origem)
         return None if r is None else (200, r)  # numero-neutro: codigo HTTP
 
+    def _sinal_do_cronometro(self, dados):
+        """O clique ou a tecla da pagina para o cronometro da mestre (M7b, C5): a familia tem de ser uma das que a
+        tela mostra agora (ou nenhuma, fora do passo 3). Fora da trava de escrita: o cronometro tem a dele. So o sinal
+        sem edicao de uma familia le o rascunho, e essa leitura espera a trava (_confirmada_na_tela)."""
+        from desdobra.tela import cronometro
+        sinal = cronometro.conferir_sinal(dados, set(self.familias_da_tela))
+        if sinal is None:
+            return None
+        self.cronometro.sinal(*sinal)
+        return 204, None  # numero-neutro: codigo HTTP
+
+    def _confirmada_na_tela(self, familia):
+        """A familia esta confirmada como a tela a mostra agora, para o cronometro (revisao do C5): o rascunho e lido
+        sob a trava de escrita, como _rascunho_lido (no Windows, o arquivo aberto para leitura faz a troca atomica do
+        autosave falhar), e a confirmacao velha sai pela mesma regra da pagina (rascunho.sem_confirmacao_velha: a
+        familia que ganhou ou perdeu formatos, ou mudou de pecas, pede a confirmacao de novo)."""
+        from desdobra.tela import rascunho
+        try:
+            with self._trava_escrita:
+                dados, _de_outro = rascunho.ler(self.pasta, rascunho.laudo_sha256(self.pasta))
+        except (OSError, ValueError):
+            return False  # o rascunho que nao se le agora: a familia conta como aberta
+        if dados is None or dados['laudo_sha256'] != self.laudo_sha256:
+            return False
+        if self.familias_da_tela:
+            dados = rascunho.sem_confirmacao_velha(dados, self.familias_da_tela, self.pecas_da_tela)
+        return bool(((dados.get('familias') or {}).get(familia) or {}).get('confirmada'))
+
+    def _cronometro_depois_do_ato(self, ato, resposta):
+        """O ato "Confirmar familia" feito para o cronometro da familia. A medicao nunca muda a resposta do ato."""
+        from desdobra.tela import rascunho
+        if ato.comando != rascunho.COMANDO_FAMILIA or not isinstance(resposta, dict) or not resposta.get('confirmada'):
+            return
+        try:
+            self.cronometro.confirmar(resposta['familia'])
+        except Exception:  # noqa: BLE001 - a medicao nunca atrapalha o ato: a familia ja esta confirmada
+            pass
+
     def _gravar_rascunho(self, dados):
         from desdobra.tela import rascunho
         laudo_agora = rascunho.laudo_sha256(self.pasta)
@@ -621,7 +677,8 @@ class ServidorTela:
         try:
             # cada familia mexida guarda os formatos que a tela mostra para ela agora (revisao do M7b, fase A)
             gravado = rascunho.gravar(self.pasta, dados, job_id=self.job_id, laudo_atual=laudo_agora,
-                                      origem=self.origem_rascunho, familias_da_tela=self.familias_da_tela)
+                                      origem=self.origem_rascunho, familias_da_tela=self.familias_da_tela,
+                                      elementos_da_tela=self.elementos_da_tela)
         except rascunho.ErroRascunho:
             return None
         return 200, {'atualizado_em': gravado['atualizado_em']}  # numero-neutro: codigo HTTP
@@ -763,6 +820,7 @@ class ServidorTela:
         except humano.ErroHumano:
             return None
         resposta = ato.executar(disparo, dados_ato)
+        self._cronometro_depois_do_ato(ato, resposta)
         if callable(self.recarregar):
             self.estado = self.recarregar()
         return 200, resposta if isinstance(resposta, dict) else {}  # numero-neutro: codigo HTTP

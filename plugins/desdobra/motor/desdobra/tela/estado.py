@@ -185,9 +185,9 @@ def familias_conhecidas(pasta):
 
 def marcas_das_familias(pasta):
     """(editadas, cedidos) das familias que o job ja conhece, para a frase da tela (revisao do M7b, fase A).
-    editadas: os ids com edicao no palco (o rascunho vale sobre o briefing gravado), e so delas a frase diz que as
-    edicoes ficam guardadas; cedidos: {id: [formatos]} que outra familia levou depois que o DA mexeu nesta
-    (desdobra.tela.rascunho._ceder): o formato que volta para ela entrou de novo, mesmo estando na lista velha."""
+    editadas: os ids com edicao no palco ou quebra de linha (o rascunho vale sobre o briefing gravado), e so delas a
+    frase diz que as edicoes ficam guardadas; cedidos: {id: [formatos]} que outra familia levou depois que o DA mexeu
+    nesta (desdobra.tela.rascunho._ceder): o formato que volta para ela entrou de novo, mesmo estando na lista velha."""
     from desdobra import contratos
     from desdobra.briefing import modelo as mb
     from desdobra.tela import rascunho
@@ -195,11 +195,14 @@ def marcas_das_familias(pasta):
         gravado = mb.ler(pasta)
     except contratos.ErroContrato:
         gravado = None
-    editadas = {c['familia'] for c in (gravado or {}).get('composicoes') or [] if c.get('edicoes')}
+    # a quebra de linha da familia tambem e edicao dela (M7b, C4; decisoes-v1.md, 171)
+    com_quebra = {q['familia'] for q in (gravado or {}).get('quebras_por_familia') or [] if q.get('familia')}
+    editadas = {c['familia'] for c in (gravado or {}).get('composicoes') or []
+                if c.get('edicoes') or c['familia'] in com_quebra}
     dados, _de_outro = rascunho.ler(pasta, rascunho.laudo_sha256(pasta))
     cedidos = {}
     for gid, f in ((dados or {}).get('familias') or {}).items():
-        if f.get('edicoes'):
+        if f.get('edicoes') or f.get('quebras'):
             editadas.add(gid)
         else:
             editadas.discard(gid)
@@ -478,7 +481,9 @@ def _peca_no_formato(peca, tr, el, W, H):
             return peca['_faces'].get(ps)
         fam = next((x for x in (q.get('familia') or []) if x['layer_id'] == lid), None) if isinstance(q, dict) else None
         if fam is not None:
-            linhas = _linhas(peca['_texto'], face_de, juntar=mq.juntadas({'texto': peca['_texto']}, fam['aprovadas']))
+            # a quebra da familia da tela tambem insere (M7b, C2), como o render
+            linhas = _linhas(peca['_texto'], face_de, juntar=mq.juntadas({'texto': peca['_texto']}, fam['aprovadas']),
+                             inserir=fam.get('inseridas') or ())
         elif isinstance(q, list) and el.get('quebras_camada') == lid:
             linhas = _linhas(peca['_texto'], face_de, inserir=q)
         cv = rd.caixa_validada_do_texto(alvo, lid, peca['caixa_tinta'])
@@ -1616,9 +1621,11 @@ def _sem_previa(_dados, origem=None):
 
 def montar(pasta, teto=None):
     """Conteudo do servidor da tela para o job: {'estado', 'previas', 'assets', 'fontes', 'recarregar', 'editar',
-    'familias', 'atualizar'}. editar(dados, origem) e a previa da edicao por familia (desdobra.tela.edicao.Editor.previa);
-    familias: {id: {'formatos', 'versoes', 'pecas', 'por_confirmar', 'aviso'}} para o ato de confirmar a familia (o
-    id e o que o job ja conhece para esses formatos; familias_conhecidas e abas). ErroTela com o motivo (texto fixo do
+    'familias', 'elementos', 'atualizar'}. editar(dados, origem) e a previa da edicao por familia
+    (desdobra.tela.edicao.Editor.previa); familias: {id: {'formatos', 'versoes', 'pecas', 'por_confirmar', 'aviso'}}
+    para o ato de confirmar a familia (o id e o que o job ja conhece para esses formatos; familias_conhecidas e abas);
+    elementos: {id: [layer_ids]} da mestre da tela (None enquanto o passo 3 espera), que o rascunho usa para conferir
+    a quebra de linha. ErroTela com o motivo (texto fixo do
     motor) quando o job nao tem o que mostrar. teto: o teto do modo de dados da linha de comando (o do estado.json entra
     sozinho). recarregar() refaz o passo 1, a lista do que falta e a frase de cada familia (aviso; a familia
     confirmada deixa de dizer que mudou) depois de um ato da tela, sem derivar de novo: as composicoes e os ids das
@@ -1767,6 +1774,9 @@ def montar(pasta, teto=None):
 
     conteudo = {'estado': estado, 'previas': previas, 'assets': assets, 'fontes': fontes, 'recarregar': recarregar,
                 'editar': editor.previa if editor is not None else _sem_previa,
+                # os elementos da mestre que a tela mostra, para o rascunho conferir a quebra de linha (revisao 2 do C)
+                'elementos': ({e['id']: list(e['layer_ids']) for e in r['kv']['elementos']}
+                              if editor is not None else None),
                 'familias': {gid: {'formatos': fids, 'versoes': versoes[gid], 'pecas': pecas[gid],
                                    'por_confirmar': sorted(set(fids) & por_confirmar(r['formatos'])),
                                    'aviso': avisos[gid]}

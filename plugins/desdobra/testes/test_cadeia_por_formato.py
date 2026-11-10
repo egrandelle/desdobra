@@ -199,6 +199,48 @@ def test_trava_do_derivado_compara_a_impressao(job_aprovado, copia):
     assert [b['codigo'] for b in bloqueios] == ['derivacao_desatualizada']
 
 
+# ------------------------------------------------------------------ C2: a quebra de linha da familia
+def _quebra_de_perto(job, manter=(), inseridas=(2,)):
+    """A quebra de linha que o DA pos no texto de apoio ('AB ab') na familia de perto: no espaco da posicao 2."""
+    return {'layer_id': _ids(job)['texto-apoio'], 'familia': 'familia-perto', 'formatos': ['perto'],
+            'quebras': ap.decisao(list(manter)), 'inseridas': list(inseridas), 'origem': 'da', 'aprovada': True}
+
+
+def test_mudar_a_quebra_da_familia_derruba_so_os_formatos_dela(job_aprovado, copia, monkeypatch):
+    """M7b, C2: a quebra de linha que o DA poe na familia de perto muda a derivacao de perto (a caixa medida do texto
+    no Chromium, quebras_origem 'da') e derruba so a aprovacao dela, pela impressao do formato."""
+    from desdobra.render import derivado
+    from desdobra.render import texto as rt
+    job = copia(job_aprovado)
+    monkeypatch.setattr(codificar, 'arquivo_final', _encoder_de_teste)
+    lid = _ids(job)['texto-apoio']
+    rels = ['render/%s/%s' % (fid, a) for fid in ('mesma', 'dobro')
+            for a in ('render.json', 'contrato.json', 'master.png')]
+    antes = _shas(job, *rels)
+    _mexer_briefing(job, lambda b: b.__setitem__('quebras_por_familia', [_quebra_de_perto(job)]))
+    nd.derivar(job)
+    d = contratos.ler(job / nd.PASTA / 'perto.json', nd.ESQUEMA)
+    assert d['situacao'] == 'derivado', d['devolucao']
+    x = next(e for e in d['elementos'] if lid in e['layer_ids'])
+    assert x['quebras_origem'] == 'da' and x['origem_geometria'] == 'da'
+    assert x['quebras']['familia'][0]['inseridas'] == [2]
+    conf = portao.conferir(job)
+    assert _codigos(conf, 'mesma') == [] and _codigos(conf, 'dobro') == [], conf
+    assert _codigos(conf, 'perto') == ['master_de_outra_impressao', 'aprovacao_caiu'], conf
+    assert _shas(job, *rels) == antes
+    aprov = aprovacao.ler(job)
+    for fid in ('mesma', 'dobro'):
+        item = conf['formatos'][fid]
+        assert aprovacao.diferencas(aprov['formatos'][fid], aprov['job_id'], item['atual'], item['final']) == []
+    # o contrato de perto insere a quebra no espaco, e o render desenha a tinta dentro da caixa medida
+    contrato, bloqueios, _c = derivado.montar(job, 'perto')
+    assert bloqueios == [], bloqueios
+    e = next(x for x in contrato['entradas'] if x['tipo'] == 'texto' and x['layer_id'] == lid)
+    assert e['quebras_inseridas'] == [2] and rt.linhas_desenhadas(e) == ['AB', 'ab']
+    monkeypatch.setattr(humano, 'console_interativo', lambda: (True, None))
+    execucao.renderizar(job, disparo=humano.exigir('render'), formato='perto')
+
+
 def _como_aprovacao_1(job):
     """briefing/aprovacao.json como o motor de antes gravava (aprovacao/1, com o sha do briefing inteiro)."""
     arq = job / aprovacao.ARQUIVO

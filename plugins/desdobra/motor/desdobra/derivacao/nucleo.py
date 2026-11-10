@@ -168,7 +168,7 @@ def preparar(pasta, partida=False, briefing=None):
     ds_arq = pasta / mb.ARQUIVO_DS
     ds = arquivos.ler_json(ds_arq) if ds_arq.is_file() else None
     medidas = None
-    if mod_quebras.entradas_validas(briefing):
+    if mod_quebras.pedidos(briefing):
         from desdobra.derivacao import medida_quebras
         medidas = medida_quebras.medir(pasta, laudo, briefing, estado)
     return contexto(laudo, briefing, ds=ds, job_id=estado['job_id'], pasta=pasta,
@@ -244,13 +244,21 @@ def mestre_propria(kv, mp, formato, camadas=None):
     return m, faltando
 
 
-def _com_quebras(ctx, m, formato, W, H):
+def _com_quebras(ctx, m, formato, W, H, so_familia=False):
     """A mestre do KV com a caixa de cada texto que tem quebras aprovadas para a familia deste formato
     (decisoes-v1.md, 77, estendida na rodada 3; revisao 3): a caixa medida das linhas que ficam (derivacao.quebras e
     derivacao.medida_quebras), unida as outras camadas do elemento, sem corte no canvas da mestre (a linha juntada pode
     passar da mestre; o solver e a validacao veem a caixa inteira). Devolve (mestre, chaves sem medida). A mestre propria
-    traz as quebras dela: as aprovadas por familia nao valem nela (registro)."""
-    if not mod_quebras.entradas_validas(ctx['briefing']):
+    traz as quebras dela: as aprovadas por familia nao valem nela (registro).
+
+    A quebra da familia da tela (M7b, C2; decisoes-v1.md, 167 e 171) vence a da faixa nos formatos da familia: junta e
+    insere, e a caixa e a medida do texto com as duas. O elemento leva quebras_origem ('da' ou 'proposta') e
+    quebra_do_da (a caixa e decisao do DA: a quebra dele, ou a proposta que ele aprovou). No texto editado pelo DA na
+    familia, a quebra conta no texto novo, sem medida: a mestre fica com a caixa do KV (derivacao.proposta leva a
+    quebra ao elemento). so_familia: so a quebra da familia da tela (a mestre da galeria, que vale para todos os membros
+    da familia; a faixa nunca entrou na galeria)."""
+    b = ctx['briefing']
+    if not mod_quebras.pedidos(b):
         return m, []
     cam = mb.camadas_do_laudo(ctx['laudo'])
     if m['tipo'] != 'kv':
@@ -258,26 +266,40 @@ def _com_quebras(ctx, m, formato, W, H):
     medidas = ctx.get('medidas_quebras') or {}
     novos, mudou, sem_medida = [], False, []
     for e in m['elementos']:
-        textos = []
+        textos, da_tela = [], []
         for lid in e['layer_ids']:
             c = cam.get(lid) or {}
-            if c.get('tipo') == 'texto' and mod_quebras.posicoes_de_quebra(c):
-                manter = mod_quebras.aprovadas_para(ctx['briefing'], lid, formato, W, H)
+            if c.get('tipo') != 'texto':
+                continue
+            fam = mod_quebras.da_familia(b, lid, formato['id'])
+            if fam is not None:
+                da_tela.append(fam)
+                if mod_quebras.editado_no_formato(b, e['id'], formato['id']) is None:
+                    textos.append((lid, sorted(fam['quebras']['valor']), sorted(fam.get('inseridas') or ()), True))
+            elif not so_familia and mod_quebras.posicoes_de_quebra(c):
+                manter = mod_quebras.aprovadas_para(b, lid, formato, W, H)
                 if manter is not None:
-                    textos.append((lid, sorted(manter)))
+                    textos.append((lid, sorted(manter), [], False))
         if not textos:
             novos.append(e)
             continue
         caixa, familia = None, []
-        for lid, manter in textos:
-            medida = medidas.get(mod_quebras.chave(lid, manter)) or {}
+        for lid, manter, inseridas, da_familia in textos:
+            medida = medidas.get(mod_quebras.chave(lid, manter, inseridas)) or {}
             if 'largura_texto' not in medida:
                 sem_medida.append({'layer_id': lid, 'motivo': medida.get('erro') or 'sem_medida'})
                 continue
             geo = cam[lid]['geometria']
-            ct = mod_quebras.caixa_medida(cam[lid], geo.get('caixa_tinta') or geo['caixa'], manter, medida)
+            ct = mod_quebras.caixa_medida(cam[lid], geo.get('caixa_tinta') or geo['caixa'], manter, medida,
+                                          inseridas=inseridas)
             ct = [_q(v, CASAS_PX) for v in ct]
-            familia.append({'layer_id': lid, 'aprovadas': manter, 'caixa_doc': ct})
+            item = {'layer_id': lid, 'aprovadas': manter, 'caixa_doc': ct}
+            if da_familia:
+                # a quebra da familia da tela diz tambem o que insere (mesmo vazio): o render e a previa a separam da
+                # quebra da faixa por isto
+                item = dict(mod_quebras.item_da_familia(lid, mod_quebras.da_familia(b, lid, formato['id'])),
+                            caixa_doc=ct)
+            familia.append(item)
             caixa = ct if caixa is None else [min(caixa[0], ct[0]), min(caixa[1], ct[1]), max(caixa[2], ct[2]),
                                                max(caixa[3], ct[3])]
         if caixa is None:
@@ -291,8 +313,11 @@ def _com_quebras(ctx, m, formato, W, H):
                 caixa = [min(caixa[0], ct[0]), min(caixa[1], ct[1]), max(caixa[2], ct[2]), max(caixa[3], ct[3])]
         ox, oy = m['canvas_doc'][0], m['canvas_doc'][1]
         local = [caixa[0] - ox, caixa[1] - oy, caixa[2] - ox, caixa[3] - oy]
-        novos.append(dict(e, caixa_doc=list(caixa), caixa=local, caixa_kv=list(local), caixa_asset_doc=list(caixa),
-                          caixa_asset=list(local), quebras={'familia': familia}))
+        novo = dict(e, caixa_doc=list(caixa), caixa=local, caixa_kv=list(local), caixa_asset_doc=list(caixa),
+                    caixa_asset=list(local), quebras={'familia': familia})
+        if da_tela:
+            novo.update(quebras_origem=mod_quebras.origem_das(da_tela), quebra_do_da=mod_quebras.do_da(da_tela))
+        novos.append(novo)
         mudou = True
     return (dict(m, elementos=novos) if mudou else m), sem_medida
 
@@ -560,6 +585,11 @@ def _fechar(ctx, saida, kv, m, formato, areas, caixas, escalas, base, regras=Non
                 'origem_geometria': ORIGEM_GEOMETRIA[saida['caminho']]}
         if e.get('quebras_camada') is not None:
             item['quebras_camada'] = e['quebras_camada']
+        if e.get('quebras_origem') is not None:
+            # a quebra da familia da tela (M7b, C2): a origem dela, e a caixa e do DA quando a quebra e decisao dele
+            item['quebras_origem'] = e['quebras_origem']
+            if e.get('quebra_do_da'):
+                item['origem_geometria'] = 'da'
         if e['texto'] and m['tipo'] == 'propria' and propria_do_formato and e.get('quebras') is None:
             saida['registros'].append({'codigo': 'quebras_da_origem_sem_requebra_aprovada', 'medidas': {'elemento': e['id']}})
         saida['elementos'].append(item)

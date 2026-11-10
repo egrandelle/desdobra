@@ -12,6 +12,8 @@ transformacao do elemento a que a camada pertence (escala uniforme e deslocament
     primeiro trecho com tinta, as linhas do DA e a quebra no espaco na largura da caixa de tinta da camada (a mesma
     da previa da tela), medida no Chromium pelo render; o cmap da face do job e conferido como na edicao, e a tinta
     e conferida na borda do formato (a pagina cobre o formato inteiro: nada e cortado calado);
+  - quebra de linha da familia da tela (M7b, C2): junta as quebras gravadas e insere quebra nos espacos (a mesma
+    insercao por posicao da mestre propria), no texto do KV ou no texto editado pelo DA na familia;
   - linkado: o quadrilatero de colocacao e a caixa recebem a transformacao.
 Camada "fora da peca" nao entra em entrada nenhuma. Camada sem elemento (estrutura, fora do quadro ou fora do
 canvas) sai do formato com registro. O ajuste global entra no bloco da cena que ele cobre; o que cobre conteudo, e o
@@ -121,19 +123,45 @@ def mesclas_sem_fundo(pedacos, regs, ja_tem_embaixo=False):
     return saida
 
 
+def _item_da_familia(el, layer_id):
+    q = el.get('quebras')
+    if not isinstance(q, dict):
+        return None
+    return next((x for x in q.get('familia') or [] if x['layer_id'] == layer_id), None)
+
+
+def _juntar_e_inserir(texto, item):
+    from desdobra.derivacao import quebras as mq
+    saida = {'quebras_juntadas': mq.juntadas({'texto': texto}, item['aprovadas'])}
+    if item.get('inseridas'):
+        # a quebra da familia da tela (M7b, C2): os espacos que viram quebra, como na mestre propria
+        saida['quebras_inseridas'] = list(item['inseridas'])
+    return saida
+
+
 def quebras_da_entrada(el, entrada):
     """Quebras aprovadas que o render aplica no texto da entrada (revisao 3, A3 e M5): as da familia (indices das
-    quebras que ficam; o render calcula as posicoes que viram espaco) e a lista de posicoes da mestre propria (espacos
-    que viram quebra). Cada texto do elemento com a sua."""
-    from desdobra.derivacao import quebras as mq
+    quebras que ficam; o render calcula as posicoes que viram espaco, e a quebra da familia da tela, M7b, C2, tambem
+    as posicoes de espaco que viram quebra) e a lista de posicoes da mestre propria (espacos que viram quebra). Cada
+    texto do elemento com a sua."""
+    item = _item_da_familia(el, entrada['layer_id'])
+    if item is not None:
+        return _juntar_e_inserir(entrada['texto'], item)
     q = el.get('quebras')
-    if isinstance(q, dict):
-        item = next((x for x in q.get('familia') or [] if x['layer_id'] == entrada['layer_id']), None)
-        if item is not None:
-            return {'quebras_juntadas': mq.juntadas({'texto': entrada['texto']}, item['aprovadas'])}
     if isinstance(q, list) and el.get('quebras_camada') == entrada['layer_id']:
         return {'quebras_inseridas': list(q)}
     return {}
+
+
+def quebras_do_texto_editado(el, layer_id):
+    """A quebra da familia da tela sobre o texto editado pelo DA (M7b, C2): as quebras do texto novo que viram espaco
+    e os espacos dele que viram quebra, contados no texto como o render o desenha (CR LF e CR viram LF,
+    texto_editado_na_entrada). {} sem quebra da familia: o texto leva so as quebras dele."""
+    from desdobra.derivacao import quebras as mq
+    item = _item_da_familia(el, layer_id)
+    if item is None or el.get('texto_editado') is None:
+        return {}
+    return _juntar_e_inserir({'conteudo': mq.normalizar_editado(el['texto_editado'])}, item)
 
 
 def _tolerancia_tinta(caixa):
@@ -144,11 +172,11 @@ def _tolerancia_tinta(caixa):
 
 def caixa_validada_do_texto(el, layer_id, caixa_doc):
     """A caixa que a derivacao validou para o texto layer_id do elemento, no formato: a medida da quebra por familia,
-    a caixa do DA na mestre propria (elemento de um texto so), ou caixa_doc (a tinta da camada no KV) transformada."""
+    a caixa do DA na mestre propria (elemento de um texto so), ou caixa_doc (a tinta da camada no KV) transformada. A
+    quebra da familia da tela no texto editado (M7b, C2) nao tem caixa medida: fica a tinta da camada."""
     tr = el['transformacao']
-    fam = next((x for x in ((el.get('quebras') or {}).get('familia') or []) if x['layer_id'] == layer_id),
-               None) if isinstance(el.get('quebras'), dict) else None
-    if fam is not None:
+    fam = _item_da_familia(el, layer_id)
+    if fam is not None and fam.get('caixa_doc') is not None:
         return _caixa(tr, fam['caixa_doc'])
     if el.get('quebras_camada') == layer_id and isinstance(el.get('quebras'), list):
         return list(el['caixa'])
@@ -350,6 +378,7 @@ def montar(pasta_job, formato):
             if el.get('texto_editado') is not None:
                 tinta_no_formato = _caixa(tr, ct.get('caixa_tinta') or e['regiao'])
                 novo = texto_editado_na_entrada(novo, el['texto_editado'], tinta_no_formato)
+                novo.update(quebras_do_texto_editado(el, e['layer_id']))
                 if faces_do_job is None:
                     faces_do_job = mc.faces_do_job(pasta, contratos.ler(pasta / 'estado.json', 'estado/1'))
                 for ch in caracteres_fora_da_face(novo, faces_do_job):

@@ -8,7 +8,10 @@ Criterios de pronto cobertos aqui:
     cmap da face do job como a edicao na tela: caractere que a fonte nao tem e recusado com motivo claro;
   - no Chromium, o texto com \\n sai exatamente nas linhas pedidas, e a linha que passa da largura da caixa quebra no
     espaco, como na previa;
-  - a tinta do render bate com a previa da tela dentro da tolerancia da tinta do texto (render.tolerancia_tinta_texto).
+  - a tinta do render bate com a previa da tela dentro da tolerancia da tinta do texto (render.tolerancia_tinta_texto);
+  - a quebra de linha da familia da tela (M7b, C2) chega a todo membro da familia: no texto do KV, a derivacao mede a
+    caixa no Chromium e o render junta as linhas dentro dela; no texto editado, o render insere a quebra do DA no
+    espaco do texto novo.
 Tudo sintetico: o PSD de duas linhas de test_tela_palco e a fonte de autoteste do motor."""
 import json
 import shutil
@@ -201,6 +204,72 @@ def test_linha_mais_larga_que_a_caixa_quebra_no_espaco(job, modelo):
     assert _avanco(palavra + ' ' + palavra, corpo) < largura < _avanco(REFLOW, corpo)
     _texto_no_chromium(job, contrato)
     assert _linhas(e) == [palavra + ' ' + palavra, palavra]
+
+
+# ------------------------------------------------------------------ a quebra de linha da familia (M7b, C2)
+def _com_quebra(job, modelo, texto, manter=(), inseridas=(), fid='mesma'):
+    """Grava o briefing do DA com a quebra de linha da familia de fid (feita pelo DA) e, com texto, o texto editado
+    nela; as outras familias confirmadas sem edicao. Deriva. Devolve (elemento, formatos da familia)."""
+    conteudo = te.montar(job)
+    gid = _familia_de(conteudo, fid)
+    el = _titulo(conteudo, gid)
+    comps = []
+    for g, f in conteudo['familias'].items():
+        ed = [{'elemento': el, 'acao': 'texto', 'texto': texto}] if g == gid and texto is not None else []
+        comps.append({'familia': g, 'formatos': f['formatos'], 'versao': None, 'edicoes': ed, 'confirmada': True,
+                      'confirmacao': dict(CONF)})
+    membros = list(conteudo['familias'][gid]['formatos'])
+    b = contratos.ler(job / mb.ARQUIVO, 'briefing/1')
+    b['cabecalho'].update(origem='da', meio='terminal')
+    b['composicoes'] = comps
+    b['quebras_por_familia'] = [{'layer_id': modelo['layer_id'], 'familia': gid, 'formatos': membros,
+                                 'quebras': ap.decisao(list(manter)), 'inseridas': list(inseridas), 'origem': 'da',
+                                 'aprovada': True}]
+    contratos.gravar(job / mb.ARQUIVO, b, 'briefing/1')
+    nd.derivar(job)
+    return el, membros
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='o isolador dos filhos roda no Windows')
+def test_quebra_da_familia_junta_as_linhas_do_kv_em_todo_membro(job, modelo, monkeypatch):
+    el, membros = _com_quebra(job, modelo, None, manter=())
+    for fid in membros:
+        d = _deriv(job, fid)
+        assert d['situacao'] == 'derivado', d['devolucao']
+        x = next(e for e in d['elementos'] if e['id'] == el)
+        assert x['quebras_origem'] == 'da' and x['origem_geometria'] == 'da'
+        [item] = x['quebras']['familia']
+        assert item['layer_id'] == modelo['layer_id'] and item['aprovadas'] == [] and item['inseridas'] == []
+        assert len(item['caixa_doc']) == 4
+    # o formato de fora da familia fica com as quebras do KV
+    for fid in {f for f, _w, _h in tp.FORMATOS_DUAS} - set(membros):
+        x = next(e for e in _deriv(job, fid)['elementos'] if e['id'] == el)
+        assert 'quebras_origem' not in x
+    contrato, bloqueios, _c = rd.montar(job, 'mesma')
+    assert bloqueios == [], bloqueios
+    e = _entrada_editada(contrato, modelo['layer_id'])
+    assert e['quebras_juntadas'] == [len(tp.LINHAS_DUAS[0])] and not e.get('texto_editado')
+    assert rt.linhas_desenhadas(e) == [' '.join(tp.LINHAS_DUAS)]
+    # o render inteiro: a tinta da linha juntada cabe na caixa que a derivacao mediu (tinta_fora_da_caixa_validada)
+    monkeypatch.setattr(humano, 'console_interativo', lambda: (True, None))
+    rel = execucao.renderizar(job, disparo=humano.exigir('render'), formato='mesma', aceites=('largura_divergente',))
+    assert rel['derivacao']['impressao_formato'] == _deriv(job, 'mesma')['impressao_formato']
+
+
+def test_quebra_da_familia_no_texto_editado_sai_nas_linhas_do_da(job, modelo):
+    # o texto editado de tres palavras: sem a quebra do DA, as duas primeiras cabem na caixa e a terceira desce
+    el, membros = _com_quebra(job, modelo, REFLOW, manter=(), inseridas=(1,))
+    for fid in membros:
+        x = next(e for e in _deriv(job, fid)['elementos'] if e['id'] == el)
+        assert x['texto_editado'] == REFLOW and x['quebras_origem'] == 'da' and x['origem_geometria'] == 'da'
+        assert x['quebras'] == {'familia': [{'layer_id': modelo['layer_id'], 'aprovadas': [], 'inseridas': [1]}]}
+    contrato, bloqueios, _c = rd.montar(job, 'mesma')
+    assert bloqueios == [], bloqueios
+    e = _entrada_editada(contrato, modelo['layer_id'])
+    assert e['texto_editado'] is True and e['quebras_inseridas'] == [1] and e['quebras_juntadas'] == []
+    _texto_no_chromium(job, contrato)
+    palavra = REFLOW.split(' ')[0]
+    assert rt.linhas_desenhadas(e) == [palavra, palavra + ' ' + palavra]
 
 
 # ------------------------------------------------------------------ o render e a previa da tela

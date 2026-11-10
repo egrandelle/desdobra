@@ -5,8 +5,8 @@
 
 Quem roda e o Claude, pela skill (decisoes-v1.md, n 159: o DA nunca roda nada num terminal). Por isso este comando
 nao e humano (fica fora de desdobra.humano.COMANDOS e do gancho) e nao grava nada do job alem dos eventos. O que a
-tela grava (o rascunho, e os atos que o DA confirma na janela) grava o processo de fundo, pelo servidor da tela
-(desdobra.tela.servidor), nunca este comando. Ele:
+tela grava (o rascunho, os atos que o DA confirma na janela e o cronometro da mestre em medicoes/tela.json) grava o
+processo de fundo, pelo servidor da tela (desdobra.tela.servidor), nunca este comando. Ele:
   - confere a pasta do job e o Chromium com janela fixado (doctor.chromium.verificar_chromium_janela);
   - solta o processo de fundo (desdobra.tela.processo), sem segredo na linha de comando, sem console visivel e fora
     do grupo de processos de quem chamou;

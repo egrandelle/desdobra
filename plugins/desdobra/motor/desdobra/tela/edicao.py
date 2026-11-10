@@ -17,7 +17,15 @@ as decisoes do DA de uma vez so, nunca peca a peca:
     das fontes; o processo principal nunca abre a fonte); a previa leva o texto novo com a face real, e as quebras
     sao refeitas pela pagina na largura da caixa, com a fonte carregada. O texto vale so na familia editada (171);
   - o elemento apagado sai de todos os membros, fica registrado com a origem do rascunho ('da', ou fixture_de_teste no
-    modo de teste da tela) e deixa de reprovar o inventario (desdobra.derivacao.validacao, apagados).
+    modo de teste da tela) e deixa de reprovar o inventario (desdobra.derivacao.validacao, apagados);
+  - a quebra de linha da familia (M7b, C3; decisoes-v1.md, 167 e 171): o pedido pode levar as quebras do rascunho da
+    familia (quebras, o mesmo formato do rascunho); sem o campo, a familia nao tem quebra no rascunho, como a lista
+    vazia (revisao do C). Quando elas diferem das do briefing, a previa mede o texto com a
+    quebra nova (desdobra.derivacao.medida_quebras.medir, com o cache: so o texto que mudou vai ao Chromium) e deriva
+    de novo os membros da familia com ela, como a derivacao vai fazer depois de "Salvar e seguir"; a previa e a
+    derivacao gravada usam a mesma medida. A quebra fora de um espaco do texto de agora e recusada (como o rascunho).
+    A previa leva os textos que o DA pode quebrar, com as posicoes (textos_da_quebra, o controle da quebra no palco,
+    M7b, C4), e o texto editado sai no palco nas linhas da quebra da familia.
 So previa, em memoria: nada aqui grava arquivo. As edicoes ficam no rascunho que a pagina grava (desdobra.tela.rascunho),
 e "Confirmar familia" e um ato da janela (desdobra.tela.atos).
 """
@@ -27,6 +35,8 @@ from desdobra import limites
 
 ACOES = ('mover', 'escalar', 'texto', 'apagar')
 CAMPOS = ('familia', 'versao', 'edicoes')
+CAMPOS_OPCIONAIS = ('quebras',)  # M7b, C3: as quebras de linha do rascunho da familia
+VIVAS_MAX = 8  # numero-neutro: familias com quebra nova guardadas na previa (a ultima mexida fica)
 # as linhas de alinhamento de uma caixa [x0, y0, x1, y1]: (nome para o DA, indice, indice do outro lado para o centro)
 LINHAS = {'x': (('esquerda', 0, None), ('centro', 0, 2), ('direita', 2, None)),  # numero-neutro: indices da caixa
           'y': (('topo', 1, None), ('meio', 1, 3), ('base', 3, None))}  # numero-neutro: indices da caixa
@@ -163,11 +173,16 @@ def _texto_da_recusa(faltam):
     return 'A fonte deste texto não tem os caracteres %s. Troque esses caracteres ou envie a fonte que os tenha.' % lista
 
 
-def trocar_texto(palco, elemento, texto):
+def trocar_texto(palco, elemento, texto, quebra=None):
     """As pecas de texto do elemento no palco levam o texto novo, linha a linha (as quebras do DA), com o estilo do
     primeiro trecho (face, cor, corpo e tracking ja na escala do formato); a pagina refaz as quebras na largura da
-    caixa com a fonte real."""
-    linhas = texto.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    caixa com a fonte real. quebra: a quebra de linha da familia no texto (o item do rascunho, M7b, C4): as linhas
+    juntadas e as inseridas, como o render desenha (desdobra.derivacao.quebras.linhas_do_editado)."""
+    from desdobra.derivacao import quebras as mq
+    if quebra is not None:
+        linhas = mq.linhas_do_editado(texto, quebra['manter'], quebra['inseridas'])
+    else:
+        linhas = texto.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     for p in palco['pecas']:
         if p.get('elemento') != elemento or p.get('tipo') != 'texto' or not p.get('linhas'):
             continue
@@ -201,41 +216,134 @@ class Editor:
         self.kv_tamanho = (float(kv['largura']), float(kv['altura']))
         self.nomes = estado._nomes(laudo)
         self._cf = {}
+        # a familia com a quebra de linha do rascunho diferente da do briefing (M7b, C3): {chave: {'chave', 'ctx',
+        # 'derivados', 'brutos'}}, a mais nova no fim
+        self._vivas = {}
 
     def versoes(self, gid):
         return {vid for fid in self.familias.get(gid, ()) for vid in (self.brutos.get(fid) or {})}
 
-    def _contexto(self, fid):
+    def _contexto(self, fid, viva=None):
         from desdobra.derivacao import galeria as mg
-        if fid not in self._cf:
-            self._cf[fid] = mg.contexto_do_formato(self.ctx, self.kv, self.por_formato[fid], **self.kw)
-        return self._cf[fid]
-
-    def partida(self, fid, versao):
-        """Os elementos de onde o membro parte: a versao escolhida, a primeira sem falha ou a proposta derivada (a
-        mesma regra da derivacao, desdobra.derivacao.proposta.partida)."""
         from desdobra.derivacao import proposta
-        return proposta.partida(self.derivados.get(fid), self.brutos.get(fid), versao)
+        ctx = viva['ctx'] if viva else self.ctx
+        derivados = viva['derivados'] if viva else self.derivados
+        chave = (fid, viva['chave'] if viva else None)
+        if chave not in self._cf:
+            # a mestre de onde o membro parte, com a quebra de linha da familia (a mesma da derivacao, M7b, C2)
+            mestre = proposta.mestre_do_membro(ctx, self.kv, self.por_formato[fid], derivados.get(fid))
+            self._cf[chave] = mg.contexto_do_formato(ctx, mestre, self.por_formato[fid], **self.kw)
+        return self._cf[chave]
+
+    def partida(self, fid, versao, viva=None):
+        """Os elementos de onde o membro parte: a versao escolhida, a primeira sem falha ou a proposta derivada (a
+        mesma regra da derivacao, desdobra.derivacao.proposta.partida). viva: a familia com a quebra nova (_viva)."""
+        from desdobra.derivacao import proposta
+        derivados, brutos = (viva['derivados'], viva['brutos']) if viva else (self.derivados, self.brutos)
+        return proposta.partida(derivados.get(fid), brutos.get(fid), versao)
 
     def conferir(self, dados):
-        """True quando os dados da pagina seguem o formato da edicao (o mesmo esquema do rascunho)."""
+        """True quando os dados da pagina seguem o formato da edicao (o mesmo esquema do rascunho). As quebras de
+        linha, quando vem, seguem as regras do rascunho (desdobra.tela.rascunho._conferir_quebras)."""
         from desdobra import contratos
         from desdobra.tela import rascunho
-        if not isinstance(dados, dict) or set(dados) != set(CAMPOS):
+        if not isinstance(dados, dict) or not set(CAMPOS) <= set(dados) <= set(CAMPOS + CAMPOS_OPCIONAIS):
             return False
         gid, versao, edicoes = dados['familia'], dados['versao'], dados['edicoes']
         if not isinstance(gid, str) or gid not in self.familias:
             return False
         if versao is not None and (not isinstance(versao, str) or versao not in self.versoes(gid)):
             return False
+        familia = {'versao': versao, 'confirmada': False, 'edicoes': edicoes}
+        if 'quebras' in dados:
+            familia['quebras'] = dados['quebras']
         prova = {'esquema': rascunho.ESQUEMA, 'job_id': '0' * 32, 'laudo_sha256': '0' * 64,  # numero-neutro: tamanhos dos ids
-                 'origem': 'rascunho', 'atualizado_em': '2026-01-01T00:00:00',
-                 'familias': {gid: {'versao': versao, 'confirmada': False, 'edicoes': edicoes}}}
+                 'origem': 'rascunho', 'atualizado_em': '2026-01-01T00:00:00', 'familias': {gid: familia}}
         try:
             contratos.validar(prova, rascunho.ESQUEMA)
         except contratos.ErroContrato:
             return False
-        return all(e['elemento'] in self.kv_por_id for e in edicoes)
+        if not all(e['elemento'] in self.kv_por_id for e in edicoes):
+            return False
+        return self._quebras_conferem(edicoes, dados.get('quebras') or [])
+
+    def _quebras_conferem(self, edicoes, quebras):
+        """Cada quebra num texto do elemento que ela cita, uma por texto, com os indices e as posicoes no texto de
+        agora (o do KV, ou o editado pelo DA nas edicoes da familia, decisoes-v1.md, 171)."""
+        from desdobra.briefing import modelo as mb
+        from desdobra.derivacao import quebras as mq
+        camadas = mb.camadas_do_laudo(self.ctx['laudo'])
+        vistos = set()
+        for q in quebras:
+            el, c = self.kv_por_id.get(q['elemento']), camadas.get(q['layer_id'])
+            if el is None or q['layer_id'] not in el['layer_ids'] or q['layer_id'] in vistos or c is None or \
+                    c.get('tipo') != 'texto':
+                return False
+            vistos.add(q['layer_id'])
+            if mq.conferir_da_familia(c, q['manter'], q['inseridas'], mq.texto_editado(edicoes, q['elemento'])):
+                return False
+        return True
+
+    def _viva(self, gid, quebras, edicoes, origem):
+        """A familia com as quebras de linha do rascunho (M7b, C3), ou None quando elas sao as do briefing (quebras
+        None: as do briefing, sem conferir; a previa manda a lista, vazia sem quebra). O briefing em memoria troca as
+        quebras da familia pelas do rascunho e leva as edicoes dela (a derivacao so le delas qual texto foi editado: o
+        texto editado nao tem medida); a medida vem de
+        desdobra.derivacao.medida_quebras.medir, com o cache, so dos textos do KV com quebra; os membros sao derivados
+        de novo com ela, e os devolvidos ganham a galeria de novo, como a tela monta na abertura
+        (desdobra.tela.estado.galerias). Guardada pela chave das quebras: a proxima edicao na familia parte dela."""
+        import json
+
+        from desdobra.briefing import modelo as mb
+        from desdobra.briefing import salvar
+        from desdobra.derivacao import medida_quebras
+        from desdobra.derivacao import nucleo as nd
+        from desdobra.derivacao import proposta
+        from desdobra.derivacao import quebras as mq
+        from desdobra.job import nucleo
+        if quebras is None:
+            return None
+        b = self.ctx['briefing']
+        fids = list(self.familias[gid])
+        antes = [q for q in b.get('quebras_por_familia') or []
+                 if q.get('familia') is not None and set(q.get('formatos') or ()) & set(fids)]
+        tipo = origem if origem in (mb.ORIGEM_DA, mb.ORIGEM_FIXTURE) else mb.ORIGEM_DA
+        novas = salvar.quebras_da_familia(gid, fids, {'quebras': quebras}, tipo)
+        editados = sorted({q['elemento'] for q in quebras if mq.texto_editado(edicoes, q['elemento']) is not None})
+        if _assinatura(novas) == _assinatura(antes) and not editados:
+            return None
+        chave = json.dumps([gid, _assinatura(novas), editados])
+        if chave in self._vivas:
+            viva = self._vivas.pop(chave)
+            self._vivas[chave] = viva
+            return viva
+        novo = dict(b, quebras_por_familia=[q for q in b.get('quebras_por_familia') or [] if q not in antes] + novas)
+        novo['composicoes'] = [c for c in b.get('composicoes') or [] if not set(c['formatos']) & set(fids)] + [
+            {'familia': gid, 'formatos': fids, 'versao': None, 'edicoes': list(edicoes), 'confirmada': False,
+             'confirmacao': None}]
+        a_medir = [n for n, q in zip(novas, quebras) if q['elemento'] not in editados]
+        medidas = dict(self.ctx.get('medidas_quebras') or {})
+        if a_medir and self.ctx.get('pasta') is not None:
+            pasta = self.ctx['pasta']
+            medidas.update(medida_quebras.medir(pasta, self.ctx['laudo'], {'quebras_por_familia': a_medir},
+                                                nucleo.ler_estado(pasta)))
+        # so as quebras e as composicoes mudam: as funcoes resolvidas do contexto continuam valendo
+        ctx = dict(self.ctx, briefing=novo, medidas_quebras=medidas)
+        derivados = dict(self.derivados)
+        derivados.update(nd.derivar_em_memoria(ctx, so=fids, composicoes=False, **self.kw)['formatos'])
+        brutos = dict(self.brutos)
+        devolvidos = [f for f in fids if derivados[f]['situacao'] == 'devolvido' and
+                      (derivados[f].get('devolucao') or {}).get('motivo') not in nd.MOTIVOS_POR_CONFIRMAR]
+        if devolvidos:
+            por = proposta.galeria_da_familia(ctx, self.kv, [self.por_formato[f] for f in devolvidos], **self.kw)
+            brutos.update({f: {v['id']: v for _n, v in por[f]} for f in devolvidos})
+        viva = {'chave': chave, 'ctx': ctx, 'derivados': derivados, 'brutos': brutos}
+        self._vivas[chave] = viva
+        while len(self._vivas) > VIVAS_MAX:
+            velha = next(iter(self._vivas))
+            del self._vivas[velha]
+            self._cf = {k: v for k, v in self._cf.items() if k[1] != velha}
+        return viva
 
     def _texto(self, eid, texto):
         """(texto aceito, recusa ou None) de uma edicao de texto no elemento."""
@@ -275,12 +383,19 @@ class Editor:
                     continue
                 e = dict(e, texto=texto)
             aceitas.append(e)
+        # a quebra de linha do rascunho diferente da do briefing: os membros partem da derivacao com ela (M7b, C3). O
+        # pedido sem o campo e o rascunho sem quebra na familia: a previa nunca volta a quebra do briefing de antes,
+        # que "Salvar e seguir" tira (revisao do C)
+        quebras = dados.get('quebras') or []
+        viva = self._viva(gid, quebras, aceitas, origem)
+        # o texto editado no palco sai nas linhas da quebra da familia (M7b, C4)
+        quebras_por_elemento = {q['elemento']: q for q in quebras}
         membros, apagados_fam, textos_fam, alinhados_fam = [], [], {}, []
         for fid in self.familias[gid]:
-            elementos = self.partida(fid, versao)
+            elementos = self.partida(fid, versao, viva)
             if elementos is None:
                 continue
-            cf = self._contexto(fid)
+            cf = self._contexto(fid, viva)
             W, H = cf['W'], cf['H']
             # a mesma conta da derivacao da familia confirmada (desdobra.derivacao.proposta)
             lay = proposta.layout_do_membro(cf, elementos, aceitas, kv_por_id=self.kv_por_id, conteudo=self.conteudo,
@@ -290,7 +405,7 @@ class Editor:
             els = lay['elementos']
             palco = estado.palco_da_variante(fid, W, H, {'elementos': els}, self.laudo, self.base)
             for eid, texto in textos.items():
-                trocar_texto(palco, eid, texto)
+                trocar_texto(palco, eid, texto, quebras_por_elemento.get(eid))
             membros.append({'formato': fid, 'palco': palco,
                             'falhas': [{'codigo': f['codigo'], 'texto': f['texto']} for f in falhas],
                             'avisos': [{'codigo': a['codigo'], 'texto': a['texto']} for a in avisos],
@@ -306,8 +421,36 @@ class Editor:
                 'apagados': [{'elemento': k, 'nome': nome(k), 'origem': origem} for k in apagados_fam],
                 'textos_editados': [{'elemento': k, 'nome': nome(k)} for k in textos_fam],
                 'recusas': recusas, 'alinhados': alinhados_fam,
+                'textos_da_quebra': self._textos_da_quebra(aceitas),
                 'tempo_ms': round((time.perf_counter() - inicio) * POR_MS, CASAS_MS)}
+
+    def _textos_da_quebra(self, edicoes):
+        """Os textos que o DA pode quebrar na familia (M7b, C4), na ordem do KV: o elemento com um texto de ponto so
+        (a caixa de paragrafo o render refaz na largura dela; o elemento apagado sai), com o texto de agora e as
+        posicoes das quebras gravadas e dos espacos (desdobra.derivacao.quebras.texto_para_quebrar). A pagina monta
+        o controle da quebra com eles; o texto do cliente vai a ela so por textContent."""
+        from desdobra.briefing import modelo as mb
+        from desdobra.derivacao import quebras as mq
+        camadas = mb.camadas_do_laudo(self.ctx['laudo'])
+        apagados = {e['elemento'] for e in edicoes if e['acao'] == 'apagar'}
+        saida = []
+        for e in self.kv['elementos']:
+            textos = [lid for lid in e['layer_ids'] if (camadas.get(lid) or {}).get('tipo') == 'texto']
+            if e['id'] in apagados or len(textos) != 1 or \
+                    (camadas[textos[0]].get('texto') or {}).get('tipo_caixa') == 'paragrafo':
+                continue
+            editado = mq.texto_editado(edicoes, e['id'])
+            saida.append(dict(mq.texto_para_quebrar(camadas[textos[0]], editado), elemento=e['id'],
+                              layer_id=textos[0], editado=editado is not None))
+        return saida
 
     def _nome(self, eid):
         e = self.kv_por_id[eid]
         return self.nomes.get(e.get('raiz')) or ''
+
+
+def _assinatura(entradas):
+    """As quebras de linha de familia (entradas de quebras_por_familia) sem a origem da decisao, em ordem: o texto, os
+    indices que ficam, as posicoes inseridas, quem fez e a aprovacao."""
+    return sorted([int(q['layer_id']), sorted(q['quebras']['valor']), sorted(q.get('inseridas') or ()),
+                   q.get('origem'), bool(q.get('aprovada'))] for q in entradas)
