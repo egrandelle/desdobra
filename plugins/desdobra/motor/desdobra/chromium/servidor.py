@@ -47,7 +47,10 @@ class ServidorFontes:
             navegador.abrir(s.url_entrada) ...
     """
 
-    def __init__(self, pagina_html, fontes, *, cache_control='no-store'):
+    def __init__(self, pagina_html, fontes, *, cache_control='no-store', intervalo_s=None):
+        # intervalo_s: o intervalo de consulta do serve_forever, que o parar() espera no pior caso (padrao o do
+        # socketserver, meio segundo). So o Chromium aberto da tela pede um curto, na pagina de medida da quebra e na do
+        # controle positivo da abertura dele (M7b, C3)
         # uma pagina (str, servida em /pagina) ou varias ({id: str}, servidas em /pagina/<id>; o render usa uma por
         # camada de texto e cor)
         if isinstance(pagina_html, dict):
@@ -62,6 +65,7 @@ class ServidorFontes:
         self.cache_control = cache_control  # so o teste do metodo de varredura troca isto
         self.marcador_controle = secrets.token_hex(32).encode('ascii')  # numero-neutro: bytes de entropia do marcador
         self.contagem = {'entrar': 0, 'pagina': 0, 'fonte': 0, 'controle': 0, 'nao_encontrado': 0, 'proibido': 0}
+        self.intervalo_s = intervalo_s
         self._srv = None
         self._fio = None
 
@@ -177,7 +181,8 @@ class ServidorFontes:
 
         self._srv = _Servidor(('127.0.0.1', 0), Tratador)
         self._srv.daemon_threads = True
-        self._fio = threading.Thread(target=self._srv.serve_forever, daemon=True)
+        kw = {} if self.intervalo_s is None else {'poll_interval': float(self.intervalo_s)}
+        self._fio = threading.Thread(target=self._srv.serve_forever, kwargs=kw, daemon=True)
         self._fio.start()
         return self
 

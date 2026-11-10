@@ -457,6 +457,30 @@
    "nota": "Origem: valor escolhido na implementacao do M7a1, sem medicao."
   },
   {
+   "id": "chromium.aberto_espera_max_s",
+   "valor": 20,
+   "unidade": "segundos que a medida da quebra espera o Chromium aberto da tela (a abertura dele conta)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "portao do M7a0, pergunta 4 (a tela rapida, facil de usar e precisa) e n 169 (o motor refaz as quebras e a previa mostra o texto novo com a fonte real)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "Estourado, o pedido sai pelo caminho frio (o Chromium que abre e fecha a cada medida) e o fio do aberto fica de lado ate voltar: o DA nunca espera sem teto. Origem: valor escolhido na implementacao, sem medicao: a abertura do Chromium fixado levou de 1 a 7 s nesta maquina (o disco frio na primeira), e uma medida no aberto leva decimos de segundo."
+  },
+  {
+   "id": "chromium.aberto_falhas_abertura_max",
+   "valor": 3,
+   "unidade": "aberturas seguidas do Chromium aberto da tela que falham antes de ele ficar desligado ate a tela fechar",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "portao do M7a0, pergunta 4 (a tela rapida, facil de usar e precisa) e n 169 (o motor refaz as quebras e a previa mostra o texto novo com a fonte real)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "A abertura que falha (o Chromium novo caiu ou o driver morreu antes do controle positivo) manda o pedido pelo caminho frio, e a medida seguinte tenta abrir de novo; a abertura boa zera a conta. Chegando ao teto, o aberto fica desligado e toda medida sai pelo caminho frio, sem o DA pagar uma abertura que falha em cada previa. Origem: valor escolhido na implementacao, sem medicao: uma queda isolada na abertura (revisao 2 do aberto) se recupera na proxima, e uma falha que se repete nao passa de tres previas mais lentas."
+  },
+  {
    "id": "tela.partida_max_s",
    "valor": 180,
    "unidade": "segundos que o desdobra tela abrir espera o aviso do processo de fundo",

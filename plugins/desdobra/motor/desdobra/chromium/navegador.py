@@ -59,6 +59,7 @@ ARGUMENTOS = ('--disable-lcd-text', '--no-first-run', '--disable-background-netw
 ARGUMENTOS_RENDER = ARGUMENTOS + ('--disable-gpu', '--force-color-profile=srgb')
 ASSINATURA_PDF = b'%PDF-'
 PX_POR_POLEGADA = 96.0  # numero-neutro: px do CSS por polegada
+JANELA_MEDIDA = {'width': 1200, 'height': 800}  # numero-neutro: janela da pagina de medida (conferir e o aberto)
 TAMANHO_TRECHO = 256  # numero-neutro: bytes de cada trecho procurado na varredura do perfil
 METODO_VARREDURA = ('sha256, assinatura de fonte e trechos de 256 bytes (inicio, meio e fim) de cada fonte servida, '
                     'em todo arquivo do perfil, com controle positivo (folha de estilo com cache liberado)')
@@ -127,35 +128,41 @@ def conferir(url_entrada, perfil, familias, ids_cdp):
     try:
         with sync_playwright() as pw:
             ctx = pw.chromium.launch_persistent_context(str(perfil), headless=True, args=list(ARGUMENTOS),
-                                                        viewport={'width': 1200, 'height': 800},  # numero-neutro: janela de medicao
-                                                        device_scale_factor=1, timeout=tempo_ms)
+                                                        viewport=dict(JANELA_MEDIDA), device_scale_factor=1,
+                                                        timeout=tempo_ms)
             try:
                 ctx.set_default_timeout(tempo_ms)
                 pg = ctx.pages[0] if ctx.pages else ctx.new_page()
-                pg.goto(url_entrada, wait_until='load')
-                status = pg.evaluate(JS_CARREGAR, list(familias))
-                larguras = pg.evaluate(JS_LARGURAS)
-                tintas = pg.evaluate(JS_TINTAS)
-                cdp = ctx.new_cdp_session(pg)
-                cdp.send('DOM.enable')
-                cdp.send('CSS.enable')
-                raiz = cdp.send('DOM.getDocument', {'depth': -1})['root']['nodeId']
-                fontes_por_id = {}
-                for ident in ids_cdp:
-                    no = cdp.send('DOM.querySelector', {'nodeId': raiz, 'selector': '#' + ident})['nodeId']
-                    if not no:
-                        fontes_por_id[ident] = None
-                        continue
-                    fontes_por_id[ident] = [{'familia': f.get('familyName'), 'nome_ps': f.get('postScriptName'),
-                                             'propria': bool(f.get('isCustomFont')), 'glifos': f.get('glyphCount')}
-                                            for f in cdp.send('CSS.getPlatformFontsForNode', {'nodeId': no})['fonts']]
+                medida = medir_na_pagina(ctx, pg, url_entrada, familias, ids_cdp)
                 versao = ctx.browser.version if ctx.browser else None
             finally:
                 ctx.close()
     except ErroPlaywright:
         raise ErroNavegador('O Chromium do Playwright não abriu ou não respondeu a tempo.') from None
-    return {'chromium': versao, 'playwright': versao_playwright(),
-            'status': {f: s for f, s in status}, 'larguras': larguras, 'tintas': tintas, 'cdp': fontes_por_id}
+    return {'chromium': versao, 'playwright': versao_playwright(), **medida}
+
+
+def medir_na_pagina(ctx, pg, url_entrada, familias, ids_cdp):
+    """A medida de conferir na pagina pg do contexto ctx (o caminho frio e o Chromium aberto da tela,
+    desdobra.chromium.aberto, medem pelas mesmas linhas). Devolve {'status', 'larguras', 'tintas', 'cdp'}."""
+    pg.goto(url_entrada, wait_until='load')
+    status = pg.evaluate(JS_CARREGAR, list(familias))
+    larguras = pg.evaluate(JS_LARGURAS)
+    tintas = pg.evaluate(JS_TINTAS)
+    cdp = ctx.new_cdp_session(pg)
+    cdp.send('DOM.enable')
+    cdp.send('CSS.enable')
+    raiz = cdp.send('DOM.getDocument', {'depth': -1})['root']['nodeId']
+    fontes_por_id = {}
+    for ident in ids_cdp:
+        no = cdp.send('DOM.querySelector', {'nodeId': raiz, 'selector': '#' + ident})['nodeId']
+        if not no:
+            fontes_por_id[ident] = None
+            continue
+        fontes_por_id[ident] = [{'familia': f.get('familyName'), 'nome_ps': f.get('postScriptName'),
+                                 'propria': bool(f.get('isCustomFont')), 'glifos': f.get('glyphCount')}
+                                for f in cdp.send('CSS.getPlatformFontsForNode', {'nodeId': no})['fonts']]
+    return {'status': {f: s for f, s in status}, 'larguras': larguras, 'tintas': tintas, 'cdp': fontes_por_id}
 
 
 def imprimir_pdf(cdp, largura, altura):

@@ -16,6 +16,12 @@ pagina. A previa da tela (desdobra.tela.edicao) e a derivacao gravada passam por
 medida que falhou (Chromium que nao abriu, face ausente, sem largura) nao fica guardada: o proximo pedido tenta de
 novo. O cache guarda ate CACHE_MAX medidas; a mais antiga sai primeiro.
 
+Chromium aberto da tela (M7b, C3): com a tela aberta, o processo dela liga um desdobra.chromium.aberto.NavegadorAberto
+(usar_aberto), e a medida sem cache vai a ele: o Chromium fica aberto entre as medidas, e cada medida roda num
+contexto sem perfil, com as mesmas linhas de medida do caminho frio. Quando o aberto nao mede (fechado, sem amarra,
+caiu ou passou do teto), o pedido sai pelo caminho frio, o de sempre: o Chromium fixado abre com um perfil novo,
+mede e fecha. Fora da tela (a CLI e a derivacao), nada fica ligado e toda medida e a do caminho frio.
+
 Devolve {chave: {'largura_texto', 'largura_texto_mestre', 'linhas'}} ou, quando nao mede, {chave: {'erro': motivo}}.
 """
 import copy
@@ -33,9 +39,18 @@ from desdobra.fontes import casamento, conferencia, medicao
 
 PERFIL = 'medida-quebras'
 CACHE_MAX = 512  # numero-neutro: medidas guardadas no processo (cada uma e um dicionario pequeno)
+INTERVALO_SERVIDOR_ABERTO_S = 0.01  # numero-neutro: intervalo de consulta do servidor da pagina, so com o aberto
 
 _cache = OrderedDict()
 _trava = threading.Lock()
+_aberto = None  # o Chromium aberto da tela (desdobra.chromium.aberto), ligado so pelo processo da tela
+
+
+def usar_aberto(aberto):
+    """Liga o Chromium aberto da tela na medida sem cache, ou desliga com None (o fecho da tela)."""
+    global _aberto
+    with _trava:
+        _aberto = aberto
 
 
 def limpar_cache():
@@ -82,6 +97,22 @@ def _faces(pasta, estado):
                 leituras.append((reg['sha256'], leitura))
                 por_sha[reg['sha256']] = rel
     return casamento.montar_faces(leituras), por_sha
+
+
+def _conferir(url_entrada, familias, servidos):
+    """A pagina de medida no Chromium aberto da tela, quando ligado; senao, ou quando ele nao mede, no caminho frio
+    (navegador.conferir com um perfil novo, apagado no fim)."""
+    aberto = _aberto
+    if aberto is not None:
+        try:
+            return aberto.conferir(url_entrada, familias, [], servidos=servidos)
+        except navegador.ErroNavegador:
+            pass  # este pedido sai pelo caminho frio; o aberto abre de novo no proximo (desdobra.chromium.aberto)
+    perfil = navegador.perfil_curto() / PERFIL
+    try:
+        return navegador.conferir(url_entrada, perfil, familias, [])
+    finally:
+        navegador.apagar_perfil(perfil)
 
 
 def medir(pasta, laudo, briefing, estado):
@@ -131,17 +162,17 @@ def medir(pasta, laudo, briefing, estado):
     if not servidos:
         motivo = 'sem_face_servivel'
     else:
-        perfil = navegador.perfil_curto() / PERFIL
+        # com o aberto ligado, o servidor da pagina para sem a espera de meio segundo do serve_forever, que era quase
+        # toda a remedicao no aberto; o caminho frio fica com o servidor de antes
+        kw = {'intervalo_s': INTERVALO_SERVIDOR_ABERTO_S} if _aberto is not None else {}
         try:
-            with servidor.ServidorFontes(pagina, servidos) as srv:
-                resposta = navegador.conferir(srv.url_entrada, perfil, [medicao.familia_css(prefixo, i) for i in servidos],
-                                              [])
+            with servidor.ServidorFontes(pagina, servidos, **kw) as srv:
+                resposta = _conferir(srv.url_entrada, [medicao.familia_css(prefixo, i) for i in servidos],
+                                     [d for d, _mime in servidos.values()])
             larguras = resposta.get('larguras') or {}
             tintas = resposta.get('tintas') or {}
         except navegador.ErroNavegador:
             motivo = 'chromium_nao_mediu'
-        finally:
-            navegador.apagar_perfil(perfil)
     for k, (lid, manter, inseridas, no_cache) in enumerate(ordem):
         ch = mq.chave(lid, manter, inseridas)
         if motivo:

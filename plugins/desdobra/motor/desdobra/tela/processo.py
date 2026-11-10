@@ -20,6 +20,13 @@ da entrada e a sessao do cookie nascem aqui (desdobra.tela.servidor) e vao so ao
   5. espera a janela fechar; com o Chromium fechado e antes de apagar o perfil, varre o perfil inteiro (copia de
      fonte, controle positivo, token, sessao e CSRF em qualquer arquivo; varrer_fechado); para o servidor, apaga o perfil e
      registra os eventos tela_aberta e tela_fechada em log/eventos.jsonl, so com codigos e contagens.
+Da montagem feita ao fim, o Chromium fixado aberto da tela (desdobra.chromium.aberto; M7b, C3) fica ligado na medida
+das quebras (derivacao.medida_quebras.usar_aberto): a previa e a derivacao deste processo medem nele, sem abrir o
+Chromium a cada medida. A montagem do passo 2 mede pelo caminho frio, como antes do aberto (abrir o aberto ali
+atrasaria a abertura da tela). Ele so abre na primeira medida sem cache e fecha depois do servidor parar: o fio dele
+para, o perfil e varrido e apagado, e o relatorio vai ao tela_fechada (campos aberto_*), ou ao tela_recusou quando a
+tela termina em erro depois da montagem. O perfil do aberto sujo ou que ficou faz o processo sair com erro interno,
+como o da janela.
 """
 import argparse
 import os
@@ -52,10 +59,29 @@ def executar(pasta, avisar=_avisar, ao_abrir=None, teto=None):
     """Roda a tela do job ate a janela fechar. ao_abrir(janela, servidor): so para os testes (a janela ja aberta).
     teto: o teto do modo de dados que o tela abrir recebeu (a tela nunca oferece modo acima dele nem do estado.json).
     Devolve o codigo de saida do processo."""
+    from desdobra.chromium import aberto as chromium_aberto
+    pasta = Path(pasta).resolve()
+    aberto = chromium_aberto.NavegadorAberto()
+    try:
+        return _executar(pasta, avisar, ao_abrir, teto, aberto)
+    finally:
+        # toda saida fecha o aberto (a recusa tambem); o fecho em ordem e o erro depois da montagem ja fecharam, e o
+        # segundo fechar() so devolve o relatorio
+        _fechar_aberto(aberto)
+
+
+def _fechar_aberto(aberto):
+    """Desliga o aberto da medida das quebras, fecha e devolve o relatorio com o prefixo dos eventos (aberto_*)."""
+    from desdobra.derivacao import medida_quebras
+    medida_quebras.usar_aberto(None)
+    return {'aberto_%s' % k: v for k, v in sorted(aberto.fechar().items())}
+
+
+def _executar(pasta, avisar, ao_abrir, teto, aberto):
     from desdobra.chromium import navegador
+    from desdobra.derivacao import medida_quebras
     from desdobra.job import nucleo
     from desdobra.tela import atos, estado, servidor, tarefas
-    pasta = Path(pasta).resolve()
     try:
         orfaos = navegador.varrer_orfaos()
         # o render que a janela anterior deixou pela metade: o aviso vai para a tela, e a trava do processo morto sai
@@ -72,6 +98,8 @@ def executar(pasta, avisar=_avisar, ao_abrir=None, teto=None):
         _registrar_recusa(pasta, motivo='erro_interno', excecao=type(e).__name__)
         avisar('%s erro_interno' % RECUSADO)
         return int(Codigo.ERRO_INTERNO)
+    # o aberto entra depois da montagem: a medida dela e a do caminho frio, e a abertura da tela nao espera o aberto
+    medida_quebras.usar_aberto(aberto)
     avisado = False
     perfil = janela = None
     varredura = {}
@@ -100,20 +128,26 @@ def executar(pasta, avisar=_avisar, ao_abrir=None, teto=None):
                 janela.esperar_fechar()
             contagem = dict(srv.contagem)
     except navegador.ErroNavegador:
-        _registrar_recusa(pasta, motivo='chromium_nao_abriu', perfil_apagado=_perfil_apagado(perfil, janela))
+        # o relatorio do aberto vai a recusa tambem (o aberto pode ter medido antes do erro)
+        _registrar_recusa(pasta, motivo='chromium_nao_abriu', perfil_apagado=_perfil_apagado(perfil, janela),
+                          **_fechar_aberto(aberto))
         if not avisado:
             avisar('%s chromium_nao_abriu' % RECUSADO)
         return int(Codigo.RECUSADO)
     except Exception as e:  # noqa: BLE001 - nada de traceback: so o nome da excecao, no log do job
         _registrar_recusa(pasta, motivo='erro_interno', excecao=type(e).__name__,
-                          perfil_apagado=_perfil_apagado(perfil, janela))
+                          perfil_apagado=_perfil_apagado(perfil, janela), **_fechar_aberto(aberto))
         if not avisado:
             avisar('%s erro_interno' % RECUSADO)
         return int(Codigo.ERRO_INTERNO)
+    # o servidor ja parou: nenhuma medida passa mais pelo aberto
+    relatorio = _fechar_aberto(aberto)
     campos = {'pedidos_%s' % k: v for k, v in sorted(contagem.items())}
     campos.update({'varredura_%s' % k: v for k, v in sorted(varredura.items())})
+    campos.update(relatorio)
     nucleo.registrar_evento(pasta, 'tela_fechada', perfil_apagado=janela.perfil_apagado, **campos)
-    return 0 if janela.perfil_apagado and varredura.get('limpa') else int(Codigo.ERRO_INTERNO)
+    limpo = janela.perfil_apagado and varredura.get('limpa') and relatorio['aberto_limpo']
+    return 0 if limpo else int(Codigo.ERRO_INTERNO)
 
 
 def opcoes_do_servidor(pasta):
