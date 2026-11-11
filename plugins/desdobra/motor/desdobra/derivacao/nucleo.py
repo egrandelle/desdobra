@@ -319,7 +319,10 @@ def _com_quebras(ctx, m, formato, W, H, so_familia=False):
             novo.update(quebras_origem=mod_quebras.origem_das(da_tela), quebra_do_da=mod_quebras.do_da(da_tela))
         novos.append(novo)
         mudou = True
-    return (dict(m, elementos=novos) if mudou else m), sem_medida
+    # a mestre com a quebra guarda os elementos do KV de onde saiu: a validacao da galeria e da edicao no palco mede a
+    # colisao contra eles, como a validacao do motor (_fechar mede contra o KV; previa igual ao Salvar, M7b)
+    return (dict(m, elementos=novos, elementos_de_origem=m.get('elementos_de_origem') or m['elementos'])
+            if mudou else m), sem_medida
 
 
 def _quebras_sem_aprovacao(ctx, m, aplicados, W, H):

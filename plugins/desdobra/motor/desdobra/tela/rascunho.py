@@ -266,6 +266,13 @@ def versao_gravada(pasta, familia):
     return ((((dados or {}).get('familias') or {}).get(familia)) or {}).get('versao')
 
 
+def versao_de_agora(versao, versoes):
+    """A versao gravada, quando a galeria da familia ainda a tem (versoes: as da tela agora), ou None. A versao que a
+    galeria nao tem mais (o rascunho da tela de antes da previa igual ao Salvar, M7b, que oferecia galeria a outros
+    formatos devolvidos) nao e escolha do DA: a pagina mostra a familia sem versao e a confirma assim."""
+    return versao if versao in (versoes or ()) else None
+
+
 def quebras_gravadas(pasta, familia):
     """As quebras de linha da familia no rascunho gravado agora ([] sem a familia, sem quebra ou sem rascunho
     valido)."""
@@ -324,11 +331,13 @@ def sem_confirmacao_velha(dados, familias, pecas=None):
 
 
 def confirmar_familia(pasta, familia, versao, *, disparo, job_id, laudo_atual, edicoes=None, formatos=None,
-                      pecas=None, quebras=None):
+                      pecas=None, quebras=None, versoes=None):
     """O ato "Confirmar familia" da janela (decisoes-v1.md, 167): a familia fica confirmada no rascunho, com a versao
     mostrada e as edicoes gravadas, e a confirmacao leva a origem e o meio do Disparo da tela e os formatos da familia.
     edicoes e quebras: as edicoes e as quebras de linha que a janela mostrou (revisao do C: a quebra e edicao da
-    familia); diferentes das gravadas, ErroRascunho('mudou') e nada e gravado. A familia com
+    familia); diferentes das gravadas, ErroRascunho('mudou') e nada e gravado. versoes: as da galeria da familia na
+    tela agora; com elas, a versao gravada que a galeria nao tem mais conta como nenhuma (versao_de_agora), e a
+    confirmacao grava a versao que a janela mostrou. A familia com
     quebra de linha proposta pelo desdobra e ainda sem a aprovacao do DA nao e confirmada:
     ErroRascunho('quebra_proposta') (M7b, C4). O Disparo vale um ato so. Devolve a familia gravada."""
     from desdobra import humano
@@ -344,7 +353,7 @@ def confirmar_familia(pasta, familia, versao, *, disparo, job_id, laudo_atual, e
         raise ErroRascunho('mudou')
     if quebras is not None and (f.get('quebras') or []) != quebras:
         raise ErroRascunho('mudou')
-    if f.get('versao') != versao:
+    if (f.get('versao') if versoes is None else versao_de_agora(f.get('versao'), versoes)) != versao:
         # a versao confirmada e a que o DA clicou na galeria, gravada no rascunho (revisao do M7a)
         raise ErroRascunho('mudou')
     if por_aprovar(f):

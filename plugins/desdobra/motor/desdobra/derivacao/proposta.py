@@ -3,9 +3,10 @@
 
 O briefing confirmado por "Salvar e seguir" (desdobra.briefing.salvar) traz em composicoes cada familia da tela: os
 formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A derivacao parte delas:
-  - o formato que o motor devolve por troca de orientacao ou proporcao fora da faixa (MOTIVOS_DA_GALERIA) sai da
-    versao da galeria escolhida para a familia (sem escolha, a primeira sem falha, como a tela mostra), com as edicoes
-    do DA; o caminho e 'galeria' e o formato deixa de ser devolvido;
+  - o formato que o motor devolve por troca de orientacao, proporcao fora da faixa ou validacao obrigatoria que
+    reprova (MOTIVOS_DA_GALERIA; usa_galeria, a regra unica que a tela tambem chama) sai da versao da galeria
+    escolhida para a familia (sem escolha, a primeira sem falha, como a tela mostra), com as edicoes do DA; o caminho
+    e 'galeria' e o formato deixa de ser devolvido quando a versao passa nas validacoes obrigatorias;
   - o formato que o motor deriva sozinho (transform ou solver) recebe as edicoes do DA por cima da proposta dele;
   - as edicoes vao a cada membro em proporcao ao formato dele, com a intencao de alinhamento (168), e o encaixe e
     refeito pelo solver do repositorio: a mesma conta da previa da tela (desdobra.tela.edicao.Editor), pelas mesmas
@@ -32,14 +33,26 @@ arquivos do job pelo contexto da derivacao: nao abre PSD, fonte nem imagem.
 """
 import copy
 
-# os motivos da devolucao que a galeria resolve (decisoes-v1.md, 164): os outros (folha, dimensao, indeterminado,
-# bloco partido) sao guardas do motor que a escolha do DA nao pula
-MOTIVOS_DA_GALERIA = ('troca_forte_de_orientacao', 'troca_de_orientacao_quadrado', 'fora_da_faixa_de_familia')
+# os motivos da devolucao que a galeria resolve (decisoes-v1.md, 164 e 166): a troca de orientacao, a proporcao fora
+# da faixa e o layout do motor que reprova numa validacao obrigatoria (o formato que precisa de ajuste; previa igual
+# ao Salvar, M7b). Os outros (folha, dimensao, indeterminado, bloco partido, medida por confirmar) sao guardas do motor
+# que a escolha do DA nao pula
+MOTIVOS_DA_GALERIA = ('troca_forte_de_orientacao', 'troca_de_orientacao_quadrado', 'fora_da_faixa_de_familia',
+                      'validacao_obrigatoria_reprovou')
 ORIGEM_POR_CAMINHO = {'galeria': 'galeria', 'transform': 'transformacao', 'solver': 'regra', 'mestre_propria': 'da'}
 ORIGEM_DA = 'da'
 ORIGENS_DO_APAGADO = ('da', 'fixture_de_teste')
 QUEBRAS_DO_TEXTO_EDITADO = 'do_texto_editado'
 TEXTO_SOLVER = 'As restrições da folha e do KV não fecham nesta versão.'
+
+
+def usa_galeria(derivado):
+    """True quando o formato (derivacao/1 em memoria) parte da galeria: devolvido por um motivo de MOTIVOS_DA_GALERIA.
+    A regra unica da previa igual ao Salvar (M7b): a tela monta a galeria so destes formatos
+    (desdobra.tela.estado.galerias e desdobra.tela.edicao.Editor._viva), e a derivacao da familia confirmada so os tira
+    da galeria (aplicar). O formato devolvido por outro motivo fica devolvido nas duas, sem versao."""
+    d = derivado or {}
+    return d.get('situacao') == 'devolvido' and (d.get('devolucao') or {}).get('motivo') in MOTIVOS_DA_GALERIA
 
 
 def mestre_da_galeria(ctx, kv, formatos):
@@ -105,6 +118,23 @@ def galeria_da_familia(ctx, kv, formatos, *, specs, arquivo_specs, params, mestr
         for fid, mv in membros.items():
             por_formato[fid].append((n, mv))
     return {fid: por_formato[fid] or list(enumerate(mg.variantes(ctx, kv, por_id[fid], **kw), 1)) for fid in fids}
+
+
+def galeria_dos_devolvidos(ctx, kv, derivados, formatos, *, specs, arquivo_specs, params):
+    """(galeria, mestre, sem_medida) de uma familia: a regra unica de onde parte cada formato devolvido (previa igual
+    ao Salvar, M7b). A tela (desdobra.tela.estado.galerias e desdobra.tela.edicao.Editor._viva) e a derivacao da
+    familia confirmada (aplicar) chamam esta. Partem da galeria os devolvidos de usa_galeria, e a galeria parte da
+    mestre com a quebra de linha da familia (mestre_da_galeria). Sem a medida da quebra (sem_medida: as camadas sem
+    medida), a galeria nao sai, e os devolvidos ficam como o motor os deixou, na tela e no "Salvar e seguir".
+    derivados: {id do formato: derivacao/1 em memoria}; formatos: os da familia no briefing, na ordem da tela.
+    galeria: {id do formato: [(ordem, variante do motor)]}, so dos formatos que tem versao."""
+    devolvidos = [f for f in formatos if usa_galeria(derivados.get(f['id']))]
+    mestre, sem_medida = mestre_da_galeria(ctx, kv, devolvidos)
+    if not devolvidos or sem_medida:
+        return {}, mestre, sem_medida
+    por = galeria_da_familia(ctx, kv, devolvidos, mestre=mestre, specs=specs, arquivo_specs=arquivo_specs,
+                             params=params)
+    return {fid: pares for fid, pares in por.items() if pares}, mestre, sem_medida
 
 
 def partida(derivado, versoes, versao):
@@ -352,7 +382,6 @@ def aplicar(ctx, kv, resultados, derivar_um, *, specs, arquivo_specs, params):
     derivacao/1}), no lugar. derivar_um(formato) deriva um membro da familia que nao esta em resultados (a derivacao
     de um formato so precisa dos outros devolvidos da familia para montar a galeria como a tela)."""
     from desdobra.derivacao import galeria as mg
-    from desdobra.derivacao import nucleo as nd
     from desdobra.derivacao import solver as mod_solver
     comps = ctx['briefing'].get('composicoes') or []
     if not comps:
@@ -373,24 +402,20 @@ def aplicar(ctx, kv, resultados, derivar_um, *, specs, arquivo_specs, params):
                 dos[f] = resultados[f]
             elif f in por_id:
                 dos[f] = derivar_um(por_id[f])
-        # a mesma galeria da tela: o formato com a medida por confirmar fica fora (desdobra.tela.estado.galerias)
-        devolvidos = [f for f in comp['formatos'] if f in dos and dos[f]['situacao'] == 'devolvido' and
-                      (dos[f].get('devolucao') or {}).get('motivo') not in nd.MOTIVOS_POR_CONFIRMAR]
         proposta = {'familia': comp['familia'], 'versao': comp['versao'], 'edicoes': len(comp['edicoes']),
                     'confirmada': bool(comp['confirmada']), 'confirmacao': comp.get('confirmacao')}
-        # a mestre da galeria leva a quebra de linha da familia (M7b, C2); sem a medida dela, a galeria nao sai e os
-        # devolvidos ficam como o motor os deixou, com o registro
-        kv_galeria, sem_medida = mestre_da_galeria(ctx, kv, [por_id[f] for f in devolvidos])
+        # a mesma galeria da tela, pela mesma regra (galeria_dos_devolvidos; desdobra.tela.estado.galerias): a mestre
+        # da galeria leva a quebra de linha da familia (M7b, C2); sem a medida dela, a galeria nao sai e os devolvidos
+        # ficam como o motor os deixou, com o registro
         try:
-            galeria = {}
-            if devolvidos and not sem_medida:
-                galeria = galeria_da_familia(ctx, kv, [por_id[f] for f in devolvidos], mestre=kv_galeria, **kw)
+            galeria, kv_galeria, sem_medida = galeria_dos_devolvidos(
+                ctx, kv, dos, [por_id[f] for f in comp['formatos'] if f in dos and f in por_id], **kw)
         except Exception:  # noqa: BLE001 - a galeria que quebra deixa os formatos como o motor os deixou
-            galeria = None
+            galeria, kv_galeria, sem_medida = None, None, []
         for fid in alvo:
             d = dos[fid]
             if d['situacao'] == 'devolvido':
-                if galeria is None or (d.get('devolucao') or {}).get('motivo') not in MOTIVOS_DA_GALERIA:
+                if galeria is None or not usa_galeria(d):
                     continue
                 if sem_medida:
                     d['registros'].append({'codigo': 'quebra_sem_medida', 'medidas': {'camadas': sem_medida}})

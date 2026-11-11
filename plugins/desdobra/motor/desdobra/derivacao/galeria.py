@@ -879,7 +879,9 @@ def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False):
 
 def _validacoes(cf, caixas, sangra, esc, apagados=()):
     """As validacoes do motor (desdobra.derivacao.validacao) do layout, contra a mestre verdadeira; o elemento apagado
-    pelo DA sai da conta do inventario."""
+    pelo DA sai da conta do inventario. A origem da colisao e a do motor: os elementos do KV, tambem quando a mestre
+    tem a caixa medida da quebra de linha (elementos_de_origem, desdobra.derivacao.nucleo._com_quebras). Assim a previa
+    mostra a colisao que o "Salvar e seguir" acha (previa igual ao Salvar, M7b)."""
     kv, W, H, areas = cf['kv'], cf['W'], cf['H'], cf['areas']
     els, regra = kv['elementos'], cf['regras']
     aplicados = mod_nucleo._aplicados(kv, [regra[e['id']] for e in els])
@@ -888,8 +890,10 @@ def _validacoes(cf, caixas, sangra, esc, apagados=()):
             x['sangra'] = sangra[x['id']]
     if 'esperado' not in cf:
         cf['esperado'] = mod_nucleo._esperado(cf['ctx'], kv)
+    inteiro = cf.get('kv_inteiro') or kv
+    origem = {e['id']: e for e in inteiro.get('elementos_de_origem') or inteiro['elementos']}
     return mod_validacao.validar((W, H), areas, aplicados, [caixas[e['id']] for e in els], [esc[e['id']] for e in els],
-                                 mod_nucleo._kv_por_id(cf.get('kv_inteiro') or kv), cf['esperado'], apagados=apagados)
+                                 origem, cf['esperado'], apagados=apagados)
 
 
 def validacoes_do_layout(cf, caixas, sangra, apagados=()):
@@ -1001,11 +1005,16 @@ def _elementos(cf, v):
 
 
 def _saida(cf, v, ordem):
-    falhas, avisos = _conferir(cf, v['caixas'], v['sangra'])
+    # a conferencia ve as caixas que a variante leva (arredondadas em _elementos), as mesmas que a derivacao da familia
+    # confirmada grava e confere (desdobra.derivacao.proposta.layout_do_membro): o par que o solver deixa a
+    # exatamente a tolerancia da colisao nunca vira falha so na tela (previa igual ao Salvar, M7b)
+    elementos = _elementos(cf, v)
+    caixas = {e['id']: [float(x) for x in e['caixa']] for e in elementos}
+    falhas, avisos = _conferir(cf, caixas, v['sangra'])
     if v['falha_solver']:
         falhas.append(_item('solver_nao_fecha', 'As restrições da folha e do KV não fecham nesta versão.', [],
                              restricao=v['falha_solver']))
-    return {'id': v['id'], 'ordem': ordem, 'descricao': descrever(cf, v), 'elementos': _elementos(cf, v),
+    return {'id': v['id'], 'ordem': ordem, 'descricao': descrever(cf, v), 'elementos': elementos,
             'avisos': avisos + _avisos_da_variante(cf, v), 'falhas_obrigatorias': falhas,
             'estrutura': {'tipo': v['tipo'], 'trilhas': [len(t) for t in v['part']], 'espelhada': v['espelhar'],
                           'imagem_livre': v['lado_img']},

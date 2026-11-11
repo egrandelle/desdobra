@@ -176,10 +176,11 @@ def _ato_da_familia(pasta, conteudo):
             return False
         # as edicoes, as quebras de linha e a versao que a janela mostra sao as do rascunho gravado: a versao vale so
         # depois do clique do DA na galeria, que a grava no rascunho (revisao do M7a); a quebra que a gravacao nao
-        # levou nunca e confirmada as cegas (revisao do C)
+        # levou nunca e confirmada as cegas (revisao do C). A versao gravada que a galeria nao tem mais (o rascunho da
+        # tela de antes da previa igual ao Salvar, M7b) conta como nenhuma, como a pagina mostra a familia
         return rascunho.edicoes_gravadas(pasta, d['familia']) == d['edicoes'] and \
             rascunho.quebras_gravadas(pasta, d['familia']) == d.get('quebras', []) and \
-            rascunho.versao_gravada(pasta, d['familia']) == d['versao']
+            rascunho.versao_de_agora(rascunho.versao_gravada(pasta, d['familia']), versoes) == d['versao']
 
     def ordem_da_versao(d):
         familias = conteudo.get('familias') or {}
@@ -206,7 +207,8 @@ def _ato_da_familia(pasta, conteudo):
                                        laudo_atual=rascunho.laudo_sha256(pasta), edicoes=d['edicoes'],
                                        quebras=d.get('quebras', []),
                                        formatos=conteudo['familias'][d['familia']]['formatos'],
-                                       pecas=conteudo['familias'][d['familia']].get('pecas'))
+                                       pecas=conteudo['familias'][d['familia']].get('pecas'),
+                                       versoes=conteudo['familias'][d['familia']]['versoes'])
         return {'familia': d['familia'], 'confirmada': f['confirmada']}
     return Ato(comando=rascunho.COMANDO_FAMILIA, titulo='Confirmar a família', texto=texto, sim=SIM, nao=NAO,
                executar=executar, validar=valido)

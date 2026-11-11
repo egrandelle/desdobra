@@ -58,6 +58,10 @@ COR = re.compile(r'^#[0-9A-Fa-f]{6}$')
 SEPARADOR_DE_LINHA = re.compile('[\r\n\x03]')  # fim de paragrafo (\r) e quebra manual (\x03) do texto do PSD
 ALINHAMENTOS = {'LEFT': 'esquerda', 'CENTER': 'centro', 'RIGHT': 'direita'}
 POR = {'camada': 'camada', 'grupo': 'grupo', 'decisao_10': 'decisao_10'}
+# a regra com que a tela monta a previa da familia, na impressao da confirmacao (impressao_das_pecas; decisao 175):
+# muda quando a previa passa a mostrar outra coisa para a mesma familia, e a confirmacao de antes cai. Esta e a da
+# previa igual ao Salvar (M7b): a galeria pela regra da derivacao e as falhas da conferencia do motor
+REGRA_DA_PREVIA = 'previa_igual_ao_salvar'
 # O que a tela diz do formato que a derivacao devolve, em lugar do o_que_fazer do motor: o DA nunca e chamado a
 # desenhar uma mestre por orientacao (n 164 e comentarios de 05/11), e o texto da tela nao leva identificador do motor.
 PROPOSTA_DEPOIS = 'A proposta do desdobra para este arquivo chega com a galeria de variantes, na próxima versão.'
@@ -597,8 +601,9 @@ def _variante_da_tela(v, ordem, palco_):
 
 def galerias(ctx, kv, laudo, base, derivados, orientacoes, *, specs, arquivo_specs, params, brutos=None):
     """{id do formato devolvido: {'grupo': [ids], 'variantes': [...]}} para cada grupo de proporcao da tela
-    (orientacoes, de abas) com formato devolvido. As variantes vem da galeria do motor no primeiro devolvido do grupo
-    (derivacao.galeria.variantes); com mais de um devolvido no grupo, cada variante vai a todos pela estrutura que
+    (orientacoes, de abas) com formato devolvido que parte da galeria (desdobra.derivacao.proposta.
+    galeria_dos_devolvidos, a mesma regra da derivacao da familia confirmada: previa igual ao Salvar, M7b). As
+    variantes vem da galeria do motor no primeiro devolvido do grupo (derivacao.galeria.variantes); com mais de um devolvido no grupo, cada variante vai a todos pela estrutura que
     deixa o pior membro melhor (variante_para_grupo). Quando nenhuma estrutura serve ao grupo, cada membro fica com a
     variante em todo o grupo. O membro sem nenhuma variante ganha a galeria dele sozinho. So previa, em memoria.
     brutos: {id do formato: {id da variante: variante do motor}} preenchido aqui, para a edicao no palco partir da
@@ -609,13 +614,13 @@ def galerias(ctx, kv, laudo, base, derivados, orientacoes, *, specs, arquivo_spe
     saida = {}
     for o in orientacoes:
         for g in o['grupos']:
-            # o formato com a medida por confirmar fica fora: a galeria so sai da medida confirmada
-            fids = [x['id'] for c in g['composicoes'] for x in c['formatos'] if x['situacao'] == 'devolvido' and
-                    x['id'] not in por_confirmar(derivados)]
-            if not fids:
-                continue
-            # a mesma galeria que a derivacao usa quando o DA confirma a familia (desdobra.derivacao.proposta)
-            por_formato = proposta.galeria_da_familia(ctx, kv, [por_id[f] for f in fids], **kw)
+            # a mesma galeria que a derivacao usa quando o DA confirma a familia, pela mesma regra
+            # (desdobra.derivacao.proposta.galeria_dos_devolvidos): o formato com a medida por confirmar, o devolvido
+            # por uma guarda do motor e a familia com a quebra de linha sem medida ficam fora, na tela e no "Salvar e
+            # seguir"
+            todos = [por_id[x['id']] for c in g['composicoes'] for x in c['formatos'] if x['id'] in por_id]
+            por_formato = proposta.galeria_dos_devolvidos(ctx, kv, derivados, todos, **kw)[0]
+            fids = [f['id'] for f in todos if f['id'] in por_formato]
             for fid in fids:
                 pares = por_formato[fid]
                 W, H = derivados[fid]['formato']['composicao']
@@ -986,7 +991,9 @@ def impressao_das_pecas(fids, formatos, versoes):
     """A impressao do que a tela mostra da familia (revisao 3 da regra spec_por_confirmar): de cada formato, a
     composicao, a situacao, o motivo da devolucao e as areas que vem da spec (a area util, as faixas e a area segura),
     e as versoes da galeria. A folha trocada (outra area segura) ou a galeria que aparece depois da confirmacao mudam
-    a impressao, e a confirmacao de antes deixa de valer (desdobra.tela.rascunho.confirmada_para).
+    a impressao, e a confirmacao de antes deixa de valer (desdobra.tela.rascunho.confirmada_para). A impressao leva
+    tambem a regra da previa (REGRA_DA_PREVIA): a confirmacao feita numa tela que mostrava a familia por outra regra
+    (sem as falhas que o "Salvar e seguir" acha, por exemplo) cai, e o DA confirma de novo o que a tela mostra agora.
     formatos: {id: derivacao}."""
     import hashlib
     import json
@@ -999,7 +1006,8 @@ def impressao_das_pecas(fids, formatos, versoes):
                       (d.get('devolucao') or {}).get('motivo'), au and au.get('caixa'),
                       [[x.get('lado'), x.get('px'), x.get('caixa')] for x in a.get('faixas') or []],
                       seg and [seg.get('caixa'), seg.get('lados')]])
-    texto = json.dumps({'formatos': itens, 'versoes': sorted(versoes)}, sort_keys=True, ensure_ascii=True)
+    texto = json.dumps({'formatos': itens, 'versoes': sorted(versoes), 'regra_da_previa': REGRA_DA_PREVIA},
+                       sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(texto.encode('utf-8')).hexdigest()
 
 

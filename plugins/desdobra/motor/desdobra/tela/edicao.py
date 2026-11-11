@@ -84,6 +84,10 @@ IGUAL = 1e-6  # numero-neutro: folga numerica de duas linhas que ja estao no mes
 FOLGA_ESCALA = 1e-4  # numero-neutro: arredondamento das 6 casas da fracao do fator
 POR_MS = 1000.0  # numero-neutro: segundos para milissegundos
 CASAS_MS = 1  # numero-neutro: casas do tempo gasto
+# o membro devolvido porque a quebra de linha da familia ficou sem medida (previa igual ao Salvar, M7b): o DA pode
+# tirar a quebra no palco
+TEXTO_QUEBRA_SEM_MEDIDA = ('A quebra de linha desta família ficou sem medida. Sem a medida, o desdobra não monta as '
+                           'versões deste arquivo. Tire a quebra ou fale com a Trezion.')
 
 
 def tolerancia(W, H):
@@ -640,8 +644,9 @@ class Editor:
         quebras da familia pelas do rascunho e leva as edicoes dela (a derivacao so le delas qual texto foi editado: o
         texto editado nao tem medida); a medida vem de
         desdobra.derivacao.medida_quebras.medir, com o cache, so dos textos do KV com quebra; os membros sao derivados
-        de novo com ela, e os devolvidos ganham a galeria de novo, como a tela monta na abertura
-        (desdobra.tela.estado.galerias). Guardada pela chave das quebras: a proxima edicao na familia parte dela."""
+        de novo com ela, e os devolvidos que partem da galeria (desdobra.derivacao.proposta.usa_galeria) ganham a
+        galeria de novo, como a tela monta na abertura (desdobra.tela.estado.galerias). Guardada pela chave das
+        quebras: a proxima edicao na familia parte dela."""
         import json
 
         from desdobra.briefing import modelo as mb
@@ -681,13 +686,13 @@ class Editor:
         ctx = dict(self.ctx, briefing=novo, medidas_quebras=medidas)
         derivados = dict(self.derivados)
         derivados.update(nd.derivar_em_memoria(ctx, so=fids, composicoes=False, **self.kw)['formatos'])
-        brutos = dict(self.brutos)
-        devolvidos = [f for f in fids if derivados[f]['situacao'] == 'devolvido' and
-                      (derivados[f].get('devolucao') or {}).get('motivo') not in nd.MOTIVOS_POR_CONFIRMAR]
-        if devolvidos:
-            por = proposta.galeria_da_familia(ctx, self.kv, [self.por_formato[f] for f in devolvidos], **self.kw)
-            brutos.update({f: {v['id']: v for _n, v in por[f]} for f in devolvidos})
-        viva = {'chave': chave, 'ctx': ctx, 'derivados': derivados, 'brutos': brutos}
+        # a galeria so dos membros que a derivacao tira dela, pela mesma regra (proposta.galeria_dos_devolvidos): o
+        # membro que a quebra nova deixa sem galeria (tambem pela quebra sem medida) nao parte da versao de antes
+        brutos = {f: v for f, v in self.brutos.items() if f not in fids}
+        por, _mestre, sem_medida = proposta.galeria_dos_devolvidos(
+            ctx, self.kv, derivados, [self.por_formato[f] for f in fids], **self.kw)
+        brutos.update({f: {v['id']: v for _n, v in pares} for f, pares in por.items()})
+        viva = {'chave': chave, 'ctx': ctx, 'derivados': derivados, 'brutos': brutos, 'sem_medida': sem_medida}
         self._vivas[chave] = viva
         while len(self._vivas) > VIVAS_MAX:
             velha = next(iter(self._vivas))
@@ -724,7 +729,8 @@ class Editor:
         decisoes_do_da: o piso de escala ou de distancia que o elemento mexido pelo DA fura, fora das falhas, com o
         valor no texto ({'codigo', 'texto', 'elementos', 'medidas'}; M7b, D5). antes: as edicoes gravadas da familia
         no rascunho (o servidor as le), para o tamanho que ja estava fora dos limites nunca travar a familia (revisao
-        1 da fase D). So previa: nada e gravado."""
+        1 da fase D). O membro devolvido sem versao da galeria vem com situacao 'devolvido', o palco do formato
+        devolvido e a falha que diz por que (_devolvido; previa igual ao Salvar, M7b). So previa: nada e gravado."""
         from desdobra.derivacao import proposta
         from desdobra.tela import estado
         if not self.conferir(dados, antes):
@@ -751,6 +757,8 @@ class Editor:
         for fid in self.familias[gid]:
             elementos = self.partida(fid, versao, viva)
             if elementos is None:
+                # o membro devolvido sem versao da galeria fica devolvido, como o "Salvar e seguir" o grava
+                membros.append(self._devolvido(fid, viva))
                 continue
             cf = self._contexto(fid, viva)
             W, H = cf['W'], cf['H']
@@ -791,6 +799,24 @@ class Editor:
                 'recusas': recusas, 'alinhados': alinhados_fam, 'no_quadro': no_quadro_fam,
                 'textos_da_quebra': self._textos_da_quebra(aceitas),
                 'tempo_ms': round((time.perf_counter() - inicio) * POR_MS, CASAS_MS)}
+
+    def _devolvido(self, fid, viva=None):
+        """O membro devolvido sem versao da galeria, como a derivacao da familia confirmada o grava (previa igual ao
+        Salvar, M7b): o palco do formato devolvido, sem layout do desdobra, e a falha que diz por que. A falha e a
+        quebra de linha sem medida quando ela tirou a galeria do membro (desdobra.derivacao.proposta.
+        galeria_dos_devolvidos), e a frase da devolucao no resto."""
+        from desdobra.derivacao import proposta
+        from desdobra.tela import estado
+        d = (viva['derivados'] if viva else self.derivados)[fid]
+        W, H = d['formato']['composicao']
+        if viva and viva.get('sem_medida') and proposta.usa_galeria(d):
+            falha = {'codigo': 'quebra_sem_medida', 'texto': TEXTO_QUEBRA_SEM_MEDIDA}
+        else:
+            falha = {'codigo': 'formato_devolvido',
+                     'texto': estado.texto_da_devolucao((d.get('devolucao') or {}).get('motivo'), 0)}
+        return {'formato': fid, 'palco': estado.palco(d, self.kv, self.laudo, self.base), 'falhas': [falha],
+                'decisoes_do_da': [], 'avisos': [], 'validacoes_reprovadas': [], 'situacao': 'devolvido',
+                'sangria_do_da': {}, 'quadro': {'margem': [float(v) for v in (0, 0, W, H)], 'area_segura': None}}
 
     def _textos_da_quebra(self, edicoes):
         """Os textos que o DA pode quebrar na familia (M7b, C4), na ordem do KV: o elemento com um texto de ponto so
