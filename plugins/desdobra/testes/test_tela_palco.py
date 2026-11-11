@@ -482,6 +482,19 @@ def test_palco_no_chromium_sem_janela(job_palco):
             assert pg.evaluate('() => document.querySelectorAll("#palco .fantasma").length') == 0
             assert SELO_PROPOSTA in pg.evaluate('() => document.getElementById("selo-palco").textContent')
             assert SELO_APOIO not in pg.evaluate('() => document.getElementById("palco").textContent')
+            # Nomes esconde as etiquetas e deixa as caixas para o clique; a do escolhido continua (pedido de 11/11)
+            etq = '() => getComputedStyle(document.querySelector("#palco .rotulo .etiqueta")).display'
+            assert pg.evaluate('() => document.getElementById("ver-nomes").getAttribute("aria-pressed")') == 'true'
+            assert pg.evaluate(etq) != 'none'
+            pg.evaluate('() => document.getElementById("ver-nomes").click()')
+            assert pg.evaluate('() => document.getElementById("ver-nomes").getAttribute("aria-pressed")') == 'false'
+            assert pg.evaluate(etq) == 'none'
+            assert pg.evaluate('() => getComputedStyle(document.querySelector("#palco .rotulo")).display') != 'none'
+            pg.evaluate('() => document.querySelector("#palco .rotulo").classList.add("selecionado")')
+            assert pg.evaluate(etq) != 'none'
+            pg.evaluate('() => document.querySelector("#palco .rotulo").classList.remove("selecionado")')
+            pg.evaluate('() => document.getElementById("ver-nomes").click()')
+            assert pg.evaluate(etq) != 'none'
             # ver limpo esconde rotulos e fantasmas
             pg.evaluate('() => document.getElementById("ver-limpo").click()')
             assert pg.evaluate('() => getComputedStyle(document.querySelector("#palco .rotulo")).display') == 'none'

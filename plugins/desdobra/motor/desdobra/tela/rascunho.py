@@ -86,8 +86,13 @@ def origem_gravada(pasta):
 
 def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=None, elementos_da_tela=None):
     """Confere o rascunho mandado pela pagina e grava de forma atomica. ErroRascunho quando ele e de outro job, de
-    outro laudo ou nao segue o esquema. familias_da_tela: {id: [formatos]} das familias que a tela mostra agora (o
-    servidor da tela); com elas, cada familia guarda os formatos de quando o DA mexeu nela (_com_os_formatos).
+    outro laudo, nao segue o esquema, cita um elemento que a mestre da tela nao tem ou um grupo que nao comeca pelo
+    elemento da edicao (desdobra.tela.edicao.ids_conferem, 'edicao') ou leva um elemento a um tamanho fora dos limites
+    da escala (desdobra.tela.edicao.escala_fora, M7b, D3). Essas duas conferencias valem so para a familia com edicao
+    nova, e o tamanho que o rascunho gravado ja tinha fora dos limites passa enquanto nao for para mais longe deles
+    (revisao 1 da fase D): o que ja estava gravado nunca trava o job.
+    familias_da_tela: {id: [formatos]} das familias que a tela mostra
+    agora (o servidor da tela); com elas, cada familia guarda os formatos de quando o DA mexeu nela (_com_os_formatos).
     elementos_da_tela: {id do elemento: [layer_ids]} da mestre que a tela mostra agora; com eles, a quebra de linha
     so cita o elemento que existe e uma camada dele (_conferir_quebras). Devolve o que foi gravado."""
     from desdobra.briefing import modelo
@@ -113,6 +118,19 @@ def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=Non
         contratos.validar(dados, ESQUEMA)
     except contratos.ErroContrato:
         raise ErroRascunho('esquema') from None
+    from desdobra.tela import edicao
+    gravadas = {g: (f.get('edicoes') or []) for g, f in ((anterior or {}).get('familias') or {}).items()}
+    # so a familia com edicao nova passa pela conferencia das edicoes (revisao 1 da fase D): o que ja estava gravado
+    # nunca trava o rascunho inteiro
+    novas = {g: f.get('edicoes') or [] for g, f in familias.items() if (f.get('edicoes') or []) != gravadas.get(g, [])}
+    if not all(edicao.ids_conferem(eds, elementos_da_tela) for eds in novas.values()):
+        # os elementos que existem na mestre da tela, e o grupo (M7b, D1) com o elemento da edicao primeiro, como a
+        # previa confere
+        raise ErroRascunho('edicao')
+    if any(edicao.escala_fora(eds, gravadas.get(g)) for g, eds in novas.items()):
+        # o tamanho de cada elemento entre os limites da escala (M7b, D3), como a previa confere; o tamanho que o
+        # rascunho gravado ja tinha fora deles passa, enquanto nao for para mais longe
+        raise ErroRascunho('escala')
     if any(f.get('quebras') for f in familias.values()):
         # a quebra cita a camada de texto e a posicao no texto de agora: confere contra o laudo
         laudo = _laudo(pasta)

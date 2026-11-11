@@ -94,6 +94,7 @@
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 8h9M8 3.5v9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
           </button>
           <span class="controles-divisor" aria-hidden="true"></span>
+          <button type="button" id="ver-nomes" class="botao-vista" aria-pressed="true" title="Mostra ou esconde o nome de cada elemento no palco. Sem os nomes fica mais fácil clicar quando há muitos elementos juntos. O elemento escolhido continua com o nome.">Nomes</button>
           <button type="button" id="ver-limpo" class="botao-vista" aria-pressed="false">Ver limpo</button>
         </div>
       </div>
@@ -111,15 +112,57 @@
             <button type="button" id="aprovar-quebra" class="botao botao-acento">Aprovar quebra</button>
           </div>
           <div id="barra-edicao" class="barra-edicao" role="toolbar" aria-label="Edição do elemento escolhido" hidden>
-            <p id="elemento-escolhido" class="elemento-escolhido">Clique num elemento do palco para mexer nele.</p>
+            <div class="linha-escolhido">
+              <p id="elemento-escolhido" class="elemento-escolhido">Clique num elemento do palco para mexer nele.</p>
+              <button type="button" id="ed-ajuda" class="botao-ajuda" aria-expanded="false" aria-controls="ed-ajuda-painel">Como editar</button>
+            </div>
+            <div id="ed-ajuda-painel" class="ajuda-painel" role="dialog" aria-labelledby="t-ajuda" hidden>
+              <p id="t-ajuda" class="ajuda-titulo">Como editar</p>
+              <ul class="ajuda-lista">
+                <li>Clique num elemento para escolher. Arraste para mover.</li>
+                <li>Puxe um canto para mudar o tamanho. Para um tamanho exato, digite a porcentagem em Tamanho e aperte Enter.</li>
+                <li>Para mexer em vários juntos, segure Shift e clique em cada um. O botão Escolher vários faz o mesmo.</li>
+                <li>Você também pode arrastar um retângulo em volta dos elementos. Comece o arraste num espaço livre do palco.</li>
+                <li>Para encostar na margem ou centralizar, use os botões de Alinhar.</li>
+                <li>Pelo teclado, as setas movem, + e - mudam o tamanho e Delete apaga.</li>
+                <li>Ctrl+Z ou Desfazer volta a última edição. Esc tira a escolha.</li>
+                <li>Cada mudança vale para todos os arquivos da família.</li>
+              </ul>
+              <button type="button" id="ed-ajuda-fechar" class="botao-vista">Fechar</button>
+            </div>
             <div class="barra-grupo">
+              <button type="button" id="ed-varios" class="botao-vista" aria-pressed="false" title="Com este botão ligado, cada clique põe ou tira um elemento do grupo. Shift+clique faz o mesmo.">Escolher vários</button>
+              <span class="controles-divisor" aria-hidden="true"></span>
               <button type="button" id="ed-diminuir" class="botao-vista" disabled>Diminuir</button>
               <button type="button" id="ed-aumentar" class="botao-vista" disabled>Aumentar</button>
+              <div class="campo-tamanho" role="group" aria-labelledby="t-tamanho">
+                <label id="t-tamanho" for="ed-tamanho" class="barra-rotulo">Tamanho</label>
+                <span class="tamanho-caixa">
+                  <input type="text" id="ed-tamanho" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="8" aria-describedby="ed-mensagem" title="Digite o tamanho em porcentagem e aperte Enter ou Aplicar. 100% é o tamanho antes das suas edições." disabled>
+                  <span class="tamanho-unidade" aria-hidden="true">%</span>
+                </span>
+                <button type="button" id="ed-tamanho-aplicar" class="botao-vista" disabled>Aplicar</button>
+              </div>
               <button type="button" id="ed-texto" class="botao-vista" disabled>Editar texto</button>
               <button type="button" id="ed-quebra" class="botao-vista" aria-pressed="false" aria-controls="editor-quebra" disabled>Quebrar linha</button>
               <button type="button" id="ed-apagar" class="botao-vista" disabled>Apagar</button>
               <span class="controles-divisor" aria-hidden="true"></span>
               <button type="button" id="ed-desfazer" class="botao-vista" disabled>Desfazer</button>
+            </div>
+            <div id="barra-alinhar" class="barra-alinhar" role="group" aria-labelledby="t-alinhar">
+              <span id="t-alinhar" class="barra-rotulo">Alinhar pela</span>
+              <div class="segmentado" role="group" aria-label="Por onde alinhar">
+                <button type="button" id="ed-ref-margem" class="botao-vista" aria-pressed="true" title="A margem de cada arquivo da família.">Margem</button>
+                <button type="button" id="ed-ref-segura" class="botao-vista" aria-pressed="false" disabled title="Os arquivos desta família não têm área segura na folha.">Área segura</button>
+              </div>
+              <span class="controles-divisor" aria-hidden="true"></span>
+              <button type="button" id="ed-al-esquerda" class="botao-vista botao-alinhar" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2v12"/><rect x="5" y="4" width="8" height="3" rx="0.5"/><rect x="5" y="9" width="5" height="3" rx="0.5"/></svg>À esquerda</button>
+              <button type="button" id="ed-al-centro" class="botao-vista botao-alinhar" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12"/><rect x="3.5" y="4" width="9" height="3" rx="0.5"/><rect x="5" y="9" width="6" height="3" rx="0.5"/></svg>Centro da largura</button>
+              <button type="button" id="ed-al-direita" class="botao-vista botao-alinhar" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 2v12"/><rect x="3" y="4" width="8" height="3" rx="0.5"/><rect x="6" y="9" width="5" height="3" rx="0.5"/></svg>À direita</button>
+              <span class="controles-divisor" aria-hidden="true"></span>
+              <button type="button" id="ed-al-topo" class="botao-vista botao-alinhar" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.5h12"/><rect x="4" y="5" width="3" height="8" rx="0.5"/><rect x="9" y="5" width="3" height="5" rx="0.5"/></svg>No topo</button>
+              <button type="button" id="ed-al-meio" class="botao-vista botao-alinhar" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h12"/><rect x="4" y="3.5" width="3" height="9" rx="0.5"/><rect x="9" y="5" width="3" height="6" rx="0.5"/></svg>Meio da altura</button>
+              <button type="button" id="ed-al-base" class="botao-vista botao-alinhar" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12"/><rect x="4" y="3" width="3" height="8" rx="0.5"/><rect x="9" y="6" width="3" height="5" rx="0.5"/></svg>Na base</button>
             </div>
             <p id="ed-mensagem" class="ed-mensagem" role="status" aria-live="polite"></p>
           </div>

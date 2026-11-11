@@ -22,6 +22,10 @@ a mestre, e a regra de cada elemento vai dividida pela escala que o fluxo ja deu
 a regra verdadeira. Depois a variante e conferida contra a mestre verdadeira (quadro, area segura, sobreposicao nova,
 piso da 133, distancia da 135 e a validacao do motor) e ganha avisos, que nunca bloqueiam.
 
+O layout editado pelo DA no palco passa pela mesma conferencia. O piso da 133 ou da 135 que o elemento mexido ou
+escalado pelo DA fura e decisao dele (decisoes_do_da; M7b, D5, pergunta 10 do plano): sai das falhas ("Pede ajuste")
+com o valor a vista. O elemento que o solver mexeu continua falha, e a validacao do motor continua devolvendo o formato.
+
 So previa, em memoria: nada aqui grava arquivo, e o que o "desdobra derivar" grava nao muda (como o motor guarda a
 proposta ainda esta em aberto com o Duda). Origem: o prototipo da galeria de 05/11 (revisado) sobre o fluxo B do
 prototipo aprender-referencias, sem os priors aprendidos.
@@ -54,6 +58,10 @@ ROTULO = {'titulo': 'o título', 'texto_de_apoio': 'o texto', 'cta': 'a chamada'
           'selo': 'o selo', 'logo_de_parceiro': 'os logos', 'grafismo': 'o grafismo', 'sujeito': 'o produto',
           'imagem': 'a imagem', 'fundo': 'o fundo'}
 ROTULO_GERAL = 'o elemento'
+# M7b, D5: os pisos que a decisao do DA fura sem pedir ajuste (133 e 135); o resto das falhas continua falha
+PISOS_DO_DA = ('abaixo_do_piso_da_regra', 'distancia_menor_que_na_mestre')
+# revisao 1 da fase D do M7b: a borda do KV em que o asset acaba, na frase do corte a vista (corte_a_mostra)
+BORDAS_DO_KV = {'esq': 'na borda esquerda', 'topo': 'no topo', 'dir': 'na borda direita', 'base': 'na base'}
 
 
 # ------------------------------------------------------------------ apoio
@@ -580,11 +588,15 @@ def _gerar(cf, vid, forcada=None):
             'eixo_quadro': _eixo_longo(q[2] - q[0], q[3] - q[1])}
 
 
-def _resolver(cf, caixas, sangra):
+def _resolver(cf, caixas, sangra, do_da=()):
     """O fluxo vai ao solver do repositorio como mestre sintetica do tamanho do formato: as caixas do fluxo sao a
     mestre, e a regra de cada elemento vai dividida pela escala que o fluxo deu (o piso da 133 fica relativo a regra
-    verdadeira). Devolve (caixas, nome da obrigatoria que nao fecha ou None); sem fechar, ficam as caixas do fluxo."""
+    verdadeira). do_da: os elementos que o DA mexeu no palco (M7b, D1); a regra deles e o tamanho que o DA deu (escala 1
+    sobre a mestre sintetica), para o encaixe refeito nunca puxar um elemento do grupo para um tamanho e o outro para
+    outro; o piso da 133 contra a regra verdadeira continua na conferencia (conferir_edicao). Devolve (caixas, nome da
+    obrigatoria que nao fecha ou None); sem fechar, ficam as caixas do fluxo."""
     W, H, kv = cf['W'], cf['H'], cf['kv']
+    do_da = set(do_da)
     sint, regras = [], []
     for e in kv['elementos']:
         c, m = caixas[e['id']], e['caixa']
@@ -598,7 +610,7 @@ def _resolver(cf, caixas, sangra):
             x['sangra'] = sangra[e['id']]
         sint.append(x)
         r = cf['regras'][e['id']]
-        regras.append((r / k) if r and k else r)
+        regras.append(1.0 if e['id'] in do_da else ((r / k) if r and k else r))
     try:
         resolvidas, _esc, _r = mod_solver.resolver(sint, (W, H), (W, H), cf['areas'], regras)
     except mod_solver.NaoFecha as ex:
@@ -683,11 +695,11 @@ def sem_elementos(cf, apagados):
     return dict(cf, kv=kv, kv_inteiro=cf.get('kv_inteiro') or cf['kv'])
 
 
-def reencaixar(cf, caixas, sangra, apagados=()):
+def reencaixar(cf, caixas, sangra, apagados=(), do_da=()):
     """O encaixe refeito pelo solver do repositorio depois de uma edicao do DA no palco (desdobra.tela.edicao): as
-    caixas editadas sao a mestre sintetica do formato, como na variante (_resolver). Devolve (caixas, nome da
-    obrigatoria que nao fecha ou None)."""
-    return _resolver(sem_elementos(cf, apagados), caixas, sangra)
+    caixas editadas sao a mestre sintetica do formato, como na variante (_resolver), e os elementos que o DA mexeu
+    (do_da) ficam com o tamanho que ele deu. Devolve (caixas, nome da obrigatoria que nao fecha ou None)."""
+    return _resolver(sem_elementos(cf, apagados), caixas, sangra, do_da)
 
 
 def contexto_do_formato(ctx, kv, formato, *, specs=None, arquivo_specs=None, params=None):
@@ -701,6 +713,77 @@ def conferir_edicao(cf, caixas, sangra, apagados=()):
     """(falhas, avisos, validacoes reprovadas) do layout editado pelo DA, contra a mestre verdadeira; o elemento
     apagado sai da conta e o inventario o registra."""
     return _conferir(sem_elementos(cf, apagados), caixas, sangra, apagados=apagados, com_validacoes=True)
+
+
+def decisoes_do_da(cf, falhas, do_da, do_solver=(), da_partida=()):
+    """(falhas que ficam, decisoes do DA) do layout editado no palco (M7b, D5; pergunta 10 do plano). A falha de piso
+    (PISOS_DO_DA: a escala abaixo do piso da 133, a distancia menor que a da 135) com um elemento que o DA mexeu ou
+    escalou (do_da) e decisao dele, quando nenhum elemento dela foi mexido pelo solver (do_solver): sai das falhas e
+    ganha o texto com o valor a vista. O resto (fora do quadro, area segura, sobreposicao, validacao do motor, solver
+    que nao fecha) continua falha. Revisao 1 da fase D: o piso que a versao de partida ja furava (da_partida: os pares
+    (codigo, elementos ordenados) das falhas dela) continua falha, porque o DA nao o furou; a distancia de duas caixas
+    que se sobrepoem (zero ou menos) tambem, porque a sobreposicao ja pede ajuste e px negativo nao diz nada ao DA. A
+    ordem das listas e a das falhas."""
+    do_da, do_solver = set(do_da), set(do_solver)
+    da_partida = set(da_partida)
+    por_id = {e['id']: e for e in cf['kv']['elementos']}
+    ficam, decisoes = [], []
+    for f in falhas:
+        els = set(f['elementos'])
+        m = f.get('medidas') or {}
+        if f['codigo'] not in PISOS_DO_DA or not els & do_da or els & do_solver or \
+                (f['codigo'], tuple(sorted(els))) in da_partida or \
+                (f['codigo'] == 'distancia_menor_que_na_mestre' and float(m.get('distancia_px', 1)) <= 0):
+            ficam.append(f)
+            continue
+        nomes = [_rotulo(por_id[k]) if k in por_id else ROTULO_GERAL for k in f['elementos']]
+        if f['codigo'] == 'abaixo_do_piso_da_regra':
+            piso = m.get('minimo_da_regra', limites.valor('derivacao.escala_conteudo_min_da_regra'))
+            texto = '%s fica com %d%% da escala prevista. O mínimo é %d%%.' % (
+                _maiuscula(nomes[0]), round(m['fracao_da_regra'] * 100), round(piso * 100))  # numero-neutro: porcentagem
+        else:
+            texto = '%s ficam a %s px um do outro. O KV pede pelo menos %s px.' % (
+                _maiuscula(_juntar(nomes)), _numero(m['distancia_px']), _numero(m['minimo_px']))
+        decisoes.append(dict(f, texto=texto))
+    return ficam, decisoes
+
+
+def corte_a_mostra(cf, falhas, cortes):
+    """As falhas do layout editado no palco com o corte do KV a vista (revisao 1 da fase D do M7b). cortes: {id:
+    [lados]} dos elementos que o DA tirou da borda em que o asset deles acaba no KV (o compositor corta na borda do
+    documento). Cada um ganha a falha corte_a_mostra, com a frase que diz onde estava o corte, no lugar da conferencia
+    generica do motor (validacao_reprova do enquadramento so dele); a validacao obrigatoria continua devolvendo o
+    formato. As outras falhas ficam na ordem delas."""
+    por_id = {e['id']: e for e in cf['kv']['elementos']}
+    ficam = [f for f in falhas if not (f['codigo'] == 'validacao_reprova' and
+                                       (f.get('medidas') or {}).get('validacao') == 'enquadramento' and
+                                       len(f['elementos']) == 1 and f['elementos'][0] in cortes)]
+    for k in sorted(cortes):
+        nome = _rotulo(por_id[k]) if k in por_id else ROTULO_GERAL
+        onde = _juntar([BORDAS_DO_KV[lado] for lado in cortes[k]])
+        ficam.append(_item('corte_a_mostra', '%s acaba %s do KV, onde a imagem foi cortada. Nesta posição, esse corte '
+                           'aparece na peça.' % (_maiuscula(nome), onde), [k], lados=list(cortes[k])))
+    return ficam
+
+
+def fora_da_peca(cf, falhas, ids):
+    """As falhas do layout editado no palco com os elementos que o DA levou inteiros para fora da peca (revisao 2 da
+    fase D do M7b; desdobra.tela.edicao.fora_da_peca). Cada um ganha a falha fora_do_quadro com a frase que diz o que
+    fazer, no lugar da conferencia generica (fora_do_quadro e validacao_reprova do enquadramento so dele); a validacao
+    obrigatoria continua devolvendo o formato. As outras falhas ficam na ordem delas."""
+    if not ids:
+        return falhas
+    por_id = {e['id']: e for e in cf['kv']['elementos']}
+    ids = set(ids)
+    ficam = [f for f in falhas if not (len(f['elementos']) == 1 and f['elementos'][0] in ids and (
+        f['codigo'] == 'fora_do_quadro' or (f['codigo'] == 'validacao_reprova' and
+                                            (f.get('medidas') or {}).get('validacao') == 'enquadramento')))]
+    for k in sorted(ids):
+        nome = _rotulo(por_id[k]) if k in por_id else ROTULO_GERAL
+        varios = nome.split(' ', 1)[0] in ('os', 'as')
+        ficam.append(_item('fora_do_quadro', '%s %s fora do formato e não %s nele. Arraste de volta ou use Apagar.' % (
+            _maiuscula(nome), 'ficaram' if varios else 'ficou', 'aparecem' if varios else 'aparece'), [k]))
+    return ficam
 
 
 def elementos_do_layout(cf, caixas, sangra, apagados=()):
@@ -723,7 +806,10 @@ def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False):
     fora, fora_seg, abaixo, sobre, perto = [], [], [], [], []
     for e in cont:
         c = caixas[e['id']]
-        if c[0] < -tol or c[1] < -tol or c[2] > W + tol or c[3] > H + tol:
+        # o lado que sangra (no KV, ou por decisao do DA no palco, M7b, D4) pode passar da borda: o quadro corta
+        sg = sangra.get(e['id'], e['sangra'])
+        if (c[0] < -tol and not sg['esq']) or (c[1] < -tol and not sg['topo']) or \
+                (c[2] > W + tol and not sg['dir']) or (c[3] > H + tol and not sg['base']):
             fora.append(e)
         if seg is not None and e['classe'] in mod_solver.CLASSES_AREA_SEGURA and (
                 c[0] < seg[0] - tol or c[1] < seg[1] - tol or c[2] > seg[2] + tol or c[3] > seg[3] + tol):
@@ -774,7 +860,7 @@ def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False):
     for e, fr in abaixo:
         falhas.append(_item('abaixo_do_piso_da_regra', '%s fica com %d%% da escala prevista, abaixo do mínimo de %d%%.'
                              % (_maiuscula(_rotulo(e)), round(fr * 100), round(piso * 100)), [e['id']],  # numero-neutro: porcentagem
-                             fracao_da_regra=round(fr, 4)))  # numero-neutro: casas da medida
+                             fracao_da_regra=round(fr, 4), minimo_da_regra=piso))  # numero-neutro: casas da medida
     for a, b in sobre:
         falhas.append(_item('sobreposicao_nova', '%s e %s passam a se sobrepor.' % (_maiuscula(_rotulo(a)), _rotulo(b)),
                              [a['id'], b['id']]))

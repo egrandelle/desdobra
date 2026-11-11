@@ -833,8 +833,8 @@ def test_formato_de_escala_pura_refeito_pelo_solver_diz_regra(job, monkeypatch):
     original = mg.reencaixar
     andou = {}
 
-    def reencaixar(cf, caixas, sangra, apagados=()):
-        novas, falha = original(cf, caixas, sangra, apagados)
+    def reencaixar(cf, caixas, sangra, apagados=(), do_da=()):
+        novas, falha = original(cf, caixas, sangra, apagados, do_da)
         novas = {k: list(v) for k, v in novas.items()}
         logo = next(e['id'] for e in cf['kv']['elementos'] if e['funcao'] == 'logo_principal')
         novas[logo] = [v - 2.0 for v in novas[logo]]  # numero-neutro: o solver tirou o logo do lugar em 2 px

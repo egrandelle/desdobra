@@ -472,10 +472,12 @@ def test_quebra_nao_gravada_nao_e_confirmada_pela_janela(job, modelo):
         pg.evaluate('() => document.querySelector(\'#quebra-linhas button[data-pos="3"]\').click()')
         assert pg.evaluate(JS_LINHAS_DO_CONTROLE) == ['VOX', 'AH']
         tp._esperar(pg, '() => document.documentElement.dataset.rascunho === "erro" ? "1" : ""')
-        # o botao volta quando a previa da quebra volta (revisao 2 do C): so entao o DA pode clicar
-        tp._esperar(pg, '() => document.getElementById("confirmar-familia").disabled ? "" : "1"')
+        # a previa da quebra volta, e o botao continua desligado: a ultima escolha nao foi gravada (revisao 1 da fase
+        # D do M7b). O clique forcado (uma pagina mexida) tenta gravar antes; sem gravar, o ato nao vai
+        tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
+        assert pg.evaluate('() => document.getElementById("confirmar-familia").disabled') is True
         pg.evaluate('() => { document.documentElement.dataset.estadoAto = ""; '
-                    'document.getElementById("confirmar-familia").click(); }')
+                    'const b = document.getElementById("confirmar-familia"); b.disabled = false; b.click(); }')
         # o dialogo aberto e o servidor aceitando o pedido do ato; "erro" e a recusa
         fim = time.monotonic() + 60  # numero-neutro: segundos de teto do teste
         while time.monotonic() < fim:

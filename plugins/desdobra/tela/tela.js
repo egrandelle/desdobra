@@ -23,12 +23,15 @@
    falta seguem a do motor (resolver e pendencias). Indeterminado so vai ao rascunho com a observacao escrita.
    M7a, fatia 4: a composicao e editada por familia, nunca peca a peca (decisoes 167 a 171). No palco, cada elemento
    e um botao: arrastar move, os cantos escalam, as setas movem 1 px (Shift, 10 px), mais e menos escalam, Delete
-   apaga; a barra embaixo do palco tem Diminuir, Aumentar, Editar texto, Apagar e Desfazer. Durante o arraste so o no
+   apaga; a barra embaixo do palco tem Diminuir, Aumentar, o campo Tamanho (M7b, D3: a porcentagem sobre o tamanho
+   antes das edicoes), Editar texto, Apagar e Desfazer. Durante o arraste so o no
    arrastado muda (transform), com uma linha discreta quando uma borda ou um centro encosta no de outro elemento; ao
    soltar, a edicao vai ao motor (/api/familia/previa), que a leva a cada arquivo da familia, alinha o que ficou quase
    igual e refaz o encaixe; o palco e as miniaturas de cada arquivo voltam desenhados. As edicoes e a versao ficam no
    rascunho; "Confirmar familia" e um ato da janela, com a confirmacao nela, e mexer depois volta a pedir a
    confirmacao. O texto editado vale so na familia (decisao 171) e a recusa do motor aparece no proprio editor.
+   M7b, D5: o piso de escala ou de distancia que o elemento mexido pelo DA fura vem da previa em decisoes_do_da e sai
+   com a marca discreta "Decisão do DA", com o valor no texto; "Pede ajuste" fica para o que o DA nao decidiu.
    Revisao do M7a: o passo 1 tem duas escolhas do DA que vao ao rascunho, sem nada marcado: a prancheta de onde a peca
    sai (so no PSD com pranchetas, com a previa de cada uma) e o giro de cada formato (o quarto de volta pede o
    sentido; o que a folha diz do giro aparece so como referencia). As duas mudam o layout: as familias voltam a pedir
@@ -53,6 +56,8 @@
     sangria_da_arte_mudou: 'Sangria muda', conteudo_nao_cabe: 'Conteúdo apertado'
   };
   const MARCA_FALHA = 'Pede ajuste';
+  /* M7b, D5: o piso que o DA furou com a edicao dele; o valor vai no texto, e a marca nao e de alerta */
+  const MARCA_DO_DA = 'Decisão do DA';
   const MARCA_GERAL = 'Atenção';
   const APOIO = 'apoio de desenho, não gravado';
   const SEM_REGRA = 'sem regra';
@@ -108,11 +113,13 @@
   const familiaCss = new Map();
   const previas = new Map();
   const previasSalvas = new Map();
-  const vista = { k: null, limpo: false, formato: null, modelo: null, variante: null, familia: null, grupo: null };
+  const vista = { k: null, limpo: false, nomes: true, formato: null, modelo: null, variante: null, familia: null, grupo: null };
   const metaCsrf = document.querySelector('meta[name="dsd-csrf"]');
   const csrf = metaCsrf ? metaCsrf.content : '';
   const escrita = csrf !== '';
-  const rascunho = { job: null, laudo: null, espera: null, espera_id: null, familias: {} };
+  const rascunho = { job: null, laudo: null, espera: null, espera_id: null, familias: {}, tentativas: 0 };
+  /* revisao 1 da fase D: as esperas antes de cada nova tentativa do rascunho que nao gravou */
+  const REPETIR_RASCUNHO_MS = [1000, 2000, 4000, 8000, 8000];
   /* as escolhas do passo 2 e do Design system, na forma do rascunho (desdobra/tela/funcoes.py) */
   const CAMPOS_P2 = ['funcoes', 'cobertas', 'design', 'design_camadas'];
   const p2 = { funcoes: {}, cobertas: {}, design: {}, design_camadas: {} };
@@ -124,15 +131,32 @@
   const SENTIDOS = [['horario', 'Horário'], ['anti_horario', 'Anti-horário']];
   const TEXTO_RASCUNHO = {
     pronto: 'Suas escolhas ficam salvas no rascunho',
-    pendente: 'Suas escolhas ficam salvas no rascunho',
+    pendente: 'Salvando no rascunho', // revisao 2 da fase D: a mudanca que espera a gravacao nunca parece salva
     salvando: 'Salvando no rascunho',
     salvo: 'Salvo no rascunho',
-    erro: 'Não foi possível salvar a última escolha. Ela continua na tela; tente de novo.',
+    erro: 'Não foi possível salvar a última escolha. Ela continua na tela, e o desdobra tenta de novo sozinho.',
+    erro_parado: 'Não foi possível salvar a última escolha. Ela continua na tela. Faça uma mudança para tentar de novo.',
     outro_laudo: 'O PSD foi lido de novo, e as escolhas antigas ficaram de fora. Comece pelas versões desta leitura.'
   };
   const NOTA_GALERIA_RASCUNHO = 'Escolha uma versão para começar. A escolha fica salva no rascunho.';
   /* edicao por familia (fatia 4) */
-  const ed = { previa: null, pedido: 0, selecionado: null, tecla: 0, arraste: null, esperaQuebra: null };
+  const ed = { previa: null, pedido: 0, selecionado: null, tecla: 0, arraste: null, esperaQuebra: null,
+    /* M7b, D1: os elementos escolhidos juntos (o selecionado e o ultimo deles) e o modo "Escolher vários" */
+    selecao: [], varios: false,
+    /* M7b, D2: por onde alinhar no quadro (a margem ou a area segura de cada arquivo) e o ultimo alinhamento pedido,
+       para a linha no palco e a frase quando a previa volta */
+    referencia: 'margem', alinhou: null,
+    /* revisao 1 da fase D: o tamanho de cada um quando o grupo de tamanhos diferentes foi escolhido (o 100 do campo) */
+    baseGrupo: null };
+  /* M7b, D2: os botoes de alinhar no quadro, o alvo de cada um e a frase depois do alinhamento */
+  const ALINHAR = { 'ed-al-esquerda': 'margem_esquerda', 'ed-al-centro': 'centro_horizontal',
+    'ed-al-direita': 'margem_direita', 'ed-al-topo': 'topo', 'ed-al-meio': 'centro_vertical', 'ed-al-base': 'base' };
+  const FRASE_ALINHAR = { margem_esquerda: 'Encostou à esquerda', centro_horizontal: 'Ficou no centro da largura',
+    margem_direita: 'Encostou à direita', topo: 'Encostou no topo', centro_vertical: 'Ficou no meio da altura',
+    base: 'Encostou na base' };
+  const FRASE_REFERENCIA = { margem: ', pela margem de cada arquivo desta família.',
+    area_segura: ', pela área segura de cada arquivo desta família.' };
+  const RETANGULO_MIN_PX = 3; // retangulo menor que isto, em px da tela, e so um clique
   /* M7b, C3: a quebra de linha mudada pede a previa (e a medida no desdobra) so depois de 300 ms sem clique */
   const ESPERA_QUEBRA_MS = 300;
   const PASSO_SETA = 1;
@@ -142,8 +166,19 @@
   const ESCALA_MIN = 0.05;
   const ALCA = 10; // lado da alca do canto, em px da tela
   const MEIO_PX = 0.5; // arraste menor que isto e so um clique
+  // a folga, em px da peca, do escolhido que chega a borda (a de derivacao.enquadramento_tolerancia_px no desdobra)
+  const BORDA_PX = 0.5;
+  const FRASE_GRUPO_MISTO = 'Os elementos escolhidos têm tamanhos diferentes. Em Tamanho, 100% é o tamanho de cada ' +
+    'um quando você escolheu o grupo.';
+  const APAGAR_SO_UM ='Para apagar, escolha um elemento só. Com vários escolhidos, nenhum é apagado.';
   const FATOR_IGUAL = 0.001;
   const CASAS_FRACAO = 1e6;
+  /* M7b, D3: o tamanho por numero. Os limites vem do desdobra (estado.edicao, tela.escala_min e tela.escala_max); a
+     folga cobre o arredondamento do fator em 6 casas (desdobra.tela.edicao.FOLGA_ESCALA) */
+  const ESCALA_PADRAO = [0.25, 4];
+  const FOLGA_ESCALA = 1e-4;
+  const POR_CENTO = 100;
+  const CASAS_TAMANHO = 10; // o tamanho aparece com uma casa depois da virgula, so quando ela nao e zero
   const CONTEUDO = ['titulo', 'texto_de_apoio', 'cta', 'icone_de_cta', 'url_ou_contato', 'texto_legal',
     'informacao_de_evento', 'destaque_numerico', 'logo_principal', 'assinatura_institucional', 'selo', 'logo_de_parceiro'];
   const SELO_CONFIRMADA = 'Família confirmada';
@@ -205,9 +240,10 @@
       img.src = url;
     }).catch(function () { img.dispatchEvent(new Event('error')); });
   }
-  function enviar(rota, dados) {
+  /* o unico POST da tela. aoFechar (revisao 2 da fase D): o pedido sobrevive ao fechamento da janela (keepalive) */
+  function enviar(rota, dados, aoFechar) {
     return fetch(rota, {
-      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      method: 'POST', credentials: 'same-origin', cache: 'no-store', keepalive: !!aoFechar,
       headers: { 'Content-Type': 'application/json', 'X-Desdobra-CSRF': csrf },
       body: JSON.stringify(dados)
     }).then(function (r) {
@@ -218,10 +254,16 @@
 
   /* ---------------------------------------------------------------- rascunho (decisoes 164 e 167) */
   function marcarRascunho(situacao) {
+    const antes = raiz.dataset.rascunho;
     raiz.dataset.rascunho = situacao;
     const selo = document.getElementById('selo');
-    selo.textContent = TEXTO_RASCUNHO[situacao];
+    selo.textContent = situacao === 'erro' && rascunho.tentativas >= REPETIR_RASCUNHO_MS.length ?
+      TEXTO_RASCUNHO.erro_parado : TEXTO_RASCUNHO[situacao];
     selo.dataset.estado = situacao;
+    // "Confirmar família" segue o rascunho gravado: desliga no erro e volta quando ele grava
+    if ((antes === 'erro') !== (situacao === 'erro') && typeof atualizarBotaoFamilia === 'function' && vista.familia) {
+      atualizarBotaoFamilia();
+    }
   }
   function lerRascunho() {
     if (!escrita) return Promise.resolve(null);
@@ -251,9 +293,25 @@
     const refazer = p2Mudou;
     p2Mudou = false;
     return enviar('/api/rascunho', corpoDoRascunho())
-      .then(function () { if (rascunho.espera_id === null) marcarRascunho('salvo'); })
+      .then(function () {
+        rascunho.tentativas = 0;
+        if (rascunho.espera_id === null) marcarRascunho('salvo');
+      })
       .then(function () { return refazer ? refazerPasso3() : null; })
-      .catch(function () { if (refazer) p2Mudou = true; marcarRascunho('erro'); });
+      .then(function () { return true; })
+      .catch(function () {
+        if (refazer) p2Mudou = true;
+        marcarRascunho('erro');
+        repetirRascunho();
+        return false;
+      });
+  }
+  /* o rascunho que nao gravou (revisao 1 da fase D): a pagina tenta de novo sozinha, com esperas maiores a cada vez;
+     a mudanca nova do DA tambem tenta. Enquanto isso, "Confirmar família" fica desligado */
+  function repetirRascunho() {
+    if (rascunho.espera_id !== null || rascunho.tentativas >= REPETIR_RASCUNHO_MS.length) return;
+    rascunho.espera_id = setTimeout(gravarRascunho, REPETIR_RASCUNHO_MS[rascunho.tentativas]);
+    rascunho.tentativas += 1;
   }
   /* o passo 3 montado de novo com o passo 2 do rascunho: as familias, as previas e o KV do passo 2, sem abrir a tela
      de novo; enquanto o passo 2 nao fecha, o passo 3 espera e diz o que falta */
@@ -329,9 +387,42 @@
     // o briefing salvo deixa de valer para a tela: a mudanca nova pede outro Salvar e seguir
     if (salvoNaTela) { salvoNaTela = false; atualizarSalvar(); }
     clearTimeout(rascunho.espera_id);
-    raiz.dataset.rascunho = 'pendente';
+    rascunho.tentativas = 0; // a mudanca nova tenta de novo, tambem depois das tentativas sozinhas
+    marcarRascunho('pendente');
     rascunho.espera_id = setTimeout(gravarRascunho, rascunho.espera);
   }
+  /* a janela que fecha com o rascunho por gravar (revisao 2 da fase D): a espera, a gravacao em andamento ou a que
+     falhou vao ao servidor na hora, por um pedido que sobrevive ao fechamento (keepalive), com o mesmo cookie, o mesmo
+     cabecalho do CSRF e o mesmo corpo da gravacao de sempre. Quando a ultima gravacao falhou, ou o corpo passa do que
+     o pedido que sobrevive leva, o navegador pergunta antes de fechar */
+  const KEEPALIVE_MAX = 60000; // bytes: o Chromium leva ate 64 KiB nos pedidos que sobrevivem ao fechamento
+  function gravarAoFechar() {
+    const situacao = raiz.dataset.rascunho;
+    if (!escrita || rascunho.espera === null || rascunho.fechando ||
+        (situacao !== 'pendente' && situacao !== 'salvando' && situacao !== 'erro')) return true;
+    rascunho.fechando = true; // beforeunload e pagehide: um pedido so
+    clearTimeout(rascunho.espera_id);
+    rascunho.espera_id = null;
+    const corpo = corpoDoRascunho();
+    if (JSON.stringify(corpo).length > KEEPALIVE_MAX) return false;
+    try {
+      enviar('/api/rascunho', corpo, true).catch(function () { return null; });
+    } catch (e) {
+      return false;
+    }
+    if (situacao === 'erro') return false;
+    raiz.dataset.rascunho = 'salvando';
+    return true;
+  }
+  window.addEventListener('beforeunload', function (ev) {
+    if (gravarAoFechar()) return;
+    // o DA pode ficar na pagina: as tentativas sozinhas continuam, e a proxima vez que ele fechar manda de novo
+    rascunho.fechando = false;
+    repetirRascunho();
+    ev.preventDefault();
+    ev.returnValue = '';
+  });
+  window.addEventListener('pagehide', function () { gravarAoFechar(); });
   function escolherNoRascunho(vid) {
     if (!escrita || !vista.familia) return;
     const f = rascunho.familias[vista.familia] || { versao: null, confirmada: false, edicoes: [] };
@@ -466,10 +557,15 @@
   }
   function pedirAto(nome, dados) {
     raiz.dataset.estadoAto = '';
-    // o rascunho que espera vai antes: o ato confirma o que esta gravado
-    let antes = Promise.resolve();
-    if (rascunho.espera_id !== null) { clearTimeout(rascunho.espera_id); antes = gravarRascunho(); }
-    return antes.then(function () {
+    // o rascunho que espera, ou que nao gravou, vai antes: o ato confirma o que esta gravado. Sem gravar, o ato nao
+    // vai (revisao 1 da fase D)
+    let antes = Promise.resolve(true);
+    if (rascunho.espera_id !== null || raiz.dataset.rascunho === 'erro') {
+      clearTimeout(rascunho.espera_id);
+      antes = gravarRascunho();
+    }
+    return antes.then(function (gravou) {
+      if (gravou === false) throw new Error('rascunho');
       return enviar('/api/ato/pedir', { ato: nome, dados: comVista(nome, dados || {}) });
     }).then(function (p) {
       return confirmarNaJanela(p).then(function (sim) {
@@ -1610,6 +1706,7 @@
     mostrarAvisoDaFamilia(g);
     ed.previa = null;
     ed.selecionado = null;
+    ed.selecao = [];
     fecharEditorTexto();
     fecharControle();
     mostrarProposta();
@@ -1664,6 +1761,9 @@
     const marcas = [];
     if (v.falhas && v.falhas.length) {
       marcas.push([MARCA_FALHA, v.falhas.map(function (f) { return f.texto; }).join(' '), 'forte']);
+    }
+    if (v.decisoes_do_da && v.decisoes_do_da.length) {
+      marcas.push([MARCA_DO_DA, v.decisoes_do_da.map(function (f) { return f.texto; }).join(' '), 'do-da']);
     }
     (v.avisos || []).forEach(function (a) { marcas.push([MARCAS[a.codigo] || MARCA_GERAL, a.texto, '']); });
     return marcas;
@@ -1740,6 +1840,8 @@
   }
 
   /* ---------------------------------------------------------------- palco */
+  /* o nome curto do elemento: o da camada, ou a funcao sem ele */
+  function nomeCurto(e) { return e.nome || nomeFuncao(e.funcao); }
   function rotuloElemento(e) {
     const partes = [nomeFuncao(e.funcao)];
     if (e.nome) partes.push(e.nome);
@@ -1820,7 +1922,10 @@
       aviso.appendChild(el('span', 'Hachurado: ' + APOIO));
       area.appendChild(aviso);
     }
-    if (area.id === 'palco') area.classList.toggle('limpo', vista.limpo);
+    if (area.id === 'palco') {
+      area.classList.toggle('limpo', vista.limpo);
+      area.classList.toggle('sem-nomes', !vista.nomes);
+    }
     const medida = document.getElementById('medida-palco');
     function ajustar() {
       if (mini) {
@@ -1974,7 +2079,12 @@
   function familiaConfirmada() { const f = rascunho.familias[vista.familia]; return !!(f && f.confirmada); }
   function editavel() { return escrita && rascunho.espera !== null && !!vista.familia; }
   function fracao(v) { return Math.round(v * CASAS_FRACAO) / CASAS_FRACAO; }
-  function mensagem(texto) { document.getElementById('ed-mensagem').textContent = texto || ''; }
+  function mensagem(texto, erro) {
+    const no = document.getElementById('ed-mensagem');
+    no.textContent = texto || '';
+    no.title = texto || ''; // a frase que passa da altura da linha termina em reticencias: inteira no title
+    no.classList.toggle('erro', !!erro);
+  }
   function modeloDoPalco() { const g = mundos.get(document.getElementById('palco')); return g ? g.modelo : null; }
   function elementoDoPalco(id) {
     const m = modeloDoPalco();
@@ -2059,12 +2169,22 @@
     ed.focar = false;
     const quem = ed.ultimaEdicao;
     ed.ultimaEdicao = null;
+    const alinhou = ed.alinhou;
+    ed.alinhou = null;
+    const tamanho = ed.fraseTamanho;
+    ed.fraseTamanho = null;
     return desenharPalco(area, m.palco, { usarVista: true, editavel: true }).then(function () {
       if (comEdicoes()) descreverMembro(m);
       atualizarSelo();
       marcarSelecao();
       atualizarBarra();
-      if (quem) mostrarAlinhamento(area, r, quem);
+      if (alinhou) mostrarNoQuadro(area, r, alinhou);
+      else if (quem) mostrarAlinhamento(area, r, quem);
+      // o tamanho digitado (M7b, D3): a frase vem antes da do alinhamento, quando ele encostou em outro elemento
+      if (tamanho) {
+        const depois = document.getElementById('ed-mensagem').textContent;
+        mensagem(tamanho + (depois && depois !== tamanho ? ' ' + depois : ''));
+      }
       if (focar && ed.selecionado) {
         const alvo = area.querySelector('.rotulo[data-elemento="' + ed.selecionado + '"]');
         if (alvo) alvo.focus();
@@ -2100,7 +2220,7 @@
     no.hidden = false;
     no.appendChild(el('span', 'Com as suas edições', 'var-numero'));
     no.appendChild(el('span', 'Cada edição vale para todos os arquivos desta família.', 'var-palco-descricao'));
-    marcasDa({ falhas: m.falhas, avisos: m.avisos }).forEach(function (x) {
+    marcasDa({ falhas: m.falhas, decisoes_do_da: m.decisoes_do_da, avisos: m.avisos }).forEach(function (x) {
       no.appendChild(el('span', x[1], 'var-palco-aviso' + (x[2] ? ' ' + x[2] : '')));
     });
   }
@@ -2119,7 +2239,7 @@
       b.style.animationDelay = (i * 35) + 'ms';
       b.setAttribute('aria-pressed', m.formato === vista.formato ? 'true' : 'false');
       b.setAttribute('aria-label', m.formato + ', ' + dimensao(m.palco.largura, m.palco.altura) +
-        (m.falhas.length ? ', pede ajuste' : ''));
+        (m.falhas.length ? ', pede ajuste' : '') + (decisoes(m).length ? ', decisão do DA' : ''));
       const quadro = el('div', null, 'membro-quadro');
       const mini = el('div', null, 'mini-palco');
       caixaMini(mini, m.palco.largura, m.palco.altura, MINI_MEMBRO.largura, MINI_MEMBRO.altura);
@@ -2132,12 +2252,19 @@
         s.title = m.falhas.map(function (f) { return f.texto; }).join(' ');
         b.appendChild(s);
       }
+      if (decisoes(m).length) {
+        const s = el('span', MARCA_DO_DA, 'marca-aviso do-da');
+        s.title = decisoes(m).map(function (f) { return f.texto; }).join(' ');
+        b.appendChild(s);
+      }
       b.addEventListener('click', function () { mostrarFormato(m.formato); });
       lista.appendChild(b);
       desenharPalco(mini, m.palco, { miniatura: true });
     });
   }
   function nomes(lista) { return lista.map(function (x) { return x.nome || 'sem nome'; }).join(', '); }
+  /* o piso que o DA furou no membro (M7b, D5); a previa sem o campo nao tem decisao */
+  function decisoes(m) { return m.decisoes_do_da || []; }
   function montarResumo(r) {
     const partes = [];
     if (r.textos_editados.length) partes.push('Texto editado nesta família: ' + nomes(r.textos_editados) + '.');
@@ -2166,18 +2293,22 @@
     // a previa da ultima mudanca ainda nao voltou (revisao 2 do C): o DA confirma a familia que viu, e a quebra que o
     // texto editado ganha na largura da caixa so vira proposta quando a previa volta
     const semPrevia = esperandoPrevia();
+    // o rascunho que nao gravou (revisao 1 da fase D): a familia confirmada seria a gravada antes, sem a ultima escolha
+    const semGravar = raiz.dataset.rascunho === 'erro';
     b.textContent = conf ? SELO_CONFIRMADA : 'Confirmar família';
-    b.disabled = conf || semEscolha || semSpec || semQuebra || semPrevia;
+    b.disabled = conf || semEscolha || semSpec || semQuebra || semPrevia || semGravar;
     b.title = semSpecProprio ? FAMILIA_SEM_SPEC : (semSpecDaMestre ? FAMILIA_SEM_SPEC_DA_MESTRE :
       (semEscolha ? 'Escolha uma versão na galeria antes de confirmar a família.' : (semQuebra ? QUEBRA_SEM_APROVAR :
-        (semPrevia ? FAMILIA_ESPERA_PREVIA : ''))));
+        (semPrevia ? FAMILIA_ESPERA_PREVIA : (semGravar ? FAMILIA_SEM_GRAVAR : '')))));
     b.dataset.ato = 'familia';
     b.dataset.dados = JSON.stringify({ familia: vista.familia, versao: versao });
   }
+  /* a lista do grupo de uma edicao (M7b, D1), em texto, para comparar duas edicoes */
+  function grupoDe(e) { return JSON.stringify(e.elementos || [e.elemento]); }
   function novaEdicao(e, juntar) {
     const f = familiaAtual();
     const ult = f.edicoes[f.edicoes.length - 1];
-    if (juntar && ult && ult.acao === 'mover' && e.acao === 'mover' && ult.elemento === e.elemento) {
+    if (juntar && ult && ult.acao === 'mover' && e.acao === 'mover' && grupoDe(ult) === grupoDe(e)) {
       ult.dx = fracao(ult.dx + e.dx);
       ult.dy = fracao(ult.dy + e.dy);
     } else {
@@ -2192,17 +2323,226 @@
     atualizarBotaoFamilia();
     return pedirPrevia();
   }
-  function moverPor(id, dx, dy, juntar) {
-    const m = modeloDoPalco();
-    return novaEdicao({ elemento: id, acao: 'mover', dx: fracao(dx / m.largura), dy: fracao(dy / m.altura) }, juntar);
+  /* a edicao de um elemento, ou do grupo (M7b, D1): com dois ou mais, a lista vai junto e o primeiro e o elemento.
+     No escalar do grupo, fx e fy sao fracoes da caixa que junta o grupo, e cada arquivo da familia escala o grupo em
+     volta do mesmo ponto dele */
+  function edicaoDe(ids, acao) {
+    const lista = [].concat(ids);
+    const e = { elemento: lista[0], acao: acao };
+    if (lista.length > 1) e.elementos = lista;
+    return e;
   }
-  function escalarPor(id, fator, fx, fy) {
-    const e = { elemento: id, acao: 'escalar', fator: fracao(fator) };
+  function moverPor(ids, dx, dy, juntar) {
+    const m = modeloDoPalco();
+    const e = edicaoDe(ids, 'mover');
+    e.dx = fracao(dx / m.largura);
+    e.dy = fracao(dy / m.altura);
+    return novaEdicao(e, juntar);
+  }
+  /* o fator para no limite do tamanho (M7b, D3): Diminuir, Aumentar, + e - e o canto nunca passam dele. Sem espaco
+     para mexer, nada e gravado e a tela diz por que */
+  /* o ponto fixo de Tamanho, Diminuir, Aumentar e + e - (revisao 1 da fase D): o meio do escolhido, menos no lado em
+     que ele chega a borda da peca no arquivo do palco. Ali ele fica preso a borda: o circulo que sangra na base muda
+     de tamanho sem sair dela, e o corte que ele tinha no KV nunca aparece. undefined: o meio nos dois eixos */
+  function pontoFixo(ids) {
+    const m = modeloDoPalco();
+    if (!m) return undefined;
+    const c = caixaDoGrupo(ids);
+    const lado = function (a, b, total) {
+      const antes = a <= BORDA_PX;
+      const depois = b >= total - BORDA_PX;
+      return antes && !depois ? 0 : (depois && !antes ? 1 : 0.5);
+    };
+    const fx = lado(c[0], c[2], m.largura);
+    const fy = lado(c[1], c[3], m.altura);
+    return fx === 0.5 && fy === 0.5 ? undefined : [fx, fy];
+  }
+  function escalarNoLugar(ids, fator) {
+    const p = pontoFixo(ids);
+    return p ? escalarPor(ids, fator, p[0], p[1]) : escalarPor(ids, fator);
+  }
+  function escalarPor(ids, fator, fx, fy) {
+    if (!ids || ![].concat(ids).length) return null;
+    const faixa = faixaDoFator([].concat(ids));
+    const f = Math.min(faixa[1], Math.max(faixa[0], fator));
+    if (Math.abs(f - 1) <= FATOR_IGUAL) {
+      ed.focar = false;
+      mensagem(fraseDoLimite(fator > 1));
+      atualizarBarra();
+      return null;
+    }
+    const e = edicaoDe(ids, 'escalar');
+    e.fator = fracao(f);
     if (fx !== undefined) { e.fx = fx; e.fy = fy; }
     return novaEdicao(e, false);
   }
+  /* ------------------------------------------------ o tamanho por numero (M7b, D3)
+     O tamanho de cada elemento e a conta dos fatores das edicoes de escalar que o levam, sozinho ou no grupo, como o
+     desdobra faz (desdobra.tela.edicao.escalas): 100% e o tamanho antes das edicoes do DA. O campo Tamanho mostra o
+     tamanho do escolhido, ou do grupo quando todos tem o mesmo; o numero digitado vira um escalar so, o que leva do
+     tamanho de agora ao digitado. No grupo com tamanhos diferentes, o numero muda o tamanho de agora de cada um. */
+  function limitesEscala() {
+    const e = estado.edicao || {};
+    return [typeof e.escala_min === 'number' ? e.escala_min : ESCALA_PADRAO[0],
+      typeof e.escala_max === 'number' ? e.escala_max : ESCALA_PADRAO[1]];
+  }
+  function membrosDa(e) { return e.elementos || [e.elemento]; }
+  function tamanhoDe(id) {
+    let s = 1;
+    edicoesDa().forEach(function (e) {
+      if (e.acao === 'apagar' && e.elemento === id) s = 1;
+      else if (e.acao === 'escalar' && membrosDa(e).indexOf(id) >= 0) s *= e.fator;
+    });
+    return s;
+  }
+  /* o tamanho comum dos escolhidos, ou null quando eles tem tamanhos diferentes */
+  function tamanhoDaSelecao(ids) {
+    if (!ids.length) return null;
+    const s = tamanhoDe(ids[0]);
+    return ids.every(function (i) { return Math.abs(tamanhoDe(i) - s) <= s * FOLGA_ESCALA; }) ? s : null;
+  }
+  /* no grupo com tamanhos diferentes (revisao 1 da fase D), o campo mostra o tamanho do grupo desde que ele foi
+     escolhido: 100 no comeco. O numero digitado e esse tamanho, como no elemento so: digitar o mesmo numero de novo
+     nao grava nada, e o campo mostra o numero que vale agora */
+  function baseDoGrupo(ids) {
+    const chave = ids.join(' ');
+    if (!ed.baseGrupo || ed.baseGrupo.chave !== chave) {
+      const t = {};
+      ids.forEach(function (i) { t[i] = tamanhoDe(i); });
+      ed.baseGrupo = { chave: chave, tamanhos: t };
+    }
+    return ed.baseGrupo.tamanhos;
+  }
+  function tamanhoDoGrupo(ids) {
+    const base = baseDoGrupo(ids);
+    const r = tamanhoDe(ids[0]) / base[ids[0]];
+    if (ids.every(function (i) { return Math.abs(tamanhoDe(i) / base[i] - r) <= r * FOLGA_ESCALA; })) return r;
+    ed.baseGrupo = null; // um do grupo mudou sozinho: o tamanho de agora volta a ser 100
+    baseDoGrupo(ids);
+    return 1;
+  }
+  /* [menor, maior] fator que deixa cada escolhido dentro dos limites do tamanho */
+  function faixaDoFator(ids) {
+    const lim = limitesEscala();
+    let fmin = 0;
+    let fmax = Infinity;
+    ids.forEach(function (i) {
+      const s = tamanhoDe(i);
+      fmin = Math.max(fmin, lim[0] / s);
+      fmax = Math.min(fmax, lim[1] / s);
+    });
+    return [fmin, fmax];
+  }
+  function porcento(v) { return String(Math.round(v * CASAS_TAMANHO) / CASAS_TAMANHO).replace('.', ','); }
+  function fraseDaFaixa() {
+    const lim = limitesEscala();
+    return 'O tamanho vai de ' + porcento(lim[0] * POR_CENTO) + '% a ' + porcento(lim[1] * POR_CENTO) + '%.';
+  }
+  function fraseDoLimite(maior) {
+    return (maior ? 'Chegou ao maior tamanho. ' : 'Chegou ao menor tamanho. ') + fraseDaFaixa();
+  }
+  /* o numero digitado: aceita virgula ou ponto e o % no fim; null sem numero */
+  function lerPorcentagem(texto) {
+    const t = String(texto || '').replace(/%/g, '').replace(/\s+/g, '').replace(',', '.');
+    if (!/^\d+(\.\d+)?$/.test(t) && !/^\.\d+$/.test(t)) return null;
+    return parseFloat(t);
+  }
+  function campoTamanho() { return document.getElementById('ed-tamanho'); }
+  function errarTamanho(texto) {
+    const campo = campoTamanho();
+    campo.setAttribute('aria-invalid', 'true');
+    mensagem(texto, true);
+    campo.focus();
+    campo.select();
+  }
+  function aplicarTamanho() {
+    const ids = escolhidos();
+    const campo = campoTamanho();
+    if (!ids.length || campo.disabled) return null;
+    const v = lerPorcentagem(campo.value);
+    const lim = limitesEscala();
+    if (v === null) { errarTamanho('Digite o tamanho em número, por exemplo 155. ' + fraseDaFaixa()); return null; }
+    const alvo = v / POR_CENTO;
+    const atual = tamanhoDaSelecao(ids);
+    // o limite vale para o tamanho de cada elemento: no grupo de tamanhos diferentes, o numero e relativo ao grupo e
+    // a conta e a de cada um, mais abaixo (revisao 2 da fase D)
+    if (atual !== null && (alvo < lim[0] * (1 - FOLGA_ESCALA) || alvo > lim[1] * (1 + FOLGA_ESCALA))) {
+      errarTamanho(fraseDaFaixa() + ' Digite um número nesse intervalo.');
+      return null;
+    }
+    const fator = alvo / (atual === null ? tamanhoDoGrupo(ids) : atual);
+    if (atual === null) {
+      // tamanhos diferentes: o numero e o tamanho do grupo desde que ele foi escolhido, e nenhum pode passar do limite
+      const faixa = faixaDoFator(ids);
+      if (fator < faixa[0] * (1 - FOLGA_ESCALA) || fator > faixa[1] * (1 + FOLGA_ESCALA)) {
+        errarTamanho('Com esse número, um dos elementos escolhidos passaria do limite. ' + fraseDaFaixa());
+        return null;
+      }
+    }
+    campo.removeAttribute('aria-invalid');
+    delete campo.dataset.sujo;
+    if (Math.abs(fator - 1) <= FOLGA_ESCALA) {
+      mostrarTamanho(ids);
+      mensagem('O tamanho já é este.');
+      return null;
+    }
+    ed.fraseTamanho = atual === null ?
+      'Os elementos escolhidos têm tamanhos diferentes. Cada um ficou com ' + porcento(v) +
+        '% do tamanho que tinha quando você escolheu o grupo.' :
+      'O tamanho ficou em ' + porcento(v) + '% em todos os arquivos desta família. 100% é o tamanho antes das suas edições.';
+    campo.value = porcento(v);
+    const e = edicaoDe(ids, 'escalar');
+    e.fator = fracao(fator);
+    const p = pontoFixo(ids);
+    if (p) { e.fx = p[0]; e.fy = p[1]; }
+    return novaEdicao(e, false);
+  }
+  /* o campo mostra o tamanho dos escolhidos; o numero que o DA esta digitando fica ate ele aplicar ou trocar a escolha */
+  function mostrarTamanho(ids) {
+    const campo = campoTamanho();
+    const aplicar = document.getElementById('ed-tamanho-aplicar');
+    const chave = ids.join(' ');
+    if (campo.dataset.escolha !== chave) { delete campo.dataset.sujo; campo.removeAttribute('aria-invalid'); }
+    campo.dataset.escolha = chave;
+    campo.disabled = !ids.length;
+    aplicar.disabled = !ids.length;
+    if (!ids.length) { campo.value = ''; campo.placeholder = ''; return; }
+    const s = tamanhoDaSelecao(ids);
+    campo.placeholder = '';
+    campo.title = s === null ? FRASE_GRUPO_MISTO :
+      'Digite o tamanho em porcentagem e aperte Enter ou Aplicar. 100% é o tamanho antes das suas edições.';
+    if (!campo.dataset.sujo) campo.value = porcento((s === null ? tamanhoDoGrupo(ids) : s) * POR_CENTO);
+  }
+  /* M7b, D2: o elemento escolhido, ou o grupo, encosta na linha do quadro de cada arquivo da familia (a margem dele ou
+     a area segura dele); o desdobra faz a conta em cada arquivo, e a previa volta com o resultado */
+  function alinharNoQuadro(ids, alvo) {
+    if (!ids || ![].concat(ids).length) return null;
+    const e = edicaoDe(ids, 'alinhar');
+    e.alvo = alvo;
+    e.referencia = ed.referencia;
+    ed.alinhou = { elemento: e.elemento, alvo: alvo, referencia: e.referencia };
+    return novaEdicao(e, false);
+  }
+  /* depois da previa: a linha do quadro onde o bloco encostou fica no palco, e a tela diz o que aconteceu */
+  function mostrarNoQuadro(area, r, pedido) {
+    const g = mundos.get(area);
+    if (!g) return;
+    const feito = (r.no_quadro || []).find(function (a) {
+      return a.formato === vista.formato && a.alvo === pedido.alvo && a.elementos.indexOf(pedido.elemento) >= 0;
+    });
+    if (!feito) return;
+    const melhor = { x: null, y: null };
+    melhor[feito.eixo] = { valor: feito.valor };
+    guias(g, melhor, g.modelo);
+    mensagem(FRASE_ALINHAR[pedido.alvo] + FRASE_REFERENCIA[pedido.referencia]);
+  }
+  function escolherReferencia(ref) {
+    ed.referencia = ref;
+    atualizarBarra();
+  }
   function apagar(id) {
     ed.selecionado = null;
+    ed.selecao = [];
     fecharControle();
     tirarQuebra(id); // o texto apagado nao tem mais linha para quebrar
     marcarQuebrasNoPalco();
@@ -2226,45 +2566,127 @@
   /* ------------------------------------------------ escolha, arraste e teclado no palco */
   function selecionarElemento(id) {
     ed.selecionado = id;
+    ed.selecao = id ? [id] : [];
     fecharEditorTexto();
     // o controle da quebra aberto segue o texto escolhido, e fecha no elemento sem texto para quebrar
     if (controleAberto()) { if (id && textoDaQuebra(id)) desenharControle(null); else fecharControle(); }
     marcarSelecao();
     atualizarBarra();
   }
+  /* M7b, D1: os escolhidos que estao no palco agora (o elemento apagado sai) e o grupo, com dois ou mais */
+  function escolhidos() { return ed.selecao.filter(function (id) { return !!elementoDoPalco(id); }); }
+  function emGrupo() { return escolhidos().length > 1; }
+  function caixaDoGrupo(ids) {
+    const cs = ids.map(function (id) { return elementoDoPalco(id).caixa; });
+    return [Math.min.apply(null, cs.map(function (c) { return c[0]; })), Math.min.apply(null, cs.map(function (c) { return c[1]; })),
+      Math.max.apply(null, cs.map(function (c) { return c[2]; })), Math.max.apply(null, cs.map(function (c) { return c[3]; }))];
+  }
+  /* o grupo muda de uma vez: Shift+clique, o modo "Escolher vários" ou o retangulo. Texto e quebra sao de um
+     elemento so, entao o editor e o controle fecham com o grupo */
+  function escolherVarios(ids) {
+    ed.selecao = ids.slice();
+    ed.selecionado = ids.length ? ids[ids.length - 1] : null;
+    if (ids.length > 1) {
+      fecharEditorTexto();
+      fecharControle();
+      ed.baseGrupo = null; // o grupo novo comeca em 100 no campo Tamanho
+      mensagem('Os ' + ids.length + ' elementos escolhidos andam e mudam de tamanho juntos, em volta do mesmo ponto.' +
+        (tamanhoDaSelecao(ids) === null ? ' ' + FRASE_GRUPO_MISTO : ''));
+    }
+    marcarSelecao();
+    atualizarBarra();
+  }
+  function alternarNaSelecao(id) {
+    const ids = escolhidos();
+    const i = ids.indexOf(id);
+    if (i >= 0) ids.splice(i, 1); else ids.push(id);
+    escolherVarios(ids);
+  }
+  function alcas(no, lado) {
+    [['nw', 0, 0], ['ne', 1, 0], ['sw', 0, 1], ['se', 1, 1]].forEach(function (c) {
+      const a = el('span', null, 'alca');
+      a.dataset.canto = c[0];
+      a.setAttribute('aria-hidden', 'true');
+      a.style.width = lado + 'px';
+      a.style.height = lado + 'px';
+      a.style.left = (c[1] * 100) + '%';
+      a.style.top = (c[2] * 100) + '%';
+      a.style.margin = (-lado / 2) + 'px 0 0 ' + (-lado / 2) + 'px';
+      no.appendChild(a);
+    });
+  }
   function marcarSelecao() {
     const area = document.getElementById('palco');
     const g = mundos.get(area);
-    area.querySelectorAll('.alca').forEach(function (a) { a.remove(); });
+    area.querySelectorAll('.alca, .caixa-grupo').forEach(function (a) { a.remove(); });
+    const ids = escolhidos();
     area.querySelectorAll('.rotulo.editavel').forEach(function (r) {
-      const sim = r.dataset.elemento === ed.selecionado;
+      const sim = ids.indexOf(r.dataset.elemento) >= 0;
       r.classList.toggle('selecionado', sim);
+      r.classList.toggle('no-grupo', sim && ids.length > 1);
       r.setAttribute('aria-pressed', sim ? 'true' : 'false');
-      if (!sim || !g) return;
-      const lado = ALCA / g.k();
-      [['nw', 0, 0], ['ne', 1, 0], ['sw', 0, 1], ['se', 1, 1]].forEach(function (c) {
-        const a = el('span', null, 'alca');
-        a.dataset.canto = c[0];
-        a.setAttribute('aria-hidden', 'true');
-        a.style.width = lado + 'px';
-        a.style.height = lado + 'px';
-        a.style.left = (c[1] * 100) + '%';
-        a.style.top = (c[2] * 100) + '%';
-        a.style.margin = (-lado / 2) + 'px 0 0 ' + (-lado / 2) + 'px';
-        r.appendChild(a);
-      });
+      if (sim && g && ids.length === 1) alcas(r, ALCA / g.k());
     });
+    // o grupo: uma caixa so em volta dos escolhidos, com os cantos para mudar o tamanho de todos juntos
+    if (g && ids.length > 1) {
+      const caixa = el('div', null, 'caixa-grupo');
+      caixa.setAttribute('aria-hidden', 'true');
+      caixa.style.setProperty('--k', String(1 / (g.k() || 1))); // a linha fica com a mesma espessura na tela
+      g.pos(caixa, caixaDoGrupo(ids));
+      alcas(caixa, ALCA / g.k());
+      g.mundo.appendChild(caixa);
+    }
+  }
+  /* revisao 2 da fase D: a linha do nome cabe numa linha em qualquer janela; todos os gestos ficam na lista de
+     "Como editar" (tela.html, #ed-ajuda-painel), que abre por cima do palco */
+  const AJUDA_PALCO = 'Clique num elemento do palco para mexer nele. Os outros jeitos de editar estão em Como editar.';
+  function abrirAjuda(abrir) {
+    const painel = document.getElementById('ed-ajuda-painel');
+    const botao = document.getElementById('ed-ajuda');
+    painel.hidden = !abrir;
+    botao.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+    if (abrir) document.getElementById('ed-ajuda-fechar').focus();
   }
   function atualizarBarra() {
-    const e = ed.selecionado ? elementoDoPalco(ed.selecionado) : null;
-    if (ed.selecionado && !e) ed.selecionado = null;
-    document.getElementById('elemento-escolhido').textContent = e ? 'Escolhido: ' + rotuloElemento(e) :
-      'Clique num elemento do palco para mexer nele: arraste para mover, puxe um canto para mudar o tamanho, use as ' +
-      'setas, + e - ou Delete pelo teclado e Ctrl+Z para desfazer. Cada mudança vale para a família inteira.';
-    ['ed-diminuir', 'ed-aumentar', 'ed-apagar'].forEach(function (i) { document.getElementById(i).disabled = !e; });
+    const ids = escolhidos();
+    if (ed.selecionado && ids.indexOf(ed.selecionado) < 0) ed.selecionado = ids.length ? ids[ids.length - 1] : null;
+    ed.selecao = ids;
+    const e = ids.length === 1 ? elementoDoPalco(ids[0]) : null;
+    const no = document.getElementById('elemento-escolhido');
+    if (ids.length > 1) {
+      // o grupo pelos nomes curtos, para caber inteiro numa linha (revisao 1 da fase D); o rotulo completo fica no
+      // title e na etiqueta de cada um no palco
+      no.textContent = 'Escolhidos juntos: ' + ids.length + ' elementos (' +
+        ids.map(function (i) { return nomeCurto(elementoDoPalco(i)); }).join(', ') + ')';
+      no.title = ids.map(function (i) { return rotuloElemento(elementoDoPalco(i)); }).join('; ');
+    } else {
+      no.textContent = e ? 'Escolhido: ' + rotuloElemento(e) : AJUDA_PALCO;
+      no.title = no.textContent;
+    }
+    // Diminuir e Aumentar desligam no limite do tamanho; o campo Tamanho mostra o tamanho dos escolhidos (M7b, D3)
+    const faixa = faixaDoFator(ids);
+    document.getElementById('ed-diminuir').disabled = !ids.length || faixa[0] >= 1 - FATOR_IGUAL;
+    document.getElementById('ed-aumentar').disabled = !ids.length || faixa[1] <= 1 + FATOR_IGUAL;
+    mostrarTamanho(ids);
+    // apagar, texto e quebra sao de um elemento so
+    const botaoApagar = document.getElementById('ed-apagar');
+    botaoApagar.disabled = !e;
+    botaoApagar.title = ids.length > 1 ? APAGAR_SO_UM : '';
     document.getElementById('ed-texto').disabled = !e || pecasDeTexto(e.id).length !== 1;
     document.getElementById('ed-quebra').disabled = !e || !textoDaQuebra(e.id);
     document.getElementById('ed-desfazer').disabled = !edicoesDa().length;
+    const varios = document.getElementById('ed-varios');
+    varios.setAttribute('aria-pressed', ed.varios ? 'true' : 'false');
+    // alinhar no quadro (M7b, D2) vale para o elemento ou para o grupo; a area segura so com area segura na folha
+    Object.keys(ALINHAR).forEach(function (i) { document.getElementById(i).disabled = !ids.length; });
+    const comSegura = !!(ed.previa && ed.previa.membros.some(function (x) { return x.quadro && x.quadro.area_segura; }));
+    if (!comSegura && ed.referencia === 'area_segura') ed.referencia = 'margem';
+    const segura = document.getElementById('ed-ref-segura');
+    segura.disabled = !comSegura;
+    segura.title = comSegura ? 'A área segura de cada arquivo da família, pela folha.' :
+      'Os arquivos desta família não têm área segura na folha.';
+    segura.setAttribute('aria-pressed', ed.referencia === 'area_segura' ? 'true' : 'false');
+    document.getElementById('ed-ref-margem').setAttribute('aria-pressed', ed.referencia === 'margem' ? 'true' : 'false');
   }
   function nosDoElemento(area, id) {
     return Array.from(area.querySelectorAll('.recorte[data-elemento="' + id + '"], .rotulo[data-elemento="' + id + '"]'));
@@ -2273,12 +2695,13 @@
      tolerancia do motor; a linha discreta mostra onde. O motor alinha de novo depois de cada edicao (decisao 168),
      entao a previa do arraste mostra sempre o encaixe */
   function linhasDe(b) { return { x: [b[0], (b[0] + b[2]) / 2, b[2]], y: [b[1], (b[1] + b[3]) / 2, b[3]] }; }
-  function encaixar(m, id, c) {
+  /* ids: o elemento ou o grupo que anda (c, a caixa que junta o grupo); os do grupo nao encaixam entre si */
+  function encaixar(m, ids, c) {
     const tol = (estado.edicao ? estado.edicao.tolerancia_alinhamento : 0) * Math.max(m.largura, m.altura);
     const meu = linhasDe(c);
     const melhor = { x: null, y: null };
     m.elementos.forEach(function (o) {
-      if (o.id === id || CONTEUDO.indexOf(o.funcao) < 0) return;
+      if (ids.indexOf(o.id) >= 0 || CONTEUDO.indexOf(o.funcao) < 0) return;
       const dele = linhasDe(o.caixa);
       ['x', 'y'].forEach(function (eixo) {
         for (let i = 0; i < 3; i++) {
@@ -2306,35 +2729,121 @@
     }
   }
   const FIXO = { nw: [1, 1], ne: [0, 1], sw: [1, 0], se: [0, 0] };
+  /* o ponto da tela no mundo do palco (px da peca) */
+  function noMundo(g, ev) {
+    const r = g.mundo.getBoundingClientRect();
+    const k = g.k();
+    return [(ev.clientX - r.left) / k + g.x0, (ev.clientY - r.top) / k + g.y0];
+  }
+  /* o fundo da peca cobre o quadro inteiro: arrastar a partir dele, sem ele escolhido, desenha o retangulo de selecao
+     (M7b, D1); o clique sem arrastar escolhe o fundo, e o fundo escolhido anda como os outros */
+  function eDeFundo(id) { const e = elementoDoPalco(id); return !!e && e.funcao === 'fundo'; }
   function aoApertar(ev) {
     if (!editavel() || ev.button !== 0) return;
-    const r = ev.target.closest ? ev.target.closest('.rotulo.editavel') : null;
-    if (!r) return;
-    ev.preventDefault();
     const area = document.getElementById('palco');
     const g = mundos.get(area);
-    const id = r.dataset.elemento;
-    if (ed.selecionado !== id) selecionarElemento(id);
-    r.focus();
-    const c = elementoDoPalco(id).caixa;
-    const alca = ev.target.closest('.alca');
-    const canto = alca ? alca.dataset.canto : null;
+    if (!g) return;
+    const alcaDoGrupo = ev.target.closest ? ev.target.closest('.caixa-grupo .alca') : null;
+    const r = ev.target.closest ? ev.target.closest('.rotulo.editavel') : null;
+    const somar = ev.shiftKey || ed.varios;
+    // a etiqueta fica fora da caixa do elemento (revisao 1 da fase D): em cima dela, o elemento ainda nao escolhido
+    // nao anda. O arraste desenha o retangulo, e o clique sem arrastar escolhe o elemento
+    const naEtiqueta = !!(r && ev.target.closest('.etiqueta') && escolhidos().indexOf(r.dataset.elemento) < 0);
+    if (!alcaDoGrupo && (!r || naEtiqueta || (eDeFundo(r.dataset.elemento) && escolhidos().indexOf(r.dataset.elemento) < 0))) {
+      // o retangulo de selecao: no palco fora dos elementos, na etiqueta de um elemento ainda nao escolhido, ou a
+      // partir do fundo ainda nao escolhido
+      if (!area.querySelector('.rotulo.editavel')) return;
+      ev.preventDefault();
+      const p = noMundo(g, ev);
+      const no = el('div', null, 'retangulo-selecao');
+      no.setAttribute('aria-hidden', 'true');
+      no.style.setProperty('--k', String(1 / (g.k() || 1)));
+      g.pos(no, [p[0], p[1], p[0], p[1]]);
+      g.mundo.appendChild(no);
+      ed.arraste = { retangulo: true, inicio: p, no: no, g: g, x: ev.clientX, y: ev.clientY, somar: somar,
+        fundo: r ? r.dataset.elemento : null, etiqueta: naEtiqueta };
+      if (area.setPointerCapture) area.setPointerCapture(ev.pointerId);
+      return;
+    }
+    ev.preventDefault();
+    let canto = null;
+    let ids;
+    let tirar = null;
+    if (alcaDoGrupo) {
+      ids = escolhidos();
+      canto = alcaDoGrupo.dataset.canto;
+    } else {
+      const id = r.dataset.elemento;
+      if (somar && escolhidos().indexOf(id) < 0) {
+        // Shift+clique ou "Escolher vários": o elemento entra no grupo, sem arrastar
+        alternarNaSelecao(id);
+        r.focus();
+        return;
+      }
+      // o escolhido, com Shift ou "Escolher vários": arrastar leva o grupo, e o clique sem arrastar o tira do grupo
+      // (revisao 1 da fase D: o modo ligado nunca impede de arrastar o grupo)
+      tirar = somar ? id : null;
+      if (escolhidos().indexOf(id) < 0) selecionarElemento(id);
+      r.focus();
+      const alca = ev.target.closest('.alca');
+      canto = alca ? alca.dataset.canto : null;
+      ids = escolhidos().length > 1 ? escolhidos() : [id];
+    }
+    // a caixa que junta o grupo (a do elemento, quando ele esta so) da o ponto fixo do canto
+    const c = caixaDoGrupo(ids);
     const fx = canto ? FIXO[canto] : null;
-    ed.arraste = { id: id, canto: canto, x: ev.clientX, y: ev.clientY, k: g.k(), g: g, m: g.modelo,
+    let nos = [];
+    ids.forEach(function (i) { nos = nos.concat(nosDoElemento(area, i)); });
+    nos = nos.concat(Array.from(area.querySelectorAll('.caixa-grupo')));
+    ed.arraste = { id: ids[0], ids: ids, canto: canto, x: ev.clientX, y: ev.clientY, k: g.k(), g: g, m: g.modelo,
       fixo: fx ? [c[0] + fx[0] * (c[2] - c[0]), c[1] + fx[1] * (c[3] - c[1])] : null,
       movel: fx ? [c[0] + (1 - fx[0]) * (c[2] - c[0]), c[1] + (1 - fx[1]) * (c[3] - c[1])] : null,
-      nos: nosDoElemento(area, id), dx: 0, dy: 0, f: 1 };
-    if (r.setPointerCapture) r.setPointerCapture(ev.pointerId);
-    r.classList.add('arrastando');
+      caixa: c, nos: nos, dx: 0, dy: 0, f: 1, faixa: faixaDoFator(ids),
+      clicado: alcaDoGrupo || canto ? null : r.dataset.elemento, tirar: canto ? null : tirar };
+    const alvo = alcaDoGrupo || r;
+    if (alvo.setPointerCapture) alvo.setPointerCapture(ev.pointerId);
+    nos.forEach(function (n) { if (n.classList.contains('rotulo')) n.classList.add('arrastando'); });
+  }
+  function moverRetangulo(a, ev) {
+    const p = noMundo(a.g, ev);
+    const c = [Math.min(a.inicio[0], p[0]), Math.min(a.inicio[1], p[1]), Math.max(a.inicio[0], p[0]), Math.max(a.inicio[1], p[1])];
+    a.g.pos(a.no, c);
+    a.caixa = c;
+  }
+  /* o retangulo escolhe os elementos que ficam inteiros dentro dele (o fundo, maior que o quadro, fica de fora);
+     com Shift ou "Escolher vários", eles entram no grupo que ja estava escolhido */
+  function soltarRetangulo(a, ev) {
+    a.no.remove();
+    const pequeno = Math.abs(ev.clientX - a.x) + Math.abs(ev.clientY - a.y) < RETANGULO_MIN_PX;
+    if (pequeno || !a.caixa) {
+      // o clique na etiqueta, ou no fundo, escolhe o elemento dela
+      if (a.fundo) { if (a.somar) alternarNaSelecao(a.fundo); else selecionarElemento(a.fundo); }
+      else if (!a.somar) selecionarElemento(null);
+      const dele = a.etiqueta ? document.querySelector('#palco .rotulo[data-elemento="' + a.fundo + '"]') : null;
+      if (dele) dele.focus();
+      return;
+    }
+    const c = a.caixa;
+    const dentro = a.g.modelo.elementos.filter(function (e) {
+      const b = e.caixa;
+      return b[0] >= c[0] && b[1] >= c[1] && b[2] <= c[2] && b[3] <= c[3];
+    }).map(function (e) { return e.id; });
+    const ids = a.somar ? escolhidos() : [];
+    dentro.forEach(function (i) { if (ids.indexOf(i) < 0) ids.push(i); });
+    if (ids.length === 1) selecionarElemento(ids[0]); else escolherVarios(ids);
+    if (!ids.length) mensagem('O retângulo não pegou nenhum elemento inteiro. Desenhe em volta dos elementos que quer escolher.');
+    const primeiro = ids.length ? document.querySelector('#palco .rotulo[data-elemento="' + ids[ids.length - 1] + '"]') : null;
+    if (primeiro) primeiro.focus();
   }
   function aoMover(ev) {
     const a = ed.arraste;
     if (!a) return;
+    if (a.retangulo) { moverRetangulo(a, ev); return; }
     let dx = (ev.clientX - a.x) / a.k;
     let dy = (ev.clientY - a.y) / a.k;
     if (!a.canto) {
-      const c = elementoDoPalco(a.id).caixa;
-      const melhor = encaixar(a.m, a.id, [c[0] + dx, c[1] + dy, c[2] + dx, c[3] + dy]);
+      const c = a.caixa;
+      const melhor = encaixar(a.m, a.ids, [c[0] + dx, c[1] + dy, c[2] + dx, c[3] + dy]);
       if (melhor.x) dx += melhor.x.d;
       if (melhor.y) dy += melhor.y.d;
       guias(a.g, melhor, a.m);
@@ -2345,21 +2854,38 @@
     }
     const v = [a.movel[0] - a.fixo[0], a.movel[1] - a.fixo[1]];
     const p = [v[0] + dx, v[1] + dy];
-    a.f = Math.max(ESCALA_MIN, (p[0] * v[0] + p[1] * v[1]) / ((v[0] * v[0] + v[1] * v[1]) || 1));
+    // o canto para no limite do tamanho de cada escolhido (M7b, D3)
+    a.f = Math.min(a.faixa[1], Math.max(ESCALA_MIN, a.faixa[0],
+      (p[0] * v[0] + p[1] * v[1]) / ((v[0] * v[0] + v[1] * v[1]) || 1)));
     a.nos.forEach(function (n) {
       n.style.transformOrigin = (a.fixo[0] - a.g.x0 - parseFloat(n.style.left)) + 'px ' +
         (a.fixo[1] - a.g.y0 - parseFloat(n.style.top)) + 'px';
       n.style.transform = 'scale(' + a.f + ')';
     });
   }
-  function aoSoltar() {
+  function aoSoltar(ev) {
     const a = ed.arraste;
     if (!a) return;
     ed.arraste = null;
+    if (a.retangulo) { soltarRetangulo(a, ev); return; }
     a.g.mundo.querySelectorAll('.guia').forEach(function (x) { x.remove(); });
-    if (!a.canto && Math.abs(a.dx) + Math.abs(a.dy) >= MEIO_PX) { moverPor(a.id, a.dx, a.dy, false); return; }
-    if (a.canto && Math.abs(a.f - 1) > FATOR_IGUAL) { escalarPor(a.id, a.f, FIXO[a.canto][0], FIXO[a.canto][1]); return; }
+    // depois da previa, o foco volta ao escolhido: as setas seguem mexendo no mesmo elemento ou grupo
+    ed.focar = true;
+    if (!a.canto && Math.abs(a.dx) + Math.abs(a.dy) >= MEIO_PX) { moverPor(a.ids, a.dx, a.dy, false); return; }
+    if (a.canto && Math.abs(a.f - 1) > FATOR_IGUAL) { escalarPor(a.ids, a.f, FIXO[a.canto][0], FIXO[a.canto][1]); return; }
+    ed.focar = false;
     a.nos.forEach(function (n) { n.style.transform = ''; n.classList.remove('arrastando'); });
+    // com Shift ou "Escolher vários", o clique sem arrastar tira o elemento do grupo
+    if (a.tirar) { alternarNaSelecao(a.tirar); return; }
+    // o clique sem arrastar num elemento do grupo escolhe so ele (arrastar leva o grupo)
+    if (a.clicado && a.ids.length > 1) selecionarElemento(a.clicado);
+  }
+  /* o que a seta e o + e - mexem: o grupo escolhido quando o elemento com o foco esta nele, senao o elemento */
+  function doTeclado(id) {
+    const ids = escolhidos();
+    if (ids.length > 1 && ids.indexOf(id) >= 0) return ids;
+    if (ed.selecionado !== id || ids.length !== 1) selecionarElemento(id);
+    return [id];
   }
   function aoTeclar(ev) {
     const r = ev.target.closest ? ev.target.closest('.rotulo.editavel') : null;
@@ -2367,26 +2893,35 @@
     const id = r.dataset.elemento;
     const passo = ev.shiftKey ? PASSO_SETA_LONGO : PASSO_SETA;
     const setas = { ArrowLeft: [-passo, 0], ArrowRight: [passo, 0], ArrowUp: [0, -passo], ArrowDown: [0, passo] };
-    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selecionarElemento(id); r.focus(); return; }
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      if (ev.shiftKey || ed.varios) alternarNaSelecao(id); else selecionarElemento(id);
+      r.focus();
+      return;
+    }
     if (ev.key === 'Escape') { selecionarElemento(null); return; }
     if (setas[ev.key]) {
       ev.preventDefault();
-      if (ed.selecionado !== id) selecionarElemento(id);
+      const ids = doTeclado(id);
       const agora = Date.now();
       const juntar = agora - ed.tecla < JUNTAR_TECLAS_MS;
       ed.tecla = agora;
       ed.focar = true;
-      moverPor(id, setas[ev.key][0], setas[ev.key][1], juntar);
+      moverPor(ids, setas[ev.key][0], setas[ev.key][1], juntar);
       return;
     }
     if (ev.key === '+' || ev.key === '=' || ev.key === '-') {
       ev.preventDefault();
-      if (ed.selecionado !== id) selecionarElemento(id);
+      const ids = doTeclado(id);
       ed.focar = true;
-      escalarPor(id, ev.key === '-' ? 1 / FATOR_TECLA : FATOR_TECLA);
+      escalarNoLugar(ids, ev.key === '-' ? 1 / FATOR_TECLA : FATOR_TECLA);
       return;
     }
-    if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); apagar(id); }
+    if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+    ev.preventDefault();
+    // apagar e de um elemento so: com o grupo escolhido, a tecla nao apaga ninguem do grupo, e a tela diz por que
+    if (emGrupo() && escolhidos().indexOf(id) >= 0) { mensagem(APAGAR_SO_UM); return; }
+    apagar(id);
   }
   /* ------------------------------------------------ texto (decisoes 169 e 171) */
   function abrirEditorTexto() {
@@ -2442,6 +2977,7 @@
   const QUEBRA_FALTA_UMA = 'Uma quebra de linha proposta pelo desdobra espera a sua aprovação.';
   const QUEBRA_SEM_APROVAR = 'Aprove a quebra de linha proposta pelo desdobra, ou mude a quebra, antes de confirmar a família.';
   const FAMILIA_ESPERA_PREVIA = 'Espere a família aparecer com a sua última mudança.';
+  const FAMILIA_SEM_GRAVAR = 'A sua última mudança ainda não foi salva no rascunho. Espere o desdobra salvar.';
   const MARCA_QUEBRA = 'quebra proposta';
   const SITUACAO_QUEBRA = {
     kv: 'As quebras são as do KV.',
@@ -2766,10 +3302,76 @@
         quadro = requestAnimationFrame(function () { reajustar(area); });
       }).observe(area);
     }
-    document.getElementById('ed-diminuir').addEventListener('click', function () { escalarPor(ed.selecionado, 1 / FATOR_TECLA); });
-    document.getElementById('ed-aumentar').addEventListener('click', function () { escalarPor(ed.selecionado, FATOR_TECLA); });
+    // Diminuir e Aumentar mudam o tamanho do elemento escolhido, ou do grupo inteiro em volta do meio dele (M7b, D1)
+    // depois da previa, o foco volta ao escolhido: as setas e Esc seguem valendo (revisao 1 da fase D)
+    document.getElementById('ed-diminuir').addEventListener('click', function () {
+      ed.focar = true;
+      escalarNoLugar(escolhidos(), 1 / FATOR_TECLA);
+    });
+    document.getElementById('ed-aumentar').addEventListener('click', function () {
+      ed.focar = true;
+      escalarNoLugar(escolhidos(), FATOR_TECLA);
+    });
+    // o tamanho por numero (M7b, D3): Enter ou Aplicar gravam; Esc volta ao tamanho de agora
+    const campoT = campoTamanho();
+    campoT.addEventListener('input', function () {
+      campoT.dataset.sujo = '1';
+      campoT.removeAttribute('aria-invalid');
+    });
+    campoT.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); aplicarTamanho(); return; }
+      // Ctrl+Z com o campo mostrando o tamanho de agora (nada digitado) desfaz a ultima edicao, como no palco; com um
+      // numero sendo digitado, desfaz a digitacao (revisao 2 da fase D)
+      if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && String(ev.key).toLowerCase() === 'z' &&
+          !campoT.dataset.sujo) {
+        ev.preventDefault();
+        if (editavel() && edicoesDa().length) desfazer();
+        return;
+      }
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      delete campoT.dataset.sujo;
+      campoT.removeAttribute('aria-invalid');
+      mostrarTamanho(escolhidos());
+    });
+    document.getElementById('ed-tamanho-aplicar').addEventListener('click', aplicarTamanho);
+    // "Escolher vários": com o botao ligado, cada clique num elemento poe ou tira ele do grupo, como Shift+clique
+    document.getElementById('ed-varios').addEventListener('click', function () {
+      ed.varios = !ed.varios;
+      mensagem(ed.varios ? 'Clique nos elementos que vão andar juntos. Clique de novo para tirar um deles.' : '');
+      atualizarBarra();
+    });
+    // alinhar no quadro (M7b, D2): um clique, para o elemento escolhido ou o grupo; a referencia vale ate mudar
+    Object.keys(ALINHAR).forEach(function (i) {
+      document.getElementById(i).addEventListener('click', function () {
+        ed.focar = true;
+        alinharNoQuadro(escolhidos(), ALINHAR[i]);
+      });
+    });
+    document.getElementById('ed-ref-margem').addEventListener('click', function () { escolherReferencia('margem'); });
+    document.getElementById('ed-ref-segura').addEventListener('click', function () { escolherReferencia('area_segura'); });
     document.getElementById('ed-apagar').addEventListener('click', function () { apagar(ed.selecionado); });
-    document.getElementById('ed-desfazer').addEventListener('click', desfazer);
+    // depois de Desfazer, o foco volta ao escolhido: as setas e Esc seguem valendo (revisao 2 da fase D)
+    document.getElementById('ed-desfazer').addEventListener('click', function () {
+      ed.focar = true;
+      desfazer();
+    });
+    // "Como editar" (revisao 2 da fase D): a lista dos gestos abre e fecha pelo botao, por Fechar e por Esc
+    document.getElementById('ed-ajuda').addEventListener('click', function () {
+      abrirAjuda(document.getElementById('ed-ajuda-painel').hidden);
+    });
+    document.getElementById('ed-ajuda-fechar').addEventListener('click', function () {
+      abrirAjuda(false);
+      document.getElementById('ed-ajuda').focus();
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape' || document.getElementById('ed-ajuda-painel').hidden) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      abrirAjuda(false);
+      document.getElementById('ed-ajuda').focus();
+    }, true);
     document.getElementById('ed-texto').addEventListener('click', abrirEditorTexto);
     document.getElementById('ed-texto-cancelar').addEventListener('click', function () {
       fecharEditorTexto();
@@ -3353,6 +3955,13 @@
     document.getElementById('um-por-um').addEventListener('click', function () { zoom(1); });
     document.getElementById('aproximar').addEventListener('click', function () { zoom(atual() * PASSO_ZOOM); });
     document.getElementById('afastar').addEventListener('click', function () { zoom(atual() / PASSO_ZOOM); });
+    // Nomes (pedido de 11/11): sem as etiquetas o DA clica no elemento quando o palco esta cheio; as caixas ficam
+    const nomes = document.getElementById('ver-nomes');
+    nomes.addEventListener('click', function () {
+      vista.nomes = !vista.nomes;
+      nomes.setAttribute('aria-pressed', vista.nomes ? 'true' : 'false');
+      document.getElementById('palco').classList.toggle('sem-nomes', !vista.nomes);
+    });
     const limpo = document.getElementById('ver-limpo');
     limpo.addEventListener('click', function () {
       vista.limpo = !vista.limpo;

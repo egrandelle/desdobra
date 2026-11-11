@@ -722,6 +722,8 @@ main { flex: 1; min-height: 0; display: flex; }
 .var-palco-aviso { display: inline-flex; align-items: baseline; gap: 6px; color: var(--acento); font-size: 12px; }
 .var-palco-aviso::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: currentColor; transform: translateY(-1px); }
 .var-palco-aviso.forte { color: var(--aviso); }
+/* M7b, D5: a decisao do DA e informacao, nunca alerta: a tinta neutra, com o valor a vista */
+.var-palco-aviso.do-da { color: var(--suave); }
 .galeria {
   width: 300px;
   display: flex;
@@ -782,6 +784,7 @@ main { flex: 1; min-height: 0; display: flex; }
   white-space: nowrap;
 }
 .marca-aviso.forte { border-color: #ecd2cd; background: var(--aviso-fundo); color: var(--aviso); }
+.marca-aviso.do-da { border-color: var(--linha-forte); background: var(--superficie-2); color: var(--tinta); }
 
 /* selos: discretos, texto em minuscula, um so acento para a proposta */
 .selo {
@@ -858,6 +861,8 @@ img.peca { user-select: none; pointer-events: none; }
 .rotulo.destaque { border: 2px solid var(--acento); }
 .rotulo.destaque .etiqueta { background: var(--acento); color: #fff; }
 .limpo .rotulo, .limpo .fora, .limpo .fantasma { display: none; }
+/* Nomes desligado: so as etiquetas saem; a caixa de cada elemento continua para o clique, e o escolhido mantem o nome */
+.sem-nomes .rotulo:not(.selecionado):not(.no-grupo):not(.destaque) .etiqueta { display: none; }
 .limpo .mundo { clip-path: var(--recorte-limpo); }
 
 /* ---------------------------------------------------------------- movimento: so transform e opacidade */
@@ -916,32 +921,167 @@ img.peca { user-select: none; pointer-events: none; }
 .rotulo.editavel.de-conteudo { z-index: 1; }
 .rotulo.editavel:hover { border-color: var(--tinta); }
 .rotulo.editavel.arrastando { cursor: grabbing; will-change: transform; }
+/* revisao 2 da fase D: a etiqueta de quem nao esta escolhido escolhe com o clique (o arraste nela desenha o retangulo);
+   a mao de arrastar fica so na etiqueta do escolhido, que anda por ela */
+.rotulo.editavel .etiqueta { cursor: pointer; }
+.rotulo.editavel.selecionado .etiqueta { cursor: grab; }
+.rotulo.editavel.arrastando .etiqueta { cursor: grabbing; }
 .rotulo.editavel:focus-visible { outline: 2px solid var(--foco); outline-offset: 0; }
 .rotulo.selecionado { border: 1.5px solid var(--acento); }
 .rotulo.selecionado .etiqueta { background: var(--acento); color: #fff; }
 .alca { position: absolute; background: var(--superficie); border: 1px solid var(--acento); border-radius: 2px; cursor: nwse-resize; }
 .alca[data-canto="ne"], .alca[data-canto="sw"] { cursor: nesw-resize; }
+/* o grupo (M7b, D1): cada escolhido com a borda do acento e a etiqueta clara; uma caixa so em volta de todos, com os
+   cantos para mudar o tamanho juntos. O retangulo de selecao e so desenho */
+.rotulo.no-grupo { border-style: solid; }
+.rotulo.no-grupo .etiqueta { background: var(--acento-fundo); color: var(--acento); box-shadow: 0 0 0 1px var(--acento-linha); }
+.caixa-grupo {
+  position: absolute;
+  z-index: 2;
+  outline: calc(1.5px * var(--k, 1)) dashed var(--acento);
+  outline-offset: 0;
+  pointer-events: none;
+  animation: entrar 0.16s var(--curva);
+}
+.caixa-grupo .alca { pointer-events: auto; }
+.caixa-grupo.arrastando { will-change: transform; }
+.retangulo-selecao {
+  position: absolute;
+  z-index: 3;
+  background: rgba(138, 90, 18, 0.08);
+  outline: calc(1px * var(--k, 1)) solid var(--acento);
+  pointer-events: none;
+}
 .recorte { will-change: auto; }
 .guia { position: absolute; background: var(--acento); opacity: 0.75; pointer-events: none; animation: entrar 0.12s var(--curva); }
 /* o texto editado quebra so no espaco, na largura da caixa, como o render (render/texto.py, quebras_da_caixa) */
 .texto.editado, .texto.editado .linha { white-space: pre-wrap; }
 .selo-confirmada { background: #edf5ef; border-color: #cfe3d5; color: #2f6b45; }
+/* revisao 1 da fase D: os botoes do elemento e os de alinhar dividem a primeira linha quando cabem (a tela larga do
+   Duda fica com mais palco); embaixo, o nome do escolhido (o grupo pelos nomes curtos, inteiro) e a frase da ultima
+   mudanca, uma linha cada. As duas linhas ficam reservadas: escolher um elemento ou a frase que some nunca mudam a
+   altura da barra, e o palco nao pula embaixo do mouse */
 .barra-edicao {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "nome botoes" "msg msg";
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 6px 16px;
   padding: 10px 16px;
   background: var(--superficie);
   border-top: 1px solid var(--linha);
   flex: none;
+  position: relative;
 }
-.elemento-escolhido { grid-area: nome; color: var(--suave); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.barra-grupo { grid-area: botoes; display: flex; align-items: center; gap: 6px; }
+/* revisao 2 da fase D: a linha do nome leva "Como editar" no fim; a lista dos gestos abre por cima do palco, sem
+   mudar a altura da barra */
+.linha-escolhido { order: 3; flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 12px; height: 18px; }
+.botao-ajuda {
+  flex: none;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 12px var(--fonte);
+  color: var(--acento);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.botao-ajuda:hover { color: var(--tinta); }
+.botao-ajuda:focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; border-radius: 2px; }
+.ajuda-painel {
+  position: absolute;
+  right: 16px;
+  bottom: calc(100% + 8px);
+  z-index: 3;
+  width: min(440px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 14px 16px 12px;
+  background: var(--superficie);
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+}
+.ajuda-painel[hidden] { display: none; }
+.ajuda-titulo { margin: 0 0 6px; font-weight: 600; color: var(--tinta); }
+.ajuda-lista { margin: 0 0 10px; padding-left: 18px; color: var(--suave); font-size: 12px; line-height: 1.5; }
+.ajuda-lista li + li { margin-top: 4px; }
+.elemento-escolhido {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--suave);
+  line-height: 18px;
+  height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.barra-grupo { order: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .barra-grupo .botao-vista:disabled { opacity: 0.45; cursor: not-allowed; }
-.ed-mensagem { grid-area: msg; color: var(--suave); font-size: 12px; }
-.ed-mensagem:empty { display: none; }
+/* o tamanho por numero (M7b, D3): o rotulo, o campo com o % colado e o Aplicar, juntos entre Aumentar e o texto */
+.campo-tamanho { display: inline-flex; align-items: center; gap: 6px; margin: 0 2px 0 6px; }
+.tamanho-caixa {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px 0 0;
+  background: var(--superficie);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-p);
+  transition: border-color 0.15s var(--curva), box-shadow 0.15s var(--curva);
+}
+.tamanho-caixa:focus-within { border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-fundo); }
+.tamanho-caixa input {
+  width: 6ch;
+  height: 100%;
+  padding: 0 2px 0 8px;
+  border: 0;
+  background: transparent;
+  font: 13px var(--fonte);
+  color: var(--tinta);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.tamanho-caixa input::placeholder { color: var(--mais-suave); }
+.tamanho-caixa input:disabled { cursor: not-allowed; }
+.tamanho-caixa:has(input:disabled) { opacity: 0.45; }
+.tamanho-caixa:has(input[aria-invalid="true"]) { border-color: var(--aviso); box-shadow: 0 0 0 3px var(--aviso-fundo); }
+.tamanho-unidade { color: var(--suave); font-size: 12px; }
+/* alinhar no quadro (M7b, D2): a referencia em dois botoes colados e os seis alvos, com o desenho do alinhamento e o
+   nome escrito; a linha fica abaixo dos botoes do elemento, alinhada a direita como eles */
+.barra-alinhar { order: 2; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.barra-rotulo { color: var(--suave); font-size: 12px; margin-right: 2px; }
+.segmentado { display: inline-flex; }
+.segmentado .botao-vista { border-radius: 0; }
+.segmentado .botao-vista:first-child { border-radius: var(--raio-p) 0 0 var(--raio-p); }
+.segmentado .botao-vista:last-child { border-radius: 0 var(--raio-p) var(--raio-p) 0; margin-left: -1px; }
+.barra-alinhar .botao-vista:disabled { opacity: 0.45; cursor: not-allowed; }
+.botao-alinhar svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.botao-alinhar svg rect { fill: currentColor; stroke: none; opacity: 0.55; }
+/* revisao 2 da fase D: a frase tem altura fixa (o palco nunca pula entre um gesto e outro). Na tela larga, uma linha;
+   na estreita, duas, onde a frase do Tamanho quebra. O que passar disso termina em reticencias, e a frase inteira
+   fica no title */
+.ed-mensagem {
+  order: 4;
+  flex: 1 1 100%;
+  margin: 0;
+  height: 36px;
+  line-height: 18px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--suave);
+  font-size: 12px;
+}
+@media (min-width: 1700px) {
+  .ed-mensagem { height: 18px; -webkit-line-clamp: 1; }
+}
+.ed-mensagem.erro { color: var(--aviso); }
 .editor-texto {
   display: grid;
   gap: 6px;

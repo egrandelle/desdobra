@@ -368,7 +368,8 @@
             "mover",
             "escalar",
             "texto",
-            "apagar"
+            "apagar",
+            "alinhar"
           ]
         },
         "dx": {
@@ -397,9 +398,56 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "alvo": {
+          "description": "O alinhamento no quadro (M7b, D2): a linha da caixa do elemento, ou da caixa que junta o grupo, que encosta na mesma linha do quadro de cada membro da familia. So em alinhar.",
+          "enum": [
+            "margem_esquerda",
+            "centro_horizontal",
+            "margem_direita",
+            "topo",
+            "centro_vertical",
+            "base"
+          ]
+        },
+        "referencia": {
+          "description": "O quadro do alinhamento (M7b, D2): a margem de cada membro ou a area segura dele. So em alinhar.",
+          "enum": [
+            "margem",
+            "area_segura"
+          ]
+        },
+        "elementos": {
+          "description": "O grupo (M7b, D1 e D2): os elementos escolhidos juntos no palco, que andam, escalam ou alinham como um so; o elemento da edicao e o primeiro. Com ele, fx e fy sao fracoes da caixa que junta o grupo no formato. So em mover, escalar e alinhar.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 500,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "acao": {
+                "enum": [
+                  "texto",
+                  "apagar"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "elementos"
+              ]
+            }
+          }
+        },
         {
           "if": {
             "properties": {
@@ -441,6 +489,37 @@
             "required": [
               "texto"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "acao": {
+                "const": "alinhar"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "alvo",
+              "referencia"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "alvo"
+                  ]
+                },
+                {
+                  "required": [
+                    "referencia"
+                  ]
+                }
+              ]
+            }
           }
         }
       ]

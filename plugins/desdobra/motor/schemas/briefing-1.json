@@ -240,7 +240,7 @@
     "modo_dados": {"allOf": [{"$ref": "#/$defs/decisao"}, {"properties": {"valor": {"enum": ["a", "b", "c", null]}}}]},
     "sugestoes_ref": {"type": ["string", "null"]},
     "composicoes": {
-      "description": "As familias da tela confirmadas pelo DA (decisoes-v1.md, 167): a versao da galeria escolhida e as edicoes no palco (mover, escalar, texto, apagar, em fracao do lado da peca), que valem para todos os formatos da familia. Gravado so por 'Salvar e seguir' (desdobra.briefing.salvar), com todas as familias confirmadas; o derivar parte delas, e o entregar recusa formato de familia sem confirmacao.",
+      "description": "As familias da tela confirmadas pelo DA (decisoes-v1.md, 167): a versao da galeria escolhida e as edicoes no palco (mover, escalar, texto, apagar e alinhar no quadro, em fracao do lado da peca), que valem para todos os formatos da familia. Gravado so por 'Salvar e seguir' (desdobra.briefing.salvar), com todas as familias confirmadas; o derivar parte delas, e o entregar recusa formato de familia sem confirmacao.",
       "type": "array",
       "items": {
         "type": "object",
@@ -250,7 +250,7 @@
           "familia": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
           "formatos": {"type": "array", "minItems": 1, "items": {"type": "string"}},
           "versao": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]*$"},
-          "edicoes": {"type": "array", "items": {"type": "object", "required": ["elemento", "acao"], "properties": {"elemento": {"type": "string", "pattern": "^el[0-9]+$"}, "acao": {"enum": ["mover", "escalar", "texto", "apagar"]}}}},
+          "edicoes": {"type": "array", "items": {"type": "object", "required": ["elemento", "acao"], "properties": {"elemento": {"type": "string", "pattern": "^el[0-9]+$"}, "acao": {"enum": ["mover", "escalar", "texto", "apagar", "alinhar"]}, "elementos": {"description": "O grupo (M7b, D1 e D2): os elementos que andam, escalam ou alinham juntos, o elemento da edicao primeiro; fx e fy em fracao da caixa que junta o grupo no formato. So em mover, escalar e alinhar.", "type": "array", "minItems": 2, "maxItems": 500, "uniqueItems": true, "items": {"type": "string", "pattern": "^el[0-9]+$"}}, "alvo": {"description": "O alinhamento no quadro (M7b, D2): a linha da caixa do elemento, ou da que junta o grupo, que encosta na mesma linha do quadro de cada membro. So em alinhar.", "enum": ["margem_esquerda", "centro_horizontal", "margem_direita", "topo", "centro_vertical", "base"]}, "referencia": {"description": "O quadro do alinhamento (M7b, D2): a margem de cada membro ou a area segura dele. So em alinhar.", "enum": ["margem", "area_segura"]}}, "allOf": [{"if": {"properties": {"acao": {"enum": ["texto", "apagar"]}}}, "then": {"not": {"required": ["elementos"]}}}, {"if": {"properties": {"acao": {"const": "alinhar"}}}, "then": {"required": ["alvo", "referencia"]}, "else": {"not": {"anyOf": [{"required": ["alvo"]}, {"required": ["referencia"]}]}}}]}},
           "confirmada": {"type": "boolean"},
           "confirmacao": {
             "oneOf": [

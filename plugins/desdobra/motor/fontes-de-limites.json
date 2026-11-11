@@ -538,6 +538,30 @@
    "nota": "O cronometro da mestre (desdobra.tela.cronometro) conta, por familia, o tempo entre dois cliques ou teclas so quando ele fica ate este teto; a pausa mais longa entra so no tempo total. O resultado vai a medicoes/tela.json, fora do briefing. Origem: os 60 s da resposta recomendada a pergunta 9 do plano do M7b (INFERENCIA, sem medicao de como o DA pausa)."
   },
   {
+   "id": "tela.escala_min",
+   "valor": 0.25,
+   "unidade": "fator do tamanho do elemento sobre o tamanho antes das edicoes do DA (a conta dos fatores de escalar)",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "9.8, Editor de mestre; plano do M7b, passo D3 (escala por numero, fator livre entre 0,25 e 4)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O menor tamanho que o DA da a um elemento no palco: o campo Tamanho recusa menos de 25%, Diminuir e o canto param nele, e a previa e o rascunho recusam a edicao que passa dele (desdobra.tela.edicao.escala_fora, com a folga do arredondamento das fracoes). Origem: o fator 0,25 do plano do M7b (INFERENCIA, sem medicao de quanto o DA reduz um elemento)."
+  },
+  {
+   "id": "tela.escala_max",
+   "valor": 4,
+   "unidade": "fator do tamanho do elemento sobre o tamanho antes das edicoes do DA (a conta dos fatores de escalar)",
+   "fonte": {
+    "arquivo": "arquitetura-v1.md",
+    "secao": "9.8, Editor de mestre; plano do M7b, passo D3 (escala por numero, fator livre entre 0,25 e 4)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O maior tamanho que o DA da a um elemento no palco: o campo Tamanho recusa mais de 400%, Aumentar e o canto param nele, e a previa e o rascunho recusam a edicao que passa dele (desdobra.tela.edicao.escala_fora). Origem: o fator 4 do plano do M7b (INFERENCIA, sem medicao de quanto o DA aumenta um elemento)."
+  },
+  {
    "id": "leitor.filhos_paralelos",
    "valor": 4,
    "unidade": "processos filhos de smart object ao mesmo tempo",

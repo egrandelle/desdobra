@@ -3,15 +3,20 @@
 
 Gravacao atomica: grava num temporario na mesma pasta, faz fsync e renomeia com os.replace. Quem le nunca ve
 arquivo pela metade. Se o processo cair no meio, sobra no maximo um temporario com prefixo ".tmp-", que o
-proximo comando pode apagar.
+proximo comando pode apagar. No Windows, a troca recusada porque outro processo le o arquivo naquele instante e
+tentada de novo por cerca de meio segundo (TROCA_ESPERAS_S).
 """
 import hashlib
 import json
 import os
 import stat
+import time
 from pathlib import Path
 
 PREFIXO_TEMPORARIO = '.tmp-'
+# as esperas entre as tentativas da troca atomica recusada pelo Windows (arquivo aberto por outro naquele instante):
+# cerca de meio segundo no total, para a gravacao nunca prender quem espera por ela
+TROCA_ESPERAS_S = (0.02, 0.05, 0.1, 0.15, 0.2)  # numero-neutro: segundos entre as tentativas, crescendo
 EXTENSOES_FONTE = ('.ttf', '.otf', '.woff', '.woff2', '.ttc', '.otc', '.dfont', '.pfb', '.pfm', '.afm', '.eot',
                    '.pfa', '.fon', '.fnt', '.bdf', '.pcf', '.suit', '.lwfn', '.t42')
 # Assinaturas internas de formato de fonte, comparadas com o inicio do arquivo: sfnt TrueType, OpenType CFF,
@@ -65,6 +70,18 @@ def sha256_caminho(caminho):
     return None
 
 
+def _trocar(temporario, caminho):
+    """os.replace com novas tentativas curtas: no Windows, a troca falha enquanto outro processo le o arquivo naquele
+    instante (o laco de espera de um teste, um antivirus, o indexador). Depois da ultima, o erro sobe."""
+    for espera in TROCA_ESPERAS_S:
+        try:
+            os.replace(temporario, caminho)
+            return
+        except PermissionError:
+            time.sleep(espera)
+    os.replace(temporario, caminho)
+
+
 def gravar_bytes_atomico(caminho, dados):
     caminho = Path(caminho)
     caminho.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +91,7 @@ def gravar_bytes_atomico(caminho, dados):
             f.write(dados)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(temporario, caminho)
+        _trocar(temporario, caminho)
     finally:
         if temporario.exists():
             temporario.unlink()

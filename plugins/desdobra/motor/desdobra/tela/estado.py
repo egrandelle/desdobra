@@ -1614,7 +1614,7 @@ def painel_dos_formatos(pasta):
     return _painel_e_aprovacoes(pasta)[0]
 
 
-def _sem_previa(_dados, origem=None):
+def _sem_previa(_dados, origem=None, antes=None):
     """A previa da edicao enquanto o passo 3 espera: nenhuma familia para editar."""
     return None
 
@@ -1720,7 +1720,10 @@ def montar(pasta, teto=None):
                           'decisoes': decisoes_do_passo_2(laudo, quadro)},
               'passo_3': {'aguarda_passo_2': espera is not None, 'texto': espera or '', 'passo_2_aplicado': aplicado},
               'faltam': [],
-              'edicao': {'tolerancia_alinhamento': limites.valor('derivacao.alinhamento_intencao_tolerancia')}}
+              # a tolerancia da intencao de alinhamento e os limites do tamanho no palco (M7b, D3)
+              'edicao': {'tolerancia_alinhamento': limites.valor('derivacao.alinhamento_intencao_tolerancia'),
+                         'escala_min': limites.valor('tela.escala_min'),
+                         'escala_max': limites.valor('tela.escala_max')}}
     familias = {g['id']: [x['id'] for co in g['composicoes'] for x in co['formatos']]
                 for o in estado['orientacoes'] for g in o['grupos']}
     avisos = {g['id']: g['aviso'] for o in estado['orientacoes'] for g in o['grupos']}

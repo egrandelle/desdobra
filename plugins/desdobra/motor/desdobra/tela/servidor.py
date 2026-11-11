@@ -627,9 +627,25 @@ class ServidorTela:
         if not callable(self.editar):
             return None
         origem = modelo.ORIGEM_FIXTURE if self.modo_teste else 'da'
+        # as edicoes que o rascunho ja tem da familia: o tamanho gravado fora dos limites (a tela de antes do D3) nunca
+        # trava a previa (revisao 1 da fase D)
+        antes = self._edicoes_gravadas(dados.get('familia') if isinstance(dados, dict) else None)
         with self._trava_previa:
-            r = self.editar(dados, origem=origem)
+            r = self.editar(dados, origem=origem, **({'antes': antes} if antes else {}))
         return None if r is None else (200, r)  # numero-neutro: codigo HTTP
+
+    def _edicoes_gravadas(self, familia):
+        """As edicoes da familia no rascunho gravado, lidas sob a trava de escrita (como _rascunho_lido); [] sem
+        rascunho, de outro laudo ou que nao se le agora."""
+        from desdobra.tela import rascunho
+        if not isinstance(familia, str) or self.pasta is None or self.laudo_sha256 is None:
+            return []
+        try:
+            with self._trava_escrita:
+                dados, _de_outro = rascunho.ler(self.pasta, self.laudo_sha256)
+        except (OSError, ValueError):
+            return []
+        return list((((dados or {}).get('familias') or {}).get(familia) or {}).get('edicoes') or [])
 
     def _sinal_do_cronometro(self, dados):
         """O clique ou a tecla da pagina para o cronometro da mestre (M7b, C5): a familia tem de ser uma das que a

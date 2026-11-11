@@ -180,7 +180,9 @@ def pendencias(pasta, conteudo, origem=None):
             saida.append({'codigo': 'versao_que_a_familia_nao_tem', 'familia': gid})
             continue
         if callable(editar):
-            r = editar({'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']})
+            # as edicoes sao as do rascunho gravado: o tamanho que ele ja tinha fora dos limites (a tela de antes do D3)
+            # passa, como na previa, e o job nunca trava; o teto de cada passo continua valendo (revisao 2 da fase D)
+            r = editar({'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']}, antes=f['edicoes'])
             if r is None:
                 saida.append({'codigo': 'edicao_invalida', 'familia': gid})
             elif r['recusas']:
