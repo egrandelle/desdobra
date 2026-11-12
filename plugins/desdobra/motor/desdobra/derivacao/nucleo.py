@@ -127,7 +127,9 @@ def preparar(pasta, partida=False, briefing=None):
     mostra o que falta, e a derivacao gravada (derivar) continua pedindo o briefing confirmado. Com o briefing gravado
     de outra versao dos arquivos do job, o contexto sai da retomada (briefing.modelo.retomada).
     briefing: o briefing a conferir e derivar em memoria no lugar do gravado (o salvar seletivo, M7b A6, antes de
-    gravar); o briefing_sha256 do contexto fica vazio, porque o arquivo ainda nao existe."""
+    gravar); o briefing_sha256 do contexto fica vazio, porque o arquivo ainda nao existe, e a validacao confere contra
+    esse briefing, nunca contra o gravado de antes (_esperado): a derivacao em memoria da a mesma que a gravada logo
+    depois (correcao do D2 do E1)."""
     from desdobra.job import fases as mod_fases
     from desdobra.job import nucleo
     pasta = Path(pasta).resolve()
@@ -174,7 +176,7 @@ def preparar(pasta, partida=False, briefing=None):
     return contexto(laudo, briefing, ds=ds, job_id=estado['job_id'], pasta=pasta,
                     briefing_sha256=None if em_memoria else arquivos.sha256_arquivo(pasta / mb.ARQUIVO),
                     portao_fontes=_portao_fontes(pasta),
-                    medidas_quebras=medidas, da_tela=partida)
+                    medidas_quebras=medidas, da_tela=partida, em_memoria=em_memoria)
 
 
 def mestre_do_kv(ctx):
@@ -498,9 +500,13 @@ def _esperado(ctx, kv):
     """{id do elemento: (funcao resolvida, regra)} relido do briefing gravado no disco (quando ha job), nunca do
     layout nem da heranca que o layout usou. O contexto da tela (da_tela) confere contra o briefing em memoria de onde o
     layout saiu (o de partida, a retomada ou o gravado com o rascunho da tela por cima): o gravado no disco e outro
-    (o rascunho do motor, ou o de antes da regra que o DA mudou no Design system) e reprovaria a regra nova do DA."""
+    (o rascunho do motor, ou o de antes da regra que o DA mudou no Design system) e reprovaria a regra nova do DA. O
+    contexto em memoria do salvar seletivo (preparar com briefing; em_memoria) tambem confere contra o briefing dele,
+    ainda sem gravar: com o gravado de antes, a funcao que o DA trocou no passo 2 reprovava a regra, e o formato saia
+    por outro caminho do que o da derivacao gravada logo depois (correcao do D2 do E1)."""
     briefing = ctx['briefing']
-    if not ctx.get('da_tela') and ctx.get('pasta') is not None and (Path(ctx['pasta']) / mb.ARQUIVO).is_file():
+    if not ctx.get('da_tela') and not ctx.get('em_memoria') and ctx.get('pasta') is not None and \
+            (Path(ctx['pasta']) / mb.ARQUIVO).is_file():
         briefing = mb.ler(ctx['pasta'])
     return esperado_do_briefing(ctx['laudo'], briefing, kv['elementos'])
 
@@ -614,16 +620,17 @@ def _fechar(ctx, saida, kv, m, formato, areas, caixas, escalas, base, regras=Non
 
 
 def contexto(laudo, briefing, *, ds=None, job_id=None, pasta=None, briefing_sha256=None, portao_fontes='passa',
-             medidas_quebras=None, da_tela=False):
+             medidas_quebras=None, da_tela=False, em_memoria=False):
     """Contexto da derivacao em memoria (o mesmo que preparar monta do job; os testes e a medicao usam direto).
     medidas_quebras: a medida das linhas juntadas (derivacao.medida_quebras.medir); sem ela, o formato com quebra
     aprovada volta ao DA. da_tela: o briefing e o da previa da tela (preparar com partida, desdobra.tela.estado), e a
-    validacao confere contra ele (_esperado)."""
+    validacao confere contra ele (_esperado). em_memoria: o briefing ainda nao foi gravado (o salvar seletivo), e a
+    validacao confere contra ele tambem."""
     resolvidas, _e, info = mb.resolver(laudo, briefing)
     return {'pasta': Path(pasta) if pasta else None, 'estado': {'job_id': job_id or briefing['job_id']},
             'briefing': briefing, 'laudo': laudo, 'ds': ds, 'resolvidas': resolvidas, 'info': info,
             'briefing_sha256': briefing_sha256 or '0' * 64, 'portao_fontes': portao_fontes,  # numero-neutro: hash vazio so em memoria
-            'medidas_quebras': dict(medidas_quebras or {}), 'da_tela': bool(da_tela)}
+            'medidas_quebras': dict(medidas_quebras or {}), 'da_tela': bool(da_tela), 'em_memoria': bool(em_memoria)}
 
 
 def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=None, composicoes=True):

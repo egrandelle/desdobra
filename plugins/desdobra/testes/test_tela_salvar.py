@@ -659,6 +659,143 @@ def test_sem_a_derivacao_em_memoria_tudo_e_refeito_como_antes(job, modelo, monke
     assert all(antes[fid] != depois[fid] for fid in antes)
 
 
+# ------------------------------------------------------------------ o laco de correcao (D1 e D2 do E1, fase E)
+def _logo_id(modelo):
+    return next(k for k, v in modelo['funcoes'].items() if v == 'logo_principal')
+
+
+def _passo_2_com_selo(modelo):
+    """O passo 2 com o logo trocado para selo, e a regra e a ancora do selo iguais as do logo principal no Design
+    system: a derivacao so muda a funcao do logo."""
+    funcoes = dict(modelo['funcoes'])
+    funcoes[_logo_id(modelo)] = 'selo'
+    p2 = _passo_2(funcoes)
+    p2['design']['selo'] = dict(p2['design']['logo_principal'])
+    return p2
+
+
+def _salvo_e_corrigido(job, modelo, p2, confirmar=True):
+    """O briefing salvo pela tela; depois o passo 2 p2 no rascunho e, com confirmar, as familias confirmadas de novo
+    (decisoes-v1.md, 175), sem salvar."""
+    conteudo = te.montar(job)
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        escolhas = _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert _salvar(s, biscoito, job)[1] == 200
+        assert _gravar_rascunho(s, biscoito, escolhas, p2) == 200
+        if confirmar:
+            _confirmar_todas(s, biscoito, escolhas)
+            assert bs.pendencias(job, conteudo) == []
+    finally:
+        s.parar()
+    return conteudo, escolhas
+
+
+def _familias(conteudo):
+    return {g: f['formatos'] for g, f in conteudo['familias'].items()}
+
+
+def test_situacao_na_tela_pede_salvar_depois_de_trocar_a_funcao_no_passo_2(job, modelo):
+    # D1 do E1: o passo 2 que o briefing gravado guarda (funcoes, regras e ancoras) conta para "Salvar e seguir"
+    conteudo, _e = _salvo_e_corrigido(job, modelo, _passo_2_com_selo(modelo))
+    assert {x['layer_id']: x['funcao']['valor'] for x in mb.ler(job)['funcoes']}[_logo_id(modelo)] == 'logo_principal'
+    assert bs.situacao_na_tela(job, _familias(conteudo))['salvo'] is False
+    assert te.montar(job)['estado']['briefing']['salvo'] is False
+
+
+def test_situacao_na_tela_pede_salvar_depois_de_mudar_so_a_ancora(job, modelo):
+    # D1 do E1: so o Design system mudou (a ancora do titulo), as familias confirmadas de novo
+    p2 = _passo_2(modelo['funcoes'])
+    p2['design']['titulo'] = dict(p2['design']['titulo'], x='direita')
+    conteudo, _e = _salvo_e_corrigido(job, modelo, p2)
+    assert bs.situacao_na_tela(job, _familias(conteudo))['salvo'] is False
+
+
+def test_situacao_na_tela_diz_salvo_quando_salvar_nao_mudaria_o_briefing(job, modelo):
+    # o mesmo passo 2 de novo, as familias confirmadas de novo com a mesma versao e as mesmas edicoes: nada a salvar;
+    # e o que a tela diz bate com o briefing que o gravador montaria (montar), fora o cabecalho e o carimbo
+    conteudo, _e = _salvo_e_corrigido(job, modelo, _passo_2(modelo['funcoes']))
+    assert bs.situacao_na_tela(job, _familias(conteudo))['salvo'] is True
+    dados, _o = bs._rascunho(job)
+    b = mb.ler(job)
+    novo = bs.montar(job, conteudo, dados, origem=b['cabecalho']['origem'], meio='tela', por={}, quando=None,
+                     modo=bs._modo(job, b['cabecalho']['origem']))
+    assert bs._decisoes(novo) == bs._decisoes(b)
+
+
+def test_situacao_na_tela_conta_a_origem_da_confirmacao_e_nao_a_hora(job, modelo):
+    # a hora da confirmacao muda a cada clique e nao e decisao; a origem e o meio sao o que o portao da entrega pede
+    _salvo_e_corrigido(job, modelo, _passo_2(modelo['funcoes']))
+    b = mb.ler(job)
+    outra_hora = json.loads(json.dumps(b))
+    for c in outra_hora['composicoes']:
+        c['confirmacao']['em'] = '2026-01-01T00:00:00-03:00'
+    assert bs._decisoes(outra_hora) == bs._decisoes(b)
+    da_janela = json.loads(json.dumps(b))
+    da_janela['composicoes'][0]['confirmacao'].update(origem='da', meio='tela')
+    assert bs._decisoes(da_janela) != bs._decisoes(b)
+
+
+def test_derivacao_em_memoria_do_salvar_e_a_gravada_depois(job, modelo):
+    # D2 do E1: a derivacao em memoria com o briefing novo (o salvar seletivo) confere a regra contra esse briefing,
+    # e da o mesmo que a derivacao gravada logo depois; com o gravado de antes, a funcao trocada reprovava a regra
+    from desdobra.derivacao import formatos as mf
+    conteudo, _e = _salvo_e_corrigido(job, modelo, _passo_2_com_selo(modelo))
+    dados, _o = bs._rascunho(job)
+    origem = mb.ler(job)['cabecalho']['origem']
+    novo = bs.montar(job, conteudo, dados, origem=origem, meio='medicao', por={'usuario': None, 'maquina': None},
+                     quando=mb.agora(), modo=bs._modo(job, origem))
+    ctx = nd.preparar(job, briefing=novo)
+    kv = nd.mestre_do_kv(ctx)
+    esperado = nd._esperado(ctx, kv)
+    assert {v[0] for v in esperado.values()} >= {'selo'} and 'logo_principal' not in {v[0] for v in esperado.values()}
+    specs, arquivo_specs = mf.specs_do_job(job)
+    em_memoria = nd.derivar_em_memoria(ctx, specs=specs, arquivo_specs=arquivo_specs,
+                                       params=mf.parametros(job, novo))['formatos']
+    s = _servidor(job, conteudo)
+    try:
+        assert _salvar(s, tts._entrar(s), job)[1] == 200
+    finally:
+        s.parar()
+    from desdobra.briefing import historico as bh
+    afetados = bh.ler(job)['entradas'][-1]['formatos_afetados']
+    assert afetados
+    fora = ('gerado_em', 'briefing_sha256', 'inventario_entre_formatos')
+    for fid, _w, _h in FORMATOS:
+        gravada = _deriv(job, fid)
+        if fid in afetados:
+            assert {k: v for k, v in gravada.items() if k not in fora} == \
+                {k: v for k, v in em_memoria[fid].items() if k not in fora}, fid
+        else:
+            # o formato guardado (o arquivo de antes, com o carimbo da confirmacao de antes) tem a mesma impressao
+            assert gravada['impressao_formato'] == em_memoria[fid]['impressao_formato'], fid
+
+
+def test_o_que_mudou_da_troca_de_funcao_e_so_o_item_da_funcao(job, modelo):
+    # D2 do E1: o "o que mudou" gravado e a diferenca entre a derivacao gravada antes e a gravada por este salvar; a
+    # troca de funcao com a mesma regra e a mesma ancora da um item so, nos formatos onde o logo existe
+    from desdobra.briefing import historico as bh
+    conteudo, _e = _salvo_e_corrigido(job, modelo, _passo_2_com_selo(modelo))
+    antes = {fid: _deriv(job, fid) for fid, _w, _h in FORMATOS}
+    s = _servidor(job, conteudo)
+    try:
+        assert _salvar(s, tts._entrar(s), job)[1] == 200
+    finally:
+        s.parar()
+    logo = _logo_id(modelo)
+    com_logo = sorted(fid for fid, d in antes.items() if any(logo in (e.get('layer_ids') or []) for e in d['elementos']))
+    assert com_logo
+    ultima = bh.ler(job)['entradas'][-1]
+    assert ultima['formatos_afetados'] == com_logo
+    mud = contratos.ler(job / bs.PASTA_MUDANCAS / ('%d.json' % ultima['seq']), bs.ESQUEMA_MUDANCAS)
+    assert {f: [(i['tipo'], i['frase']) for i in itens] for f, itens in mud['formatos'].items()} == \
+        {f: [('funcao', 'O logo principal agora é o selo.')] for f in com_logo}
+    for fid in com_logo:
+        d = _deriv(job, fid)
+        assert (d['caminho'], d['situacao']) == (antes[fid]['caminho'], antes[fid]['situacao']), fid
+
+
 # ------------------------------------------------------------------ o mesmo gravador no terminal
 def test_briefing_confirmar_do_terminal_usa_o_mesmo_gravador(job, modelo, pessoa, monkeypatch):
     from desdobra import cli

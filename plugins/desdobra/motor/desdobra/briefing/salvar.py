@@ -244,17 +244,21 @@ def _salvar(pasta, conteudo, disparo):
     with nucleo.Trava(pasta):
         # o salvar seletivo (M7b, A6): a derivacao em memoria com o briefing novo diz os formatos afetados antes de
         # gravar; sem ela (a derivacao nao roda), afetados fica None e todo formato e refeito, como antes
-        mudancas = _mudancas(pasta, b)
+        base = _base_das_mudancas(pasta, b)
+        mudancas = None if base is None else base['mudancas']
         afetados = None if mudancas is None else sorted(mudancas)
         guardada = mb.gravar_com_historico(pasta, b, disparo=disparo, afetados=afetados)
-        if mudancas is not None:
-            _gravar_mudancas(pasta, mudancas)
         try:
             r = nd.derivar(pasta, so=None if mudancas is None else
                            [f['id'] for f in b['formatos'] if f['id'] in mudancas])
             devolucoes = len(r['devolucoes'])
+            if base is not None:
+                # o "o que mudou" sai da derivacao gravada agora contra a gravada antes (correcao do D2 do E1)
+                mudancas = _mudancas_da_gravada(base, r['formatos'])
         except nd.ErroDerivacao as e:
             derivado, motivo = False, e.motivo
+        if mudancas is not None:
+            _gravar_mudancas(pasta, mudancas)
     nucleo.registrar_evento(pasta, 'briefing_confirmado', origem=disparo.origem, meio=disparo.meio,
                             familias=len(b['composicoes']), derivado=derivado, motivo=motivo, afetados=afetados)
     return {'briefing': b, 'historico': guardada, 'derivado': derivado, 'motivo': motivo, 'devolucoes': devolucoes,
@@ -291,7 +295,15 @@ def _mudancas(pasta, b):
     de cada formato (desdobra.derivacao.impressao) com a da derivacao gravada. Devolve {formato: itens da diferenca
     (desdobra.derivacao.diferenca)} so dos afetados: a impressao mudou, o formato nao tinha derivacao gravada (ou ela
     nao se le) ou saiu do briefing. None quando a derivacao em memoria nao roda (a gravada diz o motivo depois)."""
-    from desdobra.derivacao import diferenca
+    base = _base_das_mudancas(pasta, b)
+    return None if base is None else base['mudancas']
+
+
+def _base_das_mudancas(pasta, b):
+    """_mudancas com o que a diferenca usou do lado de antes (as derivacoes gravadas, lidas antes de gravar, e o
+    briefing gravado resolvido) e o briefing novo resolvido: {'mudancas', 'gravadas', 'velho', 'de_antes', 'novo'}, ou
+    None. A derivacao em memoria confere contra b (nd.preparar com briefing): e a mesma que a gravada logo depois
+    (correcao do D2 do E1)."""
     from desdobra.derivacao import formatos as mf
     from desdobra.derivacao import impressao as mi
     from desdobra.derivacao import nucleo as nd
@@ -301,21 +313,37 @@ def _mudancas(pasta, b):
         r = nd.derivar_em_memoria(ctx, specs=specs, arquivo_specs=arquivo_specs, params=mf.parametros(pasta, b))
     except (nd.ErroDerivacao, mf.ErroFormatos, contratos.ErroContrato):
         return None
-    novo = mi.resolvido(b, ctx['resolvidas'], specs)
-    velho = _resolvido_gravado(pasta, ctx['laudo'], specs)
-    de_antes = {f['id'] for f in velho['briefing']['formatos']} if velho else set()
-    saida = {}
-    for fid in sorted(set(r['formatos']) | de_antes):
-        depois, antes = r['formatos'].get(fid), _gravada(pasta, fid)
+    base = {'novo': mi.resolvido(b, ctx['resolvidas'], specs), 'velho': _resolvido_gravado(pasta, ctx['laudo'], specs),
+            'gravadas': {}, 'mudancas': {}}
+    base['de_antes'] = {f['id'] for f in base['velho']['briefing']['formatos']} if base['velho'] else set()
+    for fid in sorted(set(r['formatos']) | base['de_antes']):
+        depois = r['formatos'].get(fid)
+        base['gravadas'][fid] = antes = _gravada(pasta, fid)
         if depois is not None and antes is not None and antes.get('impressao_formato') == depois['impressao_formato']:
             continue
-        if antes is None or fid not in de_antes:
-            # sem a derivacao ou sem o briefing de antes do formato, ele entra no job (ou sai, sem nada gravado)
-            itens = diferenca.diferencas(None, {}) if depois is not None else diferenca.diferencas({}, None)
-        else:
-            itens = diferenca.do_formato(antes, velho, depois, novo, fid)
-        saida[fid] = itens
-    return saida
+        base['mudancas'][fid] = _itens(base, fid, depois)
+    return base
+
+
+def _itens(base, fid, depois):
+    """Os itens da diferenca (desdobra.derivacao.diferenca) do formato fid entre a derivacao gravada antes e depois
+    (a derivacao do formato com o briefing novo; None quando ele saiu do briefing)."""
+    from desdobra.derivacao import diferenca
+    antes = base['gravadas'].get(fid)
+    if depois is not None and antes is not None and antes.get('impressao_formato') == depois['impressao_formato']:
+        return []
+    if antes is None or fid not in base['de_antes']:
+        # sem a derivacao ou sem o briefing de antes do formato, ele entra no job (ou sai, sem nada gravado)
+        return diferenca.diferencas(None, {}) if depois is not None else diferenca.diferencas({}, None)
+    return diferenca.do_formato(antes, base['velho'], depois, base['novo'], fid)
+
+
+def _mudancas_da_gravada(base, derivados):
+    """O "o que mudou" de cada afetado refeito com a derivacao que este salvar gravou (derivados: {formato:
+    derivacao/1}), contra a gravada antes: uma fonte so para a lista que a tela mostra. O formato afetado que saiu do
+    briefing (sem derivacao nova) fica com os itens de antes."""
+    return {fid: _itens(base, fid, derivados[fid]) if fid in derivados else itens
+            for fid, itens in base['mudancas'].items()}
 
 
 def _gravar_mudancas(pasta, mudancas):
@@ -328,16 +356,31 @@ def _gravar_mudancas(pasta, mudancas):
     contratos.gravar(Path(pasta) / PASTA_MUDANCAS / ('%d.json' % entrada['seq']), dados, ESQUEMA_MUDANCAS)
 
 
-def _sem_origem_da_decisao(quebras):
-    """As quebras da familia sem a origem da decisao (da ou fixture_de_teste), para comparar o gravado com o
-    rascunho."""
-    return [dict(q, quebras={k: v for k, v in q['quebras'].items() if k != 'origem'}) for q in quebras]
+def _decisoes(b):
+    """O briefing b sem o que muda a cada gravacao sem mudar decisao nenhuma: o cabecalho (hashes, quem, quando, meio)
+    e a hora da confirmacao de cada familia (a familia confirmada de novo com a mesma versao, as mesmas edicoes e as
+    mesmas quebras nao pede outro "Salvar e seguir"). A origem e o meio da confirmacao ficam: o portao da entrega pede
+    a confirmacao da janela do DA, e a familia confirmada de novo por outro caminho muda o briefing. As composicoes
+    ficam pela familia e as quebras em ordem fixa: a ordem das familias na tela nao e decisao."""
+    import json
+    saida = {k: copy.deepcopy(v) for k, v in b.items() if k not in ('cabecalho', 'composicoes', 'quebras_por_familia')}
+    saida['composicoes'] = {c['familia']: dict({k: v for k, v in c.items() if k != 'confirmacao'},
+                                               confirmacao=None if c.get('confirmacao') is None else
+                                               {k: v for k, v in c['confirmacao'].items() if k != 'em'})
+                            for c in b.get('composicoes') or []}
+    if 'quebras_por_familia' in b:
+        saida['quebras_por_familia'] = sorted(b['quebras_por_familia'] or [],
+                                              key=lambda q: json.dumps(q, sort_keys=True))
+    return saida
 
 
 def situacao_na_tela(pasta, familias):
-    """{'salvo', 'em'} para a tela: salvo quando o briefing gravado traz as familias da tela como o rascunho as tem
-    confirmadas agora (mesma versao, mesmas edicoes, mesmas quebras de linha) e vale para os arquivos do job.
-    familias: {id: [formatos]}."""
+    """{'salvo', 'em'} para a tela: salvo quando "Salvar e seguir" nao mudaria o briefing gravado, que vale para os
+    arquivos do job e tem as familias da tela confirmadas. O briefing que o gravador montaria agora sai do mesmo montar
+    (o rascunho da tela: passo 1, passo 2 e Design system, familias com versao, edicoes e quebras; o modo de dados; o
+    resto do gravado), com a origem do gravado, e e comparado com ele fora do cabecalho e do carimbo das confirmacoes
+    (_decisoes): nenhum campo que o gravador escreve fica de fora (correcao do D1 do E1, a funcao trocada no passo 2
+    deixava a tela em "Briefing salvo"). familias: {id: [formatos]}."""
     from desdobra.briefing import modelo as mb
     nao = {'salvo': False, 'em': None}
     try:
@@ -356,18 +399,14 @@ def situacao_na_tela(pasta, familias):
         return nao
     for gid, fids in familias.items():
         c, f = comps[gid], dados['familias'].get(gid) or {}
-        if c['formatos'] != list(fids) or not f.get('confirmada') or not c['confirmada'] or \
-                (c['versao'], c['edicoes']) != (f.get('versao'), f.get('edicoes')):
+        if c['formatos'] != list(fids) or not f.get('confirmada') or not c['confirmada']:
             return nao
-        # a quebra de linha da familia tambem (M7b, C1): confirmada de novo com outra quebra, pede "Salvar e seguir"
-        gravadas = [q for q in b.get('quebras_por_familia') or [] if q.get('familia') == gid]
-        no_rascunho = quebras_da_familia(gid, c['formatos'], f, None)
-        if _sem_origem_da_decisao(gravadas) != _sem_origem_da_decisao(no_rascunho):
-            return nao
-    # a prancheta e o giro do passo 1 tambem: escolhidos de novo depois de salvar, pedem outro "Salvar e seguir"
-    giro = dados.get('rotacoes') or {}
-    if any(f['chave'] in giro and f.get('rotacao') != giro[f['chave']] for f in b['formatos']):
+    origem = b['cabecalho']['origem']
+    try:
+        novo = montar(pasta, {'familias': {gid: {'formatos': list(fids)} for gid, fids in familias.items()}}, dados,
+                      origem=origem, meio=b['cabecalho'].get('meio'), por={}, quando=None, modo=_modo(pasta, origem))
+    except (contratos.ErroContrato, KeyError, TypeError, ValueError):
         return nao
-    if dados.get('quadro') is not None and dados['quadro'] != b['quadro'].get('valor'):
+    if _decisoes(novo) != _decisoes(b):
         return nao
     return {'salvo': True, 'em': b['cabecalho']['quando']}
