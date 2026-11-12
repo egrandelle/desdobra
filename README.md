@@ -18,7 +18,7 @@ O passo a passo completo, com o que conferir depois, está em `docs/instalacao-t
 ## Linha de comando do motor
 
 ```
-desdobra job criar <pasta> --kv <arquivo.psd> --modo-dados {a,b,c} [--fontes <arquivos ou pasta>]
+desdobra job criar <pasta> --kv <arquivo.psd> [--modo-dados {a,b,c}] [--fontes <arquivos ou pasta>]
 desdobra job proxima <pasta>
 desdobra ler <arquivo.psd> --saida <pasta>
 desdobra fontes conferir --job <pasta>

@@ -63,6 +63,21 @@ def test_criar_monta_a_pasta_e_congela_as_entradas(tmp_path, kv_psd, pastas_extr
     assert not list(job.rglob('.tmp-*'))
 
 
+def test_criar_sem_modo_grava_o_job_sem_modo(tmp_path, kv_psd):
+    """O modo de dados nasce só na tela (decisoes-v1.md, 170; M7c K1): o job criar não pede modo, o estado guarda
+    modo_dados nulo, e o modo que vale continua c até a escolha do DA."""
+    from desdobra.job import modo_dados
+    job = tmp_path / 'job'
+    estado = nucleo.criar(job, kv_psd)
+    assert estado['modo_dados'] is None
+    assert contratos.ler(job / 'estado.json', 'estado/1')['modo_dados'] is None
+    assert modo_dados.efetivo(job, modo_dados.teto_do_job(job)) == 'c'
+    # com teto e sem modo: o teto fica gravado e o modo continua sem valor
+    estado = nucleo.criar(tmp_path / 'job-teto', kv_psd, teto_modo_dados='a')
+    assert estado['modo_dados'] is None and estado['teto_modo_dados'] == 'a'
+    assert modo_dados.efetivo(tmp_path / 'job-teto', 'a') == 'c'
+
+
 def test_criar_recusa_entradas_erradas(tmp_path, kv_psd):
     nao_psd = tmp_path / 'falso.psd'
     nao_psd.write_bytes(b'nao e psd')

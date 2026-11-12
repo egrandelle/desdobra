@@ -13,7 +13,10 @@
     "criado_em": {"$ref": "#/$defs/instante"},
     "atualizado_em": {"$ref": "#/$defs/instante"},
     "motor_versao": {"type": "string"},
-    "modo_dados": {"$ref": "#/$defs/modo"},
+    "modo_dados": {
+      "description": "So registro do pedido do job criar; nulo quando o job nasce sem modo (M7c K1). O modo que vale e o que o DA escolhe no passo 1 da tela (decisoes-v1.md, 170)",
+      "oneOf": [{"$ref": "#/$defs/modo"}, {"type": "null"}]
+    },
     "teto_modo_dados": {"oneOf": [{"$ref": "#/$defs/modo"}, {"type": "null"}]},
     "entradas": {
       "description": "Arquivos congelados em entrada/, por caminho relativo a pasta do job (com /)",

@@ -54,8 +54,7 @@ def job_b(tmp_path_factory):
     pasta = tmp_path_factory.mktemp('integracao')
     psd = psd_com_segredos(pasta)
     job = pasta / 'job-b'
-    codigo, saida, _ = rodar('--envelope', '--teto-modo-dados', 'b', 'job', 'criar', str(job), '--kv', str(psd),
-                             '--modo-dados', 'b')
+    codigo, saida, _ = rodar('--envelope', '--teto-modo-dados', 'b', 'job', 'criar', str(job), '--kv', str(psd))
     assert codigo == 0, saida
     escolher_modo_do_da(job, 'b')  # a escolha do DA na tela e a fonte do modo (decisoes-v1.md, 170)
     codigo, saida, erro = rodar('--envelope', '--teto-modo-dados', 'b', 'job', 'proxima', str(job))
@@ -114,7 +113,7 @@ def test_modo_humano_avisa_o_da_sem_mostrar_o_trecho(job_b):
 
 def test_modo_c_nao_leva_conteudo_nem_nome(job_b):
     job = job_b['pasta'] / 'job-c'
-    assert rodar('--envelope', 'job', 'criar', str(job), '--kv', str(job_b['psd']), '--modo-dados', 'c')[0] == 0
+    assert rodar('--envelope', 'job', 'criar', str(job), '--kv', str(job_b['psd']))[0] == 0
     codigo, saida, _ = rodar('--envelope', 'job', 'proxima', str(job))
     env = envelope_de(saida)
     assert codigo == 0 and env['modo_dados'] == 'c' and 'conteudo' not in env

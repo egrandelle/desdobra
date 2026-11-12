@@ -9,7 +9,8 @@ tela grava (o rascunho, os atos que o DA confirma na janela e o cronometro da me
 processo de fundo, pelo servidor da tela (desdobra.tela.servidor), nunca este comando. Ele:
   - confere a pasta do job e o Chromium com janela fixado (doctor.chromium.verificar_chromium_janela);
   - solta o processo de fundo (desdobra.tela.processo), sem segredo na linha de comando, sem console visivel e fora
-    do grupo de processos de quem chamou;
+    do grupo de processos de quem chamou, com o teto e a pasta da biblioteca da agencia (opcao global --biblioteca;
+    M7c, M1) na linha de comando quando vieram; a saida e o envelope nunca levam a pasta;
   - espera a linha de aviso do fundo ("pronto" ou "recusado <motivo>") por no maximo tela.partida_max_s e volta. A
     janela fica aberta com o DA; o fundo sai sozinho quando ele a fecha, e o perfil temporario e apagado.
 
@@ -115,10 +116,28 @@ def registrar(subparsers):
     a.set_defaults(executar=_abrir, nome_comando='tela abrir')
 
 
-def comando_do_filho(pasta, teto=None):
-    """A linha de comando do processo de fundo: so o modulo, a pasta e o teto do modo de dados, nenhum segredo."""
+def comando_do_filho(pasta, teto=None, biblioteca=None):
+    """A linha de comando do processo de fundo: so o modulo, a pasta, o teto do modo de dados e a pasta da biblioteca
+    da agencia (M7c, M1), nenhum segredo."""
     argv = [sys.executable, '-I', '-B', '-m', 'desdobra.tela.processo', '--job', str(pasta)]
-    return argv + ['--teto', teto] if teto else argv
+    if teto:
+        argv += ['--teto', teto]
+    if biblioteca:
+        argv += ['--biblioteca', str(biblioteca)]
+    return argv
+
+
+def _argumentos_do_filho(args):
+    """teto e biblioteca so quando vieram (os testes trocam comando_do_filho por uma funcao so da pasta)."""
+    extra = {}
+    teto = getattr(args, 'teto_modo_dados', None)
+    if teto:
+        extra['teto'] = teto
+    from desdobra import biblioteca
+    pasta = biblioteca.normalizar(getattr(args, 'biblioteca', None))
+    if pasta is not None:
+        extra['biblioteca'] = str(pasta)
+    return extra
 
 
 def _janela_presente():
@@ -218,8 +237,7 @@ def _abrir(args):
                          o_que_fazer=O_QUE_FAZER_RECUSA['nao_e_job'], linhas_humanas=['A pasta não é um job.'])
     if not _janela_presente():
         return _recusa(pasta, 'sem_chromium_com_janela')
-    teto = getattr(args, 'teto_modo_dados', None)
-    proc = _soltar(comando_do_filho(pasta, teto) if teto else comando_do_filho(pasta))
+    proc = _soltar(comando_do_filho(pasta, **_argumentos_do_filho(args)))
     aviso = _ler_aviso(proc, _espera_s())
     if not aviso:
         # sem aviso a tempo (ou o fundo saiu calado): o fundo e encerrado com os filhos dele (o Python de verdade, sob

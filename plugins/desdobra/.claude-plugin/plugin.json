@@ -12,6 +12,12 @@
       "description": "O modo mais aberto que a agência autorizou para o que o Claude pode ver de cada job. a: metadados, textos e miniaturas de camadas sem texto. b: metadados e textos, sem imagens. c: só contagens, estados e números do motor.",
       "options": ["a", "b", "c"],
       "required": true
+    },
+    "biblioteca_agencia": {
+      "type": "directory",
+      "title": "Biblioteca da agência",
+      "description": "Pasta onde o desdobra guarda o padrão de cada marca da agência. Opcional: sem ela, o job roda normal, sem marca. Escolha uma pasta fora da pasta do plugin; ela pode ser compartilhada entre os DAs da agência.",
+      "required": false
     }
   }
 }

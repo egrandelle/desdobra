@@ -1,5 +1,5 @@
 {
-  "description": "Prepara o ambiente Python do motor do desdobra na pasta de dados do plugin e impede o Claude de disparar o que so o DA dispara (render, confirmacoes, aprovacao, entrega e parametros de entrega)",
+  "description": "Prepara o ambiente Python do motor do desdobra na pasta de dados do plugin e impede o Claude de disparar o que so o DA dispara (render, confirmacoes, aprovacao, entrega e parametros de entrega) e de ler do job o que a secao 7.4 da arquitetura nao permite",
   "hooks": {
     "SessionStart": [
       {
@@ -16,7 +16,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|Read|Glob|Grep|WebFetch|mcp__terminal__run_in_terminal|mcp__claude-in-chrome__.*|mcp__Claude_Browser__.*",
+        "matcher": "Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit|Read|Glob|Grep|WebFetch|Artifact|SendUserFile|mcp__.*",
         "hooks": [
           {
             "type": "command",

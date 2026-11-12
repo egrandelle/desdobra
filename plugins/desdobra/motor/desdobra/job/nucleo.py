@@ -352,14 +352,17 @@ def _bloqueio_do_envelope(envelope):
 
 
 # ------------------------------------------------------------------ criar
-def criar(pasta, psd, modo_dados, teto_modo_dados=None, campanha=None, specs=None, fases=ESTEIRA, fontes=None):
+def criar(pasta, psd, modo_dados=None, teto_modo_dados=None, campanha=None, specs=None, fases=ESTEIRA, fontes=None):
+    """Cria a pasta do job. modo_dados e opcional (M7c K1): o modo que vale e o que o DA escolhe no passo 1 da tela
+    (decisoes-v1.md, 170), e ate la o job e c. Sem modo, o estado.json guarda modo_dados nulo; com modo, ele fica so
+    como registro do pedido e continua limitado pelo teto."""
     validar_esteira(fases)
     # caminhos absolutos: as fases rodam em subprocesso com outra pasta de trabalho
     pasta, psd = Path(pasta).resolve(), Path(psd).resolve()
-    if modo_dados not in MODOS_DADOS:
-        raise ErroJob('Escolha o modo de dados do job: a, b ou c.', codigo=Codigo.USO,
-                      o_que_fazer='Use --modo-dados com a, b ou c. Não há valor inicial.')
-    if teto_modo_dados is not None and not modo_permitido(modo_dados, teto_modo_dados):
+    if modo_dados is not None and modo_dados not in MODOS_DADOS:
+        raise ErroJob('O modo de dados do job só pode ser a, b ou c.', codigo=Codigo.USO,
+                      o_que_fazer='Crie o job sem modo: o DA escolhe o modo no passo 1 da tela.')
+    if modo_dados is not None and teto_modo_dados is not None and not modo_permitido(modo_dados, teto_modo_dados):
         raise ErroJob('O modo de dados escolhido é mais aberto que o teto autorizado pela agência.',
                       o_que_fazer='Escolha um modo igual ou mais fechado que o teto (%s).' % teto_modo_dados)
     if pasta.exists() and (not pasta.is_dir() or any(pasta.iterdir())):

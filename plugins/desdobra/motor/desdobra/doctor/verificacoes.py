@@ -354,6 +354,20 @@ def verificar_isolador(plat=None):
     return [dentro, estouro], False
 
 
+def verificar_biblioteca(valor, dados):
+    """M7c, M1: a biblioteca da agencia. Nao configurada passa (a opcao e opcional) e diz onde configurar; configurada,
+    tem de existir, gravar e ficar fora da pasta do plugin e da pasta de dados do plugin. Nem o detalhe nem o O QUE
+    FAZER levam o caminho, e o doctor nunca lista as marcas."""
+    from desdobra import biblioteca
+    c = biblioteca.conferir(valor, dados=dados)
+    v = Verificacao('biblioteca_agencia', 'Biblioteca da agência', detalhe=c.detalhe)
+    v.numeros = {'configurada': int(c.configurada), 'usavel': int(c.usavel)}
+    if c.configurada and not c.usavel:
+        v.situacao = 'falha'
+        v.o_que_fazer = c.o_que_fazer
+    return v
+
+
 def verificar_teto(teto, dados):
     v = Verificacao('teto_modo_dados', 'Teto do modo de dados')
     if teto is None:

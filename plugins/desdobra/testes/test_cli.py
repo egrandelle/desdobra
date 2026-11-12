@@ -32,12 +32,25 @@ def test_versao_e_ajuda():
 
 def test_job_criar_e_proxima_pela_cli(tmp_path, kv_psd):
     job = tmp_path / 'job'
-    codigo, saida, _ = rodar('job', 'criar', str(job), '--psd', str(kv_psd), '--modo-dados', 'c')
+    codigo, saida, _ = rodar('job', 'criar', str(job), '--psd', str(kv_psd))
     assert codigo == 0 and 'O QUE FAZER' in saida
     codigo, saida, _ = rodar('--envelope', 'job', 'estado', str(job))
     env = envelope_de(saida)
     assert env['modo_dados'] == 'c' and env['fase'] == 'ler' and codigo == 0
     assert len(env['ids']['job_id']) == 32
+
+
+def test_job_criar_sem_modo_dados_sai_em_c(tmp_path, kv_psd):
+    """M7c K1: o job criar sem --modo-dados grava o job, o envelope sai em c e o estado guarda modo_dados nulo; a
+    escolha do modo é só do DA, na tela (decisoes-v1.md, 170)."""
+    job = tmp_path / 'job'
+    codigo, saida, _ = rodar('--envelope', '--teto-modo-dados', 'a', 'job', 'criar', str(job), '--kv', str(kv_psd))
+    env = envelope_de(saida)
+    assert codigo == 0 and env['codigo'] == 0 and env['modo_dados'] == 'c' and 'conteudo' not in env
+    estado = contratos.ler(job / 'estado.json', 'estado/1')
+    assert estado['modo_dados'] is None and estado['teto_modo_dados'] == 'a'
+    args = cli.montar_analisador().parse_args(['job', 'criar', 'p', '--kv', 'x.psd'])
+    assert args.modo_dados is None
 
 
 def test_envelope_nao_ecoa_argumentos_nem_traceback(tmp_path):

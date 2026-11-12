@@ -143,7 +143,9 @@ def test_documentacao_diz_os_nomes_que_o_limpar_aceita():
     escolhas = cli.montar_analisador()._subparsers._group_actions[0].choices['parametros-entrega']._option_string_actions[
         '--limpar'].choices
     raiz = RAIZ_PLUGIN.parent.parent
-    for doc in (RAIZ_PLUGIN / 'skills' / 'novo-job' / 'SKILL.md', raiz / 'README.md', raiz / 'docs' / 'm1-interfaces.md'):
+    # M7c K1: a skill novo-job nao manda mais o DA ao terminal, e a entrega e do M8; os parametros saem dela
+    assert 'parametros-entrega' not in (RAIZ_PLUGIN / 'skills' / 'novo-job' / 'SKILL.md').read_text(encoding='utf-8')
+    for doc in (raiz / 'README.md', raiz / 'docs' / 'm1-interfaces.md'):
         texto = doc.read_text(encoding='utf-8')
         for nome in escolhas:
             assert nome in texto, (doc.name, nome)

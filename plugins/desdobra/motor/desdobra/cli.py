@@ -74,6 +74,9 @@ def montar_analisador():
                    help='Imprime só o envelope de saída filtrado pelo modo de dados (uso pelas skills)')
     p.add_argument('--teto-modo-dados', choices=MODOS_DADOS, default=None,
                    help='Teto do modo de dados autorizado pela agência; o envelope nunca passa dele')
+    # M7c, M1: a pasta da biblioteca da agencia (userConfig.biblioteca_agencia), opcional; o envelope nunca a traz
+    p.add_argument('--biblioteca', default=None,
+                   help='Pasta da biblioteca da agência (perfis de marca); opcional')
     sub = p.add_subparsers(dest='comando', metavar='COMANDO', required=True, parser_class=_Analisador)
     for nome_modulo, nomes in COMPONENTES:
         try:

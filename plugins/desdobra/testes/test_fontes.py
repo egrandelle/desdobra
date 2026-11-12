@@ -190,7 +190,7 @@ def test_job_nao_aceita_arquivo_de_licencas(tmp_path, capsys):
     kv = _kv(tmp_path)
     lic = tmp_path / 'licencas.json'
     lic.write_text('{}', encoding='utf-8')
-    env = _envelope(['job', 'criar', tmp_path / 'job0', '--kv', kv, '--modo-dados', 'c', '--licencas', lic], capsys)
+    env = _envelope(['job', 'criar', tmp_path / 'job0', '--kv', kv, '--licencas', lic], capsys)
     assert env['codigo'] == Codigo.USO and not (tmp_path / 'job0').exists()
     with pytest.raises(TypeError):
         nucleo.criar(tmp_path / 'job1', kv, 'c', licencas=lic)

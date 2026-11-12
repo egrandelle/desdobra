@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """Processo de fundo da tela (M7a2; M7a, fatia 1): servidor da tela e Chromium com janela, ate o DA fechar a janela.
 
-    python -I -B -m desdobra.tela.processo --job <pasta>
+    python -I -B -m desdobra.tela.processo --job <pasta> [--teto {a,b,c}] [--biblioteca <pasta>]
+
+A pasta da biblioteca da agencia (M7c, M1) entra no conteudo so pela situacao (com_biblioteca): a pagina nunca recebe
+o caminho nem a lista de marcas por aqui.
 
 Quem chama e o "desdobra tela abrir" (desdobra.tela), solto do terminal. A linha de comando nao leva segredo: o token
 da entrada e a sessao do cookie nascem aqui (desdobra.tela.servidor) e vao so ao Chromium, por page.goto
@@ -55,15 +58,16 @@ def _avisar(linha):
         pass
 
 
-def executar(pasta, avisar=_avisar, ao_abrir=None, teto=None):
+def executar(pasta, avisar=_avisar, ao_abrir=None, teto=None, biblioteca=None):
     """Roda a tela do job ate a janela fechar. ao_abrir(janela, servidor): so para os testes (a janela ja aberta).
     teto: o teto do modo de dados que o tela abrir recebeu (a tela nunca oferece modo acima dele nem do estado.json).
+    biblioteca: a pasta da biblioteca da agencia que o tela abrir recebeu (M7c, M1), ou None.
     Devolve o codigo de saida do processo."""
     from desdobra.chromium import aberto as chromium_aberto
     pasta = Path(pasta).resolve()
     aberto = chromium_aberto.NavegadorAberto()
     try:
-        return _executar(pasta, avisar, ao_abrir, teto, aberto)
+        return _executar(pasta, avisar, ao_abrir, teto, aberto, biblioteca)
     finally:
         # toda saida fecha o aberto (a recusa tambem); o fecho em ordem e o erro depois da montagem ja fecharam, e o
         # segundo fechar() so devolve o relatorio
@@ -77,7 +81,18 @@ def _fechar_aberto(aberto):
     return {'aberto_%s' % k: v for k, v in sorted(aberto.fechar().items())}
 
 
-def _executar(pasta, avisar, ao_abrir, teto, aberto):
+def com_biblioteca(conteudo, valor):
+    """M7c, M1: a situacao da biblioteca da agencia no conteudo da montagem. 'biblioteca' e o que a pagina pode
+    receber (sem caminho; desdobra.biblioteca.para_tela); 'pasta_biblioteca' e o caminho, so no processo de fundo
+    (None quando a biblioteca nao serve), para os atos da marca dos passos seguintes."""
+    from desdobra import biblioteca
+    conferencia = biblioteca.conferir(valor)
+    conteudo['biblioteca'] = biblioteca.para_tela(conferencia)
+    conteudo['pasta_biblioteca'] = conferencia.pasta if conferencia.usavel else None
+    return conteudo
+
+
+def _executar(pasta, avisar, ao_abrir, teto, aberto, biblioteca=None):
     from desdobra.chromium import navegador
     from desdobra.derivacao import medida_quebras
     from desdobra.job import nucleo
@@ -90,6 +105,7 @@ def _executar(pasta, avisar, ao_abrir, teto, aberto):
         conteudo = estado.montar(pasta, teto=teto) if teto else estado.montar(pasta)
         if inacabado:
             conteudo['render_inacabado'] = inacabado
+        com_biblioteca(conteudo, biblioteca)
     except estado.ErroTela as e:
         _registrar_recusa(pasta, motivo=e.motivo)
         avisar('%s %s' % (RECUSADO, e.motivo))
@@ -239,12 +255,16 @@ def principal(argv=None, ao_abrir=None):
     p = argparse.ArgumentParser(prog='desdobra.tela.processo', add_help=False)
     p.add_argument('--job', required=True)
     p.add_argument('--teto', choices=('a', 'b', 'c'), default=None)
+    p.add_argument('--biblioteca', default=None)
     try:
         args = p.parse_args(list(sys.argv[1:] if argv is None else argv))
     except SystemExit:
         _avisar('%s uso' % RECUSADO)
         return int(Codigo.USO)
-    return executar(args.job, ao_abrir=ao_abrir, teto=args.teto)
+    if args.biblioteca is None:
+        # sem a opcao, a chamada fica como antes do M7c (os testes que trocam executar seguem valendo)
+        return executar(args.job, ao_abrir=ao_abrir, teto=args.teto)
+    return executar(args.job, ao_abrir=ao_abrir, teto=args.teto, biblioteca=args.biblioteca)
 
 
 if __name__ == '__main__':

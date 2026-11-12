@@ -273,7 +273,7 @@ def test_caminhos_relativos_de_ponta_a_ponta(casos, tmp_path):
         p = subprocess.run([sys.executable, '-I', '-B', '-m', 'desdobra', '--envelope', *argumentos], cwd=tmp_path,
                            capture_output=True, timeout=300)
         return json.loads(p.stdout.decode('utf-8').strip().splitlines()[-1])
-    assert motor('job', 'criar', 'job-rel', '--kv', psd, '--modo-dados', 'c')['codigo'] == 0
+    assert motor('job', 'criar', 'job-rel', '--kv', psd)['codigo'] == 0
     env = motor('job', 'proxima', 'job-rel')
     assert env['codigo'] == 0 and env['contagens']['codigo_da_fase'] == 0, env
     assert motor('ler', psd, '--saida', 'avulso-rel')['codigo'] == 0

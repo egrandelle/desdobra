@@ -443,7 +443,7 @@ Dono: frente de fontes do M2. Arquivos: `motor/desdobra/fontes/`, `motor/desdobr
 ### Entrada `entrada/fontes/`
 
 ```
-desdobra job criar <pasta> --kv <psd> --modo-dados {a,b,c} [--fontes <arquivo ou pasta> ...]
+desdobra job criar <pasta> --kv <psd> [--modo-dados {a,b,c}] [--fontes <arquivo ou pasta> ...]
 desdobra job trocar-entrada <pasta> entrada/fontes/<arquivo> <arquivo novo>      (troca ou acrescenta)
 ```
 
@@ -1042,3 +1042,74 @@ Cada verificação tem `nome`, `situacao` (`ok`, `reprova`, `avisa` ou `registra
 ### Limites novos
 
 Com fonte em `motor/fontes-de-limites.json`: `entrega.peso_reprova_acima_da_leitura_decimal`, `entrega.jpeg_qualidade_min`, `entrega.jpeg_qualidade_max`, `entrega.jpeg_qualidade_piso_aviso` (avisa), `entrega.jpeg_subamostragem`, `entrega.jpeg_progressivo`, `entrega.jpeg_optimize`, `entrega.jpeg_buffer_bytes`, `entrega.png_nivel_compressao`, `entrega.encoder_build_referencia` e `entrega.tolerancia_area_px`.
+
+## M7c S1: miniaturas permitidas do modo (a) (`desdobra/sugestao/miniaturas.py`)
+
+Decisão 190, Q7: no modo (a), vão ao Claude só imagens de camadas sem texto, e na dúvida a camada fica de fora. A regra mora numa função só, `miniatura_permitida(camada, laudo, contexto=None, *, pasta_laudo=None)`, que lê o `laudo/1` e, para o smart object, a estrutura interna que o leitor gravou em `pasta_laudo/bruto/<sha256>/estrutura.json`:
+
+- entra a camada folha visível no KV do tipo `pixel` ou `forma`, sem bloco de texto e sem ajuste;
+- entra o smart object embutido só com `abertura.situacao == 'aberto'`, `resumo.n_textos == 0`, `resumo.smart_objects == 0` e a estrutura interna em `bruto/<sha256>/estrutura.json` (o mesmo sha256 do smart object, arquivo comum, sem atalho) com `indice_smart` vazio e só camadas de kind `pixel`, `shape` ou `group`. O resumo conta só o índice de registros, e uma camada de smart object sem registro no PSB interno daria 0. Sem `pasta_laudo`, sem o arquivo ou com a estrutura ilegível, o smart object fica de fora;
+- fica de fora o smart object linkado, não aberto ou recusado, o grupo, a prancheta, o ajuste, o preenchimento, a cor sólida e todo tipo que a lista não conhece;
+- fica de fora a camada invisível no KV (`aparencia.visivel_efetiva`);
+- fica de fora a pilha de recorte inteira (a base e as camadas recortadas sobre ela, entre irmãs, na ordem do laudo, de baixo para cima) quando alguma delas pode ter texto: camada de texto, grupo com texto dentro ou smart object que não passa na regra acima. Um grupo da pilha (a base de recorte, por exemplo) leva junto tudo o que está dentro dele;
+- fica de fora o layer_id repetido no laudo e o layer_id que não é inteiro positivo; o arquivo `idx<n>.png` do leitor nunca é copiado;
+- fica de fora a camada cujo nome o detector de segredos acha e a que o chamador passa em `bloqueados`.
+
+`camadas_permitidas(laudo, bloqueados=(), detector=None, pasta_laudo=None)` devolve os layer_ids permitidos em ordem crescente. `gravar_miniaturas` passa `pasta_laudo = <job>/laudo`.
+
+`gravar_miniaturas(pasta_job, modo, laudo=None, bloqueados=(), detector=None)` refaz `sugestoes/miniaturas/` a cada chamada. Com `modo == 'a'`, apaga a pasta, copia `laudo/miniaturas/<layer_id>.png` de cada camada permitida (arquivo comum dentro da pasta de origem, sem atalho), confere o sha256 da cópia contra o da origem e grava `sugestoes/miniaturas/indice.json` no formato `{"miniaturas": [{"layer_id", "sha256"}]}`, sem nome nem texto. Uma cópia que não bate levanta `ErroMiniatura` e apaga a pasta. Com qualquer outro modo, apaga a pasta inteira e devolve `None`. O chamador passa o modo efetivo (`desdobra.sugestao.pacote.modo_do_job`); o módulo não lê `estado.json` nem a escolha do DA e não importa `desdobra.sugestao.pacote`, para o S2 poder chamá-lo de dentro de `gravar_pacote`.
+
+Risco declarado: letra desenhada em pixel ou forma vetorial não aparece no laudo como texto e passa pela regra; a tela avisa o DA no texto do modo (a).
+
+Testes: `testes/test_sugestao_miniaturas.py`, com laudos sintéticos para cada regra e o gerador `sinteticos.miniaturas` (um caso de cada regra num PSD só; `sinteticos.CASOS_MINIATURAS` diz o que entra) lido pelo leitor isolado.
+
+## M7c K1: job sem modo na criação e a skill `novo-job` reescrita
+
+`desdobra job criar` não pede mais o modo de dados. `--modo-dados` ficou opcional: sem ele, `estado.json` grava `"modo_dados": null`; com ele, o valor fica só como registro do pedido e continua recusado quando é mais aberto que o teto (`--teto-modo-dados`). O modo que vale continua sendo o que o DA escolhe no passo 1 da tela (decisoes-v1.md, nº170), e até essa escolha o envelope, o pacote e as sugestões tratam o job como modo (c).
+
+- `nucleo.criar(pasta, psd, modo_dados=None, teto_modo_dados=None, ...)`: o modo passou a ser opcional. Modo fora de `a`, `b` e `c` sai com `Codigo.USO`.
+- `schemas/estado-1.json`: `modo_dados` aceita `null`. O esquema continua `estado/1`, porque o job antigo, com o modo gravado, segue válido sem migração.
+- O envelope do `job criar` sai em (c), com ou sem `--modo-dados`.
+
+A skill `skills/novo-job/` foi reescrita para o DA que não usa terminal: doctor, criação do job com caminhos absolutos (com a dica de "Copiar como caminho" no Explorador de Arquivos e de "Copiar como nome de caminho" no Finder), as cinco fases pelo `job proxima` e a abertura da tela com `tela abrir`, passando `--biblioteca` só quando `${user_config.biblioteca_agencia}` está configurada. Saíram da skill a pergunta de modo, `--modo-dados`, toda instrução de terminal ao DA, a entrega (M8), a leitura do relatório de entrega, os parâmetros de cor, o valor de `--teto-memoria-bytes` dito no chat e o mapeamento de specs (vai para a skill `ler-spec`). As regras do modelo, o fluxo fase a fase e o glossário ficaram em `skills/novo-job/references/`.
+
+Testes: `test_job.py::test_criar_sem_modo_grava_o_job_sem_modo` e `test_cli.py::test_job_criar_sem_modo_dados_sai_em_c`; os testes de CLI que passavam `--modo-dados` sem precisar dele criam o job sem a opção.
+
+## M7c, M1: biblioteca da agência (`desdobra/biblioteca.py`)
+
+- `plugin.json` declara `userConfig.biblioteca_agencia`: `type` `directory`, `required` false, sem `default`. O DA escolhe a pasta em `/plugin`, aba Installed, plugin desdobra, opção Configure, por clique. A referência do manifesto (https://code.claude.com/docs/en/plugins/manifest-reference.md, User configuration) confirma o tipo `directory`, mas não diz o que `${user_config.biblioteca_agencia}` deixa no texto da skill quando a opção fica vazia. Por isso o motor trata como não configurada a opção ausente, vazia, só com espaços ou com a substituição sem fazer (qualquer valor com `${`). A skill pode passar o texto como veio.
+- Opção global da CLI: `desdobra [--envelope] [--teto-modo-dados {a,b,c}] [--biblioteca <pasta>] <comando> ...`. Nenhum envelope leva a pasta nem a lista de marcas.
+- `biblioteca.conferir(valor, dados=...)` devolve `Conferencia` com `situacao`: `nao_configurada`, `ok`, `ausente` (não existe, não é pasta ou caminho relativo), `sem_escrita` (a sonda `tempfile.mkstemp` na pasta falha; o arquivo da sonda, `.desdobra-sonda-*`, é apagado na hora), `dentro_do_plugin` (dentro de `PASTA_PLUGIN`, que muda a cada versão; quando o nome dela é uma versão, também a pasta de cima, com as outras versões; no plugin instalado, `<config>/plugins/cache/...`, toda a pasta `<config>/plugins`), `dentro_dos_dados` (dentro da pasta de dados do plugin, `CLAUDE_PLUGIN_DATA`, que some na desinstalação) ou `marcas_bloqueada` (`<biblioteca>/marcas` existe e é arquivo, ou é pasta e a sonda de escrita falha nela). "Dentro" compara o texto, sem os prefixos `\\?\`, `\\.\`, UNC estendido e o compartilhamento administrativo da própria máquina, e a identidade no disco (`st_dev`, `st_ino`) da pasta e dos ancestrais dela, o que pega junção, nome curto e caminho de rede que volta ao disco local. Vale como não configurada só a referência `${user_config...}` sem substituir; uma pasta com `${` no nome é configurada. `usavel` só em `ok`. `detalhe` e `o_que_fazer` são textos fixos, sem caminho e sem comando de terminal. `pasta_marcas(biblioteca)` é `<biblioteca>/marcas` (perfis do passo M2). `para_tela(conferencia)` dá `{configurada, usavel, situacao, o_que_fazer}`, sem caminho.
+- Doctor: verificação `biblioteca_agencia`, depois do teto. Não configurada passa (`ok`, o detalhe diz onde configurar); configurada e com problema, `falha` com o O QUE FAZER da situação. `numeros`: `configurada` e `usavel` (0 ou 1). O `doctor.json` e o envelope não levam o caminho; `rodar_verificacoes(..., biblioteca=None)`.
+- Tela: `tela abrir` passa a pasta ao processo de fundo (`comando_do_filho(pasta, teto=None, biblioteca=None)`, com `--biblioteca <pasta>` só quando a opção veio configurada). O processo (`desdobra.tela.processo --biblioteca`) põe no conteúdo da montagem `biblioteca` (o `para_tela`, que a página pode receber) e `pasta_biblioteca` (o `Path` quando a biblioteca serve, senão None; fica só no processo de fundo, para os atos da marca dos passos M3 a M5). Sem a opção, a chamada do processo fica como antes. A biblioteca ausente ou com problema nunca trava a tela: o job roda sem marca.
+
+Testes: `test_biblioteca.py` (novo) e `test_doctor.py` (verificação `biblioteca_agencia`).
+
+## M7c, P1: leitura do job pelo Claude só pelo que a 7.4 permite (`scripts/gancho_confirmacoes.py`)
+
+O gancho PreToolUse do plugin passa a negar a leitura do que a seção 7.4 da arquitetura não deixa chegar ao Claude. A regra fica no gancho do plugin, sem configuração persistente no job e sem aceite extra (substitui a proposta da 7.6 de gravar regras de permissão no job).
+
+- Pasta do job: a partir do caminho pedido, o gancho sobe até achar um `estado.json` (`pasta_do_job`, só biblioteca padrão). A regra vale só dentro de um job; o código-fonte do motor (`desdobra/laudo/`, `render/`, `entrega/`, `briefing/`) continua legível.
+- Dentro de um job, o Claude lê só `PERMITIDOS_NO_JOB` (`sugestoes/pacote-modelo.json`, `sugestoes/pacote-specs.json`, `sugestoes/sugestoes.json`, `sugestoes/mapeamento-specs.json`) e `sugestoes/miniaturas/**`. O resto é negado: `estado.json`, `entrada/`, `laudo/`, `briefing/`, `derivacao/`, `ds/`, `specs/`, `fontes/`, `medicoes/`, `render/`, `entrega/` (o relatório de entrega inclusive) e `sugestoes/segredos-bloqueados.json`.
+- Fora de um job, nega PSD, PSB, as extensões de `EXTENSOES_FONTE` (igual a `desdobra.arquivos.EXTENSOES_FONTE`, com teste de igualdade) e qualquer caminho com um segmento `marcas` (biblioteca da agência).
+- Ferramentas: Read, Glob e Grep; os comandos de leitura da Bash e da PowerShell (`VERBO_DE_LEITURA`: `cat`, `type`, `Get-Content`, `head`, `tail`, `more`, `cp`, `copy`, `Copy-Item`, `Select-String`, `findstr`, `grep`, `rg` e afins, na posição de comando; `python -c`, `open(`, `read_text` e `read_bytes` em qualquer ponto), com cada caminho citado (entre aspas ou solto, relativo ao `cwd` do evento, `/c/...` do Git Bash e `file://` inclusive) conferido pela mesma regra; e as ferramentas que sobem arquivo ou agem sem o DA (`mcp__*`, navegador e uso do computador inclusive, `Artifact` e `SendUserFile`), com a entrada inteira conferida como texto contra PSD, PSB, fonte, `entrada/`, `laudo/`, `render/`, `entrega/`, `briefing/` e `marcas/` (`TEXTO_QUE_SOBE`) e cada caminho dela pela regra do job. O matcher de `hooks/hooks.json` passa a `...|Artifact|SendUserFile|mcp__.*`.
+- Busca recursiva (Grep, Glob com `**`, `grep -r`, `rg`, `findstr /s`, `-Recurse`, `cp -r`): negada quando a raiz está num job fora de `sugestoes/`, ou quando contém um job ou uma pasta `marcas` (busca de cima para baixo limitada a 4 níveis e 4000 entradas, sem pastas ocultas, `node_modules`, `__pycache__` e `site-packages`). Sem pasta citada, a raiz é o `cwd`. Na raiz `sugestoes/`, o Glob passa (só nomes) e a busca de conteúdo passa só quando não há abaixo dela arquivo fora da lista permitida (o de segredos).
+- Passam os comandos do motor pelo interpretador do `interpretador.json` (`$CLAUDE_PLUGIN_DATA`) com PSD ou fonte no argumento: `-m desdobra job criar`, `job trocar-entrada` e `job remover-entrada`, sozinhos, sem outro comando encadeado (`comando_do_motor`). O motor lê o arquivo no processo filho isolado.
+- Motivos: `MOTIVO` (atos do DA) manda o DA à tela do desdobra, sem terminal; `MOTIVO_LEITURA` diz o que o Claude lê no job e que o resto está na tela. `decidir_com_motivo(evento)` devolve a decisão e o motivo; `decidir(evento)` segue devolvendo `'deny'` ou `None`.
+
+Medição (seção 4 do plano do M7c; medição da 7.6), em `test_gancho_leitura.py::test_medicao_da_leitura_por_ferramenta`, sobre um job sintético: caminhos negados sobre tentados, por ferramenta, Read 15/15, Glob 14/14 (a raiz `sugestoes/` passa no Glob), Grep 15/15, Bash 15/15, PowerShell 15/15, MCP 15/15, Artifact 15/15 e SendUserFile 15/15; 0 recusa na lista permitida, no código do motor e nos comandos do motor com `.psd` e com fonte. Resultado da 7.6: o comando do motor com caminho `.psd` ou de fonte no argumento não é barrado pela regra.
+
+Riscos declarados: um subprocesso que o Claude escreva e rode com outro caminho (script gravado antes, caminho montado por partes) passa, como já diz a 7.6; uma ferramenta nova fora de `mcp__*`, `Artifact` e `SendUserFile` passa sem conferência; uma pasta acima de jobs com mais de 4 níveis ou 4000 entradas até o job escapa da busca de cima para baixo; uma ferramenta MCP cuja entrada cite `laudo/`, `render/` e afins num texto qualquer é negada (falso positivo aceito).
+
+Revisão do P1 (mesma leva). O revisor mostrou desvios que a regra por verbo de leitura não pegava, e o gancho mudou assim:
+
+- Bash, PowerShell e Monitor (a Monitor roda comando no shell e entrou no matcher e em `FERRAMENTAS_DE_COMANDO`): todo caminho dentro de um job, fora da lista permitida, é negado com qualquer verbo. Isso pega `env cat`, `bash -c "cat ..."`, `cmd /c type`, `find -exec cat`, `$(<arquivo)`, `jq`, `tac`, `[IO.File]::ReadAllText`, `node -e`, cópia, movimento, pacote e ligação (`robocopy`, `xcopy`, `mv`, `tar`, `ln`, `New-Item -ItemType HardLink`, `Compress-Archive`) e envio (`curl -F f=@`, `Invoke-WebRequest -InFile`, `scp`). Fora de um job, PSD, fonte e `marcas` são negados quando o arquivo existe, ou sempre com verbo de leitura ou de envio (`VERBO_DE_ENVIO`); um padrão como `git diff -- "*.psd"` segue. Com cópia em árvore ou busca recursiva (`COPIA_EM_ARVORE`, `BUSCA_RECURSIVA`), a pasta citada que contém um job ou `marcas` é negada.
+- O texto entre aspas também é partido em palavras, e o `@` do curl sai da frente do caminho.
+- A chamada do motor sozinha (`python -m desdobra ...`, `motor_geral`) passa pela regra do job, porque é o motor que decide o que sai (7.6). Nela, PSD, fonte e `marcas` no argumento só passam nos três comandos de entrada pelo interpretador do `interpretador.json`. Sem `CLAUDE_PLUGIN_DATA` no processo do gancho, vale para esses três um interpretador com nome de python, como antes.
+- O nome pedido e o alvo real (`realpath`) são conferidos: uma ligação simbólica de nome inocente para PSD, fonte ou `marcas` é negada. Um arquivo da lista permitida com mais de um nome (ligação física, `st_nlink > 1`) é negado, e a busca de conteúdo em `sugestoes/` também.
+- A busca de cima para baixo entra nas pastas ocultas (pula só `.git`, `node_modules`, `__pycache__` e `site-packages`) e vai em largura, o raso primeiro.
+- Nas ferramentas que sobem arquivo, o `root` do Artifact é mais uma base para os caminhos relativos de `files`, e a pasta citada é conferida inteira: a pasta de um job ou a que contém um job ou `marcas` é negada.
+
+Riscos que ficam: o script gravado antes (7.6); uma ligação física de nome inocente fora de um job, criada antes do gancho; um caminho montado em variável ou por partes; a busca de cima para baixo limitada a 4 níveis e 4000 entradas, que passa quando estoura; e uma ferramenta nova de fora do matcher.
+
+Testes: `test_gancho_leitura.py` (novo).
