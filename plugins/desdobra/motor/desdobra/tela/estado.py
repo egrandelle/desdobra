@@ -1633,9 +1633,19 @@ def _sem_previa(_dados, origem=None, antes=None):
     return None
 
 
-def montar(pasta, teto=None):
+def marca_na_tela(pasta, conferencia):
+    """M7c, M3: o bloco da marca do job no passo 1 (desdobra.marca.job.na_tela), sem o caminho da biblioteca."""
+    from desdobra.marca import job as marca_job
+    return marca_job.na_tela(pasta, conferencia)
+
+
+def montar(pasta, teto=None, biblioteca=None):
     """Conteudo do servidor da tela para o job: {'estado', 'previas', 'assets', 'fontes', 'recarregar', 'editar',
-    'familias', 'elementos', 'atualizar'}. editar(dados, origem) e a previa da edicao por familia
+    'familias', 'elementos', 'atualizar', 'biblioteca', 'pasta_biblioteca'}. biblioteca: a pasta da biblioteca da
+    agencia que o processo da tela recebeu (M7c, M1), ou None; ela e conferida uma vez aqui, e o passo 1 leva a marca
+    do job (lido.marca; M7c, M3), com a lista das marcas lida de novo a cada recarregar. 'biblioteca' e
+    'pasta_biblioteca' seguem desdobra.tela.processo.com_biblioteca: o caminho fica so no processo de fundo, para o
+    ato da marca. editar(dados, origem) e a previa da edicao por familia
     (desdobra.tela.edicao.Editor.previa); familias: {id: {'formatos', 'versoes', 'pecas', 'por_confirmar', 'aviso'}}
     para o ato de confirmar a familia (o id e o que o job ja conhece para esses formatos; familias_conhecidas e abas);
     elementos: {id: [layer_ids]} da mestre da tela (None enquanto o passo 3 espera), que o rascunho usa para conferir
@@ -1694,14 +1704,18 @@ def montar(pasta, teto=None):
         f, _metodo, _n = casamento.casar(ps, faces)
         return f['id'] if f is not None and f['id'] in fontes else None
 
+    from desdobra import biblioteca as mod_biblioteca
     from desdobra.tela import edicao
     b, laudo = ctx['briefing'], ctx['laudo']
     base = pecas_base(laudo, asset_por_camada, face_de)
+    conferencia = mod_biblioteca.conferir(biblioteca)
 
     def com_previas_dos_quadros(l):
-        # a previa de cada prancheta no passo 1: as camadas dela como estao no KV, so desenho
+        # a previa de cada prancheta no passo 1: as camadas dela como estao no KV, so desenho; e a marca do job (M7c,
+        # M3), com as marcas da biblioteca de agora (a "Marca nova" entra na lista depois do ato)
         for q in l['quadros']:
             q['palco'] = palco_do_documento(laudo, base, ctx['resolvidas'], q['id'])
+        l['marca'] = marca_na_tela(pasta, conferencia)
         return l
     com_previas_dos_quadros(lido_)
     previas = {fid: palco(d, r['kv'], laudo, base) for fid, d in r['formatos'].items()}
@@ -1800,14 +1814,17 @@ def montar(pasta, teto=None):
                 'familias': {gid: {'formatos': fids, 'versoes': versoes[gid], 'pecas': pecas[gid], 'pecas_sem_edicao': sem_edicao[gid],
                                    'por_confirmar': sorted(set(fids) & por_confirmar(r['formatos'])),
                                    'aviso': avisos[gid]}
-                             for gid, fids in familias.items()}}
+                             for gid, fids in familias.items()},
+                # a situacao da biblioteca (sem caminho) e a pasta, so no processo de fundo (M7c, M1 e M3)
+                'biblioteca': mod_biblioteca.para_tela(conferencia),
+                'pasta_biblioteca': conferencia.pasta if conferencia.usavel else None}
 
     def atualizador(feita, atual):
         def atualizar():
             if mb.hashes_atuais(pasta) != arquivos_feitos:
                 # o laudo, as specs, o design system ou as fontes mudaram com a tela aberta (o ato de spec do passo
                 # 1): os formatos e o briefing de onde a tela parte sao outros
-                return montar(pasta, teto)
+                return montar(pasta, teto, biblioteca)
             nova = assinatura_do_passo_2(pasta)
             if nova == feita:
                 return None
@@ -1820,7 +1837,7 @@ def montar(pasta, teto=None):
                             recarregar=lambda: dict(recarregar(), passo_3=p3))
                 novo['atualizar'] = atualizador(nova, novo)
                 return novo
-            return montar(pasta, teto)
+            return montar(pasta, teto, biblioteca)
         return atualizar
     conteudo['atualizar'] = atualizador(assinatura, conteudo)
     return conteudo

@@ -102,7 +102,11 @@ def _executar(pasta, avisar, ao_abrir, teto, aberto, biblioteca=None):
         # o render que a janela anterior deixou pela metade: o aviso vai para a tela, e a trava do processo morto sai
         # antes da montagem, que pega a trava do job (desdobra.tela.tarefas, M7b B1)
         inacabado = tarefas.recuperar(pasta)
-        conteudo = estado.montar(pasta, teto=teto) if teto else estado.montar(pasta)
+        # a biblioteca so quando veio (M7c, M3: a marca do job no passo 1); sem ela, a chamada fica como antes
+        extra = {'teto': teto} if teto else {}
+        if biblioteca is not None:
+            extra['biblioteca'] = biblioteca
+        conteudo = estado.montar(pasta, **extra)
         if inacabado:
             conteudo['render_inacabado'] = inacabado
         com_biblioteca(conteudo, biblioteca)

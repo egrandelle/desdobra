@@ -1114,3 +1114,442 @@ def test_salvar_e_seguir_no_chromium(job, modelo):
             nav.close()
     assert mb.ler(job)['cabecalho']['origem'] == mb.ORIGEM_FIXTURE
     assert _deriv(job, 'v1')['caminho'] == 'galeria'
+
+
+# ------------------------------------------------------------------ M7c, M3: a marca do job no passo 1
+# decisoes-v1.md, 190 (Q5): a lista das marcas da biblioteca da agencia, "Marca nova" e "Sem marca", nenhuma marcada;
+# a escolha e opcional e nunca trava o "Salvar e seguir". Nomes de marca sinteticos.
+MARCA_UM = 'Marca Sintetica Um'
+MARCA_DOIS = 'Marca Sintetica Dois'
+
+
+@pytest.fixture
+def biblioteca(tmp_path):
+    """A biblioteca da agencia com duas marcas sinteticas, criadas pelo modulo do perfil (M2)."""
+    from desdobra.marca import perfil
+    bib = tmp_path / 'biblioteca-da-agencia'
+    bib.mkdir()
+    ids = {perfil.criar(bib, nome)['id']: nome for nome in (MARCA_UM, MARCA_DOIS)}
+    return bib, ids
+
+
+def _marca_na_tela(conteudo):
+    return conteudo['estado']['lido']['marca']
+
+
+def test_marca_sem_biblioteca_mostra_so_sem_marca(job):
+    from desdobra.marca import job as mj
+    conteudo = te.montar(job)
+    m = _marca_na_tela(conteudo)
+    assert m['biblioteca']['configurada'] is False and m['biblioteca']['usavel'] is False
+    assert m['biblioteca']['o_que_fazer']  # a nota simples de onde configurar
+    assert m['marcas'] == [] and m['escolhida'] is None and m['pode_criar'] is False
+    # nada falta por causa da marca: ela e opcional
+    assert not any('marca' in f['texto'].lower() for f in conteudo['estado']['faltam'])
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        # sem biblioteca, so "Sem marca" passa
+        assert _ato(s, biscoito, 'marca', {'escolha': 'nova', 'nome': MARCA_UM})[0] == 403
+        assert _ato(s, biscoito, 'marca', {'escolha': 'marca', 'id': '0' * 32})[0] == 403
+        codigo, c2, p = _ato(s, biscoito, 'marca', {'escolha': 'sem_marca'})
+        assert codigo == 200 and c2 == 200 and p['sim'] == 'Confirmar'
+        assert '—' not in p['texto'] and '–' not in p['texto']
+        _c, _cab, corpo = tts._pedir(s, '/api/estado', cookie=biscoito)[:3]
+        assert json.loads(corpo)['lido']['marca']['escolhida'] == {'escolha': 'sem_marca', 'id': None, 'nome': None}
+    finally:
+        s.parar()
+    reg = mj.ler(job)
+    assert reg['escolha'] == 'sem_marca' and reg['marca_id'] is None
+
+
+def test_marca_lista_a_biblioteca_sem_nenhuma_marcada_e_sem_caminho(job, biblioteca):
+    bib, ids = biblioteca
+    conteudo = te.montar(job, biblioteca=str(bib))
+    m = _marca_na_tela(conteudo)
+    assert m['biblioteca']['usavel'] is True and m['pode_criar'] is True
+    assert [x['nome'] for x in m['marcas']] == sorted(ids.values(), key=str.casefold)
+    assert {x['id'] for x in m['marcas']} == set(ids)
+    assert m['escolhida'] is None
+    # o caminho da biblioteca nunca vai a pagina
+    texto = json.dumps(conteudo['estado'], ensure_ascii=False, default=str)
+    assert str(bib) not in texto and bib.as_posix() not in texto and str(bib.parent) not in texto
+    assert not any('marca' in f['texto'].lower() for f in conteudo['estado']['faltam'])
+
+
+def test_marca_biblioteca_vazia_ou_com_problema_mostra_so_sem_marca(job, tmp_path):
+    vazia = tmp_path / 'biblioteca-vazia'
+    vazia.mkdir()
+    m = _marca_na_tela(te.montar(job, biblioteca=str(vazia)))
+    assert m['biblioteca']['usavel'] is True and m['marcas'] == [] and m['pode_criar'] is True
+    m = _marca_na_tela(te.montar(job, biblioteca=str(tmp_path / 'nao-existe')))
+    assert m['biblioteca']['usavel'] is False and m['marcas'] == [] and m['pode_criar'] is False
+    assert m['biblioteca']['o_que_fazer']
+
+
+def test_escolher_a_marca_grava_fecha_e_reabre_igual(job, biblioteca):
+    from desdobra.marca import job as mj
+    bib, ids = biblioteca
+    alvo = next(i for i, n in ids.items() if n == MARCA_DOIS)
+    conteudo = te.montar(job, biblioteca=str(bib))
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        # id que nao e da biblioteca, campo a mais ou escolha fora da lista: recusado antes do dialogo
+        assert _ato(s, biscoito, 'marca', {'escolha': 'marca', 'id': 'f' * 32})[0] == 403
+        assert _ato(s, biscoito, 'marca', {'escolha': 'marca', 'id': alvo, 'nome': 'x'})[0] == 403
+        assert _ato(s, biscoito, 'marca', {'escolha': 'outra'})[0] == 403
+        assert _ato(s, biscoito, 'marca', {})[0] == 403
+        assert not (job / mj.ARQUIVO).exists()
+        codigo, c2, p = _ato(s, biscoito, 'marca', {'escolha': 'marca', 'id': alvo})
+        assert codigo == 200 and c2 == 200
+        assert MARCA_DOIS in p['texto'] and alvo not in p['texto']
+        _c, _cab, corpo = tts._pedir(s, '/api/estado', cookie=biscoito)[:3]
+        assert json.loads(corpo)['lido']['marca']['escolhida'] == {'escolha': 'marca', 'id': alvo, 'nome': MARCA_DOIS}
+    finally:
+        s.parar()
+    reg = contratos.ler(job / mj.ARQUIVO, mj.ESQUEMA)
+    assert reg['escolha'] == 'marca' and reg['marca_id'] == alvo
+    # no modo de teste da tela, o Disparo sai com a origem de teste e o meio medicao, como os outros atos
+    assert reg['origem'] == humano.ORIGEM_FIXTURE and reg['escolhido_por']['meio'] == humano.MEIO_MEDICAO
+    # o nome da marca fica so na biblioteca: o arquivo do job leva o id
+    assert MARCA_DOIS not in (job / mj.ARQUIVO).read_text(encoding='utf-8')
+    # fechar e reabrir a tela: a mesma marca escolhida
+    reaberta = _marca_na_tela(te.montar(job, biblioteca=str(bib)))
+    assert reaberta['escolhida'] == {'escolha': 'marca', 'id': alvo, 'nome': MARCA_DOIS}
+    # reabrir sem a biblioteca configurada: a escolha continua, sem o nome
+    sem_bib = _marca_na_tela(te.montar(job))
+    assert sem_bib['escolhida'] == {'escolha': 'marca', 'id': alvo, 'nome': None}
+
+
+def test_marca_nova_cria_o_perfil_na_biblioteca_e_vale_para_o_job(job, biblioteca):
+    from desdobra.marca import job as mj
+    from desdobra.marca import perfil
+    bib, ids = biblioteca
+    conteudo = te.montar(job, biblioteca=str(bib))
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        # nome vazio, so espacos, com barra, longo demais, de outro tipo ou de uma marca que ja existe: recusado
+        for ruim in ('', '   ', 'marca/com-barra', 'x' * 121, 7, MARCA_UM.upper()):
+            assert _ato(s, biscoito, 'marca', {'escolha': 'nova', 'nome': ruim})[0] == 403, ruim
+        assert len(perfil.listar(bib)) == 2
+        codigo, c2, p = _ato(s, biscoito, 'marca', {'escolha': 'nova', 'nome': '  Marca Sintetica Tres '})
+        assert codigo == 200 and c2 == 200 and 'Marca Sintetica Tres' in p['texto']
+        _c, _cab, corpo = tts._pedir(s, '/api/estado', cookie=biscoito)[:3]
+        m = json.loads(corpo)['lido']['marca']
+    finally:
+        s.parar()
+    novas = [x for x in perfil.listar(bib) if x['id'] not in ids]
+    assert [x['marca'] for x in novas] == ['Marca Sintetica Tres']
+    nova = novas[0]['id']
+    assert perfil.ler(bib, nova)['versao'] == 0  # o perfil nasce sem registro (M2)
+    assert mj.ler(job)['marca_id'] == nova
+    assert m['escolhida'] == {'escolha': 'marca', 'id': nova, 'nome': 'Marca Sintetica Tres'}
+    assert 'Marca Sintetica Tres' in [x['nome'] for x in m['marcas']]
+
+
+def test_trocar_a_marca_por_sem_marca(job, biblioteca):
+    from desdobra.marca import job as mj
+    bib, ids = biblioteca
+    conteudo = te.montar(job, biblioteca=str(bib))
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        assert _ato(s, biscoito, 'marca', {'escolha': 'marca', 'id': next(iter(ids))})[1] == 200
+        assert _ato(s, biscoito, 'marca', {'escolha': 'sem_marca'})[1] == 200
+    finally:
+        s.parar()
+    reg = mj.ler(job)
+    assert reg['escolha'] == 'sem_marca' and reg['marca_id'] is None
+    assert _marca_na_tela(te.montar(job, biblioteca=str(bib)))['escolhida']['escolha'] == 'sem_marca'
+
+
+def test_marca_nao_trava_salvar_e_seguir(job, modelo, biblioteca):
+    from desdobra.marca import job as mj
+    bib, _ids = biblioteca
+    conteudo = te.montar(job, biblioteca=str(bib))
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert bs.pendencias(job, conteudo) == []
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    assert not (job / mj.ARQUIVO).exists()
+
+
+def test_marca_e_ato_humano_da_tela(job, biblioteca, pessoa):
+    from desdobra.marca import job as mj
+    bib, ids = biblioteca
+    assert mj.COMANDO in humano.ATOS_DA_TELA and mj.COMANDO not in humano.COMANDOS
+    # sem o Disparo do clique, ou com o de outro ato, nada e gravado
+    with pytest.raises(humano.ErroHumano):
+        mj.gravar(job, {'escolha': 'sem_marca'}, disparo=None)
+    with pytest.raises(humano.ErroHumano):
+        mj.gravar(job, {'escolha': 'sem_marca'}, disparo=pessoa.exigir('render'))
+    assert not (job / mj.ARQUIVO).exists()
+    sessao = humano.abrir_sessao_tela(teste=True)
+    try:
+        d = humano.exigir_tela(mj.COMANDO, sessao, confirmado=True)
+        mj.gravar(job, {'escolha': 'marca', 'id': next(iter(ids))}, disparo=d, biblioteca=bib)
+        # o Disparo vale um ato so
+        with pytest.raises(humano.ErroHumano):
+            mj.gravar(job, {'escolha': 'sem_marca'}, disparo=d)
+    finally:
+        humano.fechar_sessao_tela(sessao)
+
+
+def test_envelope_do_claude_diz_so_se_ha_marca(job, biblioteca, capsys):
+    from desdobra import cli
+    from desdobra.marca import job as mj
+    bib, ids = biblioteca
+    alvo = next(iter(ids))
+
+    def envelope():
+        capsys.readouterr()
+        cli.principal(['--envelope', 'job', 'estado', str(job)])
+        return capsys.readouterr().out
+
+    saida = envelope()
+    assert json.loads(saida)['contagens']['marca_escolhida'] == 0
+    sessao = humano.abrir_sessao_tela(teste=True)
+    try:
+        mj.gravar(job, {'escolha': 'marca', 'id': alvo}, disparo=humano.exigir_tela(mj.COMANDO, sessao, True),
+                  biblioteca=bib)
+    finally:
+        humano.fechar_sessao_tela(sessao)
+    saida = envelope()
+    assert json.loads(saida)['contagens']['marca_escolhida'] == 1
+    assert alvo not in saida and ids[alvo] not in saida and str(bib) not in saida
+
+
+def test_gancho_nega_ao_claude_ler_e_escrever_a_marca_do_job(job):
+    import importlib.util
+
+    from conftest import RAIZ_PLUGIN
+    from desdobra.marca import job as mj
+    spec = importlib.util.spec_from_file_location('gancho_m3', RAIZ_PLUGIN / 'scripts' / 'gancho_confirmacoes.py')
+    g = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(g)
+    alvo = job / mj.ARQUIVO
+    alvo.write_text('{}', encoding='utf-8')
+    c, p = str(alvo), alvo.as_posix()
+    eventos = [('Read', {'file_path': c}), ('Grep', {'pattern': 'x', 'path': c}),
+               ('Write', {'file_path': c, 'content': '{}'}),
+               ('Edit', {'file_path': c, 'old_string': '{}', 'new_string': '[]'}),
+               ('Bash', {'command': 'cat "%s"' % p}), ('Bash', {'command': 'echo {} > "%s"' % p}),
+               ('PowerShell', {'command': 'Get-Content -Raw "%s"' % c}),
+               ('PowerShell', {'command': 'Set-Content -Path "%s" -Value x' % c})]
+    for ferramenta, entrada in eventos:
+        evento = {'tool_name': ferramenta, 'tool_input': entrada, 'cwd': str(job.parent)}
+        assert g.decidir(evento) == 'deny', (ferramenta, entrada)
+
+
+JS_MARCAS_MARCADAS = '''() => Array.from(document.querySelectorAll("#lido-marca button[data-ato=marca]"))
+    .filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.textContent)'''
+
+
+def _abrir_passo_1(pw, srv):
+    from desdobra.chromium import navegador
+    nav = pw.chromium.launch(headless=True, args=list(navegador.ARGUMENTOS))
+    pg = nav.new_context(viewport={'width': 1440, 'height': 900}, device_scale_factor=1).new_page()  # numero-neutro: janela de teste
+    try:
+        pg.goto(srv.url_entrada, wait_until='commit')
+    except Exception:  # noqa: BLE001 - o 204 nao completa a navegacao
+        pass
+    pg.goto(srv.url_pagina, wait_until='load')
+    tp._esperar(pg, tp.JS_PRONTO)
+    pg.evaluate('() => document.querySelector("#passos [data-passo=lido]").click()')
+    pg.evaluate('() => document.getElementById("bloco-marca").scrollIntoView()')
+    return nav, pg
+
+
+def _confirmar_na_janela(pg):
+    tp._esperar(pg, '() => document.getElementById("confirmacao").open ? "1" : ""')
+    # nenhuma resposta em foco: Enter nao grava nada
+    assert pg.evaluate('() => document.activeElement.tagName') != 'BUTTON'
+    texto = pg.evaluate('() => document.getElementById("confirmacao-texto").textContent')
+    pg.evaluate('''() => Array.from(document.querySelectorAll("#confirmacao button"))
+        .find(b => b.textContent === "Confirmar").click()''')
+    tp._esperar(pg, '() => document.documentElement.dataset.estadoAto === "feito" ? "1" : ""')
+    return texto
+
+
+def test_marca_no_chromium_escolher_fechar_e_reabrir(job, biblioteca, capturas=None):
+    """A marca no passo 1 da pagina: nenhuma marcada, a escolha pela janela, a marca nova pelo campo e, depois de
+    fechar e abrir a tela de novo, a mesma marca marcada. capturas: pasta para as fotos da verificacao (fora do
+    repositorio), ou None."""
+    from playwright.sync_api import sync_playwright
+
+    from desdobra.chromium import navegador
+    from desdobra.marca import job as mj
+    bib, ids = biblioteca
+    navegador.apontar_playwright()
+
+    def foto(pg, nome):
+        if capturas is not None:
+            pg.locator('#bloco-marca').screenshot(path=str(capturas / ('%s.png' % nome)))
+
+    conteudo = te.montar(job, biblioteca=str(bib))
+    with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
+                         atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
+        nav, pg = _abrir_passo_1(pw, srv)
+        try:
+            nomes = pg.evaluate('''() => Array.from(document.querySelectorAll("#lido-marca button[data-ato=marca]"))
+                .map(b => b.querySelector(".modo-nome").textContent)''')
+            assert nomes == sorted(ids.values(), key=str.casefold) + ['Sem marca']
+            assert pg.evaluate(JS_MARCAS_MARCADAS) == []
+            assert pg.evaluate('() => document.getElementById("marca-nova-criar").disabled') is True
+            foto(pg, '1-nenhuma-marcada')
+            # a marca dois, pela janela de confirmacao
+            pg.evaluate('''() => Array.from(document.querySelectorAll("#lido-marca button[data-ato=marca]"))
+                .find(b => b.textContent === "%s").click()''' % MARCA_DOIS)
+            assert MARCA_DOIS in _confirmar_na_janela(pg)
+            assert pg.evaluate(JS_MARCAS_MARCADAS) == [MARCA_DOIS]
+            foto(pg, '2-marca-escolhida')
+            # a marca nova: o nome repetido mostra o erro e nao deixa criar
+            pg.fill('#marca-nova-nome', MARCA_UM.lower())
+            assert pg.evaluate('() => document.getElementById("marca-nova-erro").hidden') is False
+            assert pg.evaluate('() => document.getElementById("marca-nova-criar").disabled') is True
+            foto(pg, '3-marca-nova-repetida')
+            pg.fill('#marca-nova-nome', 'Marca Sintetica Tres')
+            assert pg.evaluate('() => document.getElementById("marca-nova-criar").disabled') is False
+            pg.click('#marca-nova-criar')
+            assert 'Marca Sintetica Tres' in _confirmar_na_janela(pg)
+            assert pg.evaluate(JS_MARCAS_MARCADAS) == ['Marca Sintetica Tres']
+            assert pg.evaluate('() => document.getElementById("marca-nova-nome").value') == ''
+            foto(pg, '4-marca-nova-escolhida')
+            texto = pg.evaluate(tp.JS_TEXTO_DA_MOLDURA)
+            assert '—' not in texto and '–' not in texto
+            assert str(bib) not in pg.content()
+        finally:
+            nav.close()
+    escolhido = mj.ler(job)['marca_id']
+    # fechar a tela e abrir de novo: a mesma marca marcada
+    conteudo = te.montar(job, biblioteca=str(bib))
+    with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
+                         atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
+        nav, pg = _abrir_passo_1(pw, srv)
+        try:
+            assert pg.evaluate(JS_MARCAS_MARCADAS) == ['Marca Sintetica Tres']
+            foto(pg, '5-reaberta')
+        finally:
+            nav.close()
+    assert mj.ler(job)['marca_id'] == escolhido
+
+
+def test_marca_no_chromium_sem_biblioteca(job, capturas=None):
+    from playwright.sync_api import sync_playwright
+
+    from desdobra.chromium import navegador
+    navegador.apontar_playwright()
+    conteudo = te.montar(job)
+    with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
+                         atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
+        nav, pg = _abrir_passo_1(pw, srv)
+        try:
+            nomes = pg.evaluate('''() => Array.from(document.querySelectorAll("#lido-marca button[data-ato=marca]"))
+                .map(b => b.querySelector(".modo-nome").textContent)''')
+            assert nomes == ['Sem marca'] and pg.evaluate(JS_MARCAS_MARCADAS) == []
+            assert pg.evaluate('() => document.getElementById("marca-nova-nome")') is None
+            assert 'Configure' in pg.evaluate('() => document.getElementById("lido-marca").textContent')
+            if capturas is not None:
+                pg.locator('#bloco-marca').screenshot(path=str(capturas / '6-sem-biblioteca.png'))
+        finally:
+            nav.close()
+
+
+# revisao do M3: o mesmo nome escrito de outro jeito (Unicode NFD, espacos repetidos ou de outro tipo, maiusculas que
+# so o casefold junta) e a mesma marca; o nome novo entra na biblioteca na forma NFC, com um espaco so entre as palavras
+CAFE = 'Café Sintético'
+STRASSE = 'Marca Straße'
+
+
+def _iguais_a_cafe_e_strasse():
+    import unicodedata
+    return (unicodedata.normalize('NFD', CAFE), 'Café  Sintético', 'Café Sintético',
+            'CAFÉ SINTÉTICO', 'MARCA STRASSE', 'Marca　Straße')
+
+
+def test_marca_nova_recusa_o_mesmo_nome_escrito_de_outro_jeito(job, tmp_path):
+    import unicodedata
+
+    from desdobra.marca import job as mj
+    from desdobra.marca import perfil
+    bib = tmp_path / 'biblioteca-da-agencia'
+    bib.mkdir()
+    perfil.criar(bib, CAFE)
+    perfil.criar(bib, STRASSE)
+    for nome in _iguais_a_cafe_e_strasse():
+        assert mj.nome_novo(nome, bib) is None, ascii(nome)
+    # o controle continua recusado, mesmo entre as palavras
+    assert mj.nome_novo('Marca\tTab', bib) is None
+    # o nome novo vai na forma NFC, com um espaco so
+    assert mj.nome_novo(unicodedata.normalize('NFD', 'Marca Cinco Sintética'), bib) == 'Marca Cinco Sintética'
+    assert mj.nome_novo(' Marca   Seis ', bib) == 'Marca Seis'
+    conteudo = te.montar(job, biblioteca=str(bib))
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        for nome in _iguais_a_cafe_e_strasse():
+            assert _ato(s, biscoito, 'marca', {'escolha': 'nova', 'nome': nome})[0] == 403, ascii(nome)
+        codigo, c2, p = _ato(s, biscoito, 'marca', {'escolha': 'nova',
+                                                    'nome': unicodedata.normalize('NFD', 'Marca  Sete Sintética')})
+        assert codigo == 200 and c2 == 200 and 'Marca Sete Sintética' in p['texto']
+    finally:
+        s.parar()
+    nomes = [m['marca'] for m in perfil.listar(bib)]
+    assert len(nomes) == 3 and 'Marca Sete Sintética' in nomes
+    assert all(unicodedata.is_normalized('NFC', n) for n in nomes)
+
+
+def test_marca_nova_no_chromium_avisa_o_nome_que_o_motor_recusa(job, biblioteca, capturas=None):
+    """revisao do M3: o nome que o motor recusa (extensao de arquivo de fonte, a mesma marca escrita de outro jeito)
+    desliga o "Criar e usar" com o motivo na linha do campo. O que so o motor sabe recusar volta como aviso no campo,
+    sem a frase de tentar de novo, e o botao fica desligado ate o DA mudar o nome."""
+    from playwright.sync_api import sync_playwright
+
+    from desdobra.chromium import navegador
+    from desdobra.marca import perfil
+    bib, ids = biblioteca
+    perfil.criar(bib, CAFE)
+    perfil.criar(bib, STRASSE)
+    navegador.apontar_playwright()
+    js_erro = '() => { const e = document.getElementById("marca-nova-erro"); return e.hidden ? "" : e.textContent; }'
+    js_desligado = '() => document.getElementById("marca-nova-criar").disabled'
+    conteudo = te.montar(job, biblioteca=str(bib))
+    with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
+                         atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
+        nav, pg = _abrir_passo_1(pw, srv)
+        try:
+            for nome in ('Studio.otf', 'Marca.TTF', 'Logo.woff2 final'):
+                pg.fill('#marca-nova-nome', nome)
+                assert pg.evaluate(js_desligado) is True, nome
+                assert 'fonte' in pg.evaluate(js_erro), nome
+            for nome in _iguais_a_cafe_e_strasse() + (MARCA_UM.upper(),):
+                pg.fill('#marca-nova-nome', nome)
+                assert pg.evaluate(js_desligado) is True, ascii(nome)
+                assert 'lista acima' in pg.evaluate(js_erro), ascii(nome)
+            if capturas is not None:
+                pg.locator('#bloco-marca').screenshot(path=str(capturas / '7-nome-repetido-de-outro-jeito.png'))
+            # o nome que so o motor recusa (bytes de fonte em base64): o aviso fica no campo
+            pg.fill('#marca-nova-nome', 'T1RUTw')
+            assert pg.evaluate(js_desligado) is False and pg.evaluate(js_erro) == ''
+            pg.click('#marca-nova-criar')
+            tp._esperar(pg, '() => document.documentElement.dataset.estadoAto === "erro" ? "1" : ""')
+            assert pg.evaluate('() => document.getElementById("confirmacao").open') is False
+            aviso = pg.evaluate(js_erro)
+            assert 'não aceitou esse nome' in aviso, aviso
+            assert '—' not in aviso and '–' not in aviso
+            assert pg.evaluate(js_desligado) is True
+            assert 'Tente de novo' not in pg.evaluate('() => document.getElementById("selo").textContent')
+            if capturas is not None:
+                pg.locator('#bloco-marca').screenshot(path=str(capturas / '8-nome-recusado-pelo-motor.png'))
+            # mudar o nome tira o aviso e liga o botao de novo
+            pg.fill('#marca-nova-nome', 'Marca Sintetica Oito')
+            assert pg.evaluate(js_desligado) is False and pg.evaluate(js_erro) == ''
+        finally:
+            nav.close()
+    assert len(perfil.listar(bib)) == 4

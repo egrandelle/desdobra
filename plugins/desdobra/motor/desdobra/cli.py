@@ -43,8 +43,9 @@ MODULO_ENVELOPE = 'desdobra.sugestao.envelope'
 # pacotes do Claude quando o modo caiu (a agencia baixou o teto sem clique do DA) ou o KV mudou. Nome do comando ->
 # atributos de args com a pasta do job, em ordem. O ler e o spec importar gravam os pacotes; o job trocar-entrada
 # troca o KV e deixa o pacote do KV antigo para tras
+# M7c, S3: o sugestao importar tambem, para o pacote de um modo que caiu ser refeito antes da conferencia
 CONFEREM_O_MODO = {'tela abrir': ('job',), 'job proxima': ('pasta_job', 'pasta'), 'ler': ('job',),
-                   'spec importar': ('job',), 'job trocar-entrada': ('pasta',)}
+                   'spec importar': ('job',), 'job trocar-entrada': ('pasta',), 'sugestao importar': ('job',)}
 
 
 class _ErroArgumento(Exception):

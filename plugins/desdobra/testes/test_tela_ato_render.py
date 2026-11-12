@@ -190,7 +190,9 @@ def test_render_recusa_o_selo_de_outro_formato_sem_gravar_nada(job):
 def test_ato_de_render_usa_o_comando_render_sem_ato_novo_da_tela(job):
     ato = ta.atos_do_job(job)['render']
     assert ato.comando == 'render' and ato.longo and ato.selo_por_formato and callable(ato.preparar)
-    assert 'render' in humano.COMANDOS and humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar')
+    # M7c, M3: a marca do job e o unico ato da tela novo depois do render
+    assert 'render' in humano.COMANDOS and \
+        humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher')
 
 
 # ------------------------------------------------------------------ o pedido

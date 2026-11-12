@@ -50,6 +50,17 @@ Le da entrada padrao o JSON do evento (tool_name e tool_input) e nega (permissio
     motivo MOTIVO_MARCA. A leitura de marcas ja era negada desde o P1. Revisao do M2: o pacote desdobra.marca por
     qualquer forma de import, o pasta_marcas do motor, o segmento marcas. (o Windows tira o ponto), o nome marcas
     sozinho com verbo que apaga ou grava por codigo, e o curinga ou a ligacao que cai na biblioteca.
+  - desde o M7c (S3), a escrita do Claude no que so o motor grava em sugestoes/ (sugestoes/miniaturas/**,
+    pacote-modelo.json, pacote-specs.json e sugestoes-validadas.json), com o motivo MOTIVO_SUGESTOES: nas ferramentas
+    de arquivo pelo caminho pedido e pelo alvo real; no terminal pelo alvo de redirecao, pelo destino de copia,
+    movimento e ligacao, pelos verbos que gravam o argumento e pelo codigo que grava arquivo
+    (decidir_escrito_do_motor_por_comando); e o codigo do motor que grava esses arquivos (CODIGO_DE_SUGESTOES), num
+    comando que roda codigo. O Claude escreve so sugestoes.json e mapeamento-specs.json e roda "desdobra sugestao
+    importar". Revisao do S3: a palavra do shell com aspas no meio, escape, chaves ou variavel; o nome montado na hora
+    numa pasta sugestoes; a ligacao fisica (fsutil hardlink, mklink /H, link, cp -l e cp -s); o comando dentro de outro
+    (bash -c, cmd /c, powershell -Command, Start-Process, xargs); o nome do modulo ou da funcao do motor montado em
+    pedacos junto com importacao dinamica. Buscar no fonte (grep, rg, git, Select-String) e copiar dali para fora com o
+    mesmo nome seguem.
 Escrita pelo terminal inclui redirecao, copia, movimento e troca de nome (os.replace, os.rename, shutil,
 Rename-Item, ren, Move-Item, Copy-Item) e a opcao --saida do motor. O motor chamado como desdobra, desdobra.exe,
 desdobra.cli ou desdobra.__main__ conta igual. O comando e conferido como chegou e normalizado (sem aspas, sem o
@@ -92,6 +103,11 @@ MOTIVO_MARCA = ('O desdobra recusa esta gravação pelo Claude: o perfil de marc
                 'quando o DA registra o padrão da marca, por um clique na tela do desdobra. Diga ao DA que isso se faz '
                 'na tela, onde o desdobra mostra o que entra no perfil e grava. Não tente outro caminho para o mesmo '
                 'efeito.')
+# M7c, S3: o pacote para o modelo, as miniaturas e as sugestoes conferidas so o motor grava
+MOTIVO_SUGESTOES = ('O desdobra recusa esta gravação pelo Claude: o pacote para o modelo, o pacote das specs, as '
+                    'miniaturas e as sugestões conferidas só o motor grava. O Claude escreve só sugestoes/sugestoes.json '
+                    '(e sugestoes/mapeamento-specs.json) e depois roda o comando sugestao importar do motor. Não tente '
+                    'outro caminho para o mesmo efeito.')
 MOTIVO_PAINEL = ('O desdobra recusa comandos do Claude no painel de terminal do app: o painel roda no terminal do DA, '
                  'e o que só o DA faz não parte do Claude. O que não é do DA (job proxima, doctor) segue pelas '
                  'ferramentas Bash ou PowerShell; o resto só parte do DA. Não tente outro caminho para o mesmo efeito.')
@@ -317,6 +333,338 @@ BUSCA_LIMITE = 4000
 PASTAS_PULADAS = ('node_modules', '__pycache__', 'site-packages', '.git')
 # caminhos conferidos por entrada de ferramenta que sobe arquivo (texto longo nao trava o gancho)
 LIMITE_DE_CANDIDATOS = 500
+
+
+# ------------------------------------------------------------------ escritos do motor em sugestoes/ (M7c, S3)
+# o que so o motor grava em sugestoes/: os dois pacotes, a pasta das miniaturas e as sugestoes conferidas. O Claude
+# escreve so sugestoes.json e mapeamento-specs.json
+NOMES_DO_MOTOR_EM_SUGESTOES = ('pacote-modelo.json', 'pacote-specs.json', 'sugestoes-validadas.json')
+PASTA_DE_SUGESTOES = 'sugestoes'
+PASTA_DE_MINIATURAS = 'miniaturas'
+# verbos do terminal: o destino e o ultimo argumento (ou o de -t, -Destination), ou todo argumento e gravado
+VERBOS_DESTINO_NO_FIM = ('cp', 'copy', 'mv', 'move', 'copy-item', 'cpi', 'move-item', 'mi', 'rename-item', 'rni', 'ren',
+                         'rename', 'robocopy', 'xcopy', 'install', 'rsync', 'scp', 'ditto')
+# revisao do S3: fsutil (fsutil hardlink create) e link entram; a ligacao fisica a um escrito do motor deixa o Claude
+# gravar nele por outro nome
+VERBOS_QUE_GRAVAM = ('tee', 'tee-object', 'set-content', 'sc', 'out-file', 'add-content', 'ac', 'new-item', 'ni',
+                     'touch', 'mkdir', 'md', 'truncate', 'clear-content', 'clc', 'ln', 'mklink', 'dd', 'export-csv',
+                     'link', 'fsutil')
+VERBOS_DE_PASTA = ('cd', 'chdir', 'pushd', 'set-location', 'sl')
+VERBOS_QUE_DESFAZEM_PASTA = ('popd', 'pop-location')
+OPCOES_DE_DESTINO = ('-t', '--target-directory', '-destination', '-dest', '-newname')
+# revisao do S3: a copia que liga em vez de copiar (cp -l, cp -s, cp -al, --link, --symbolic-link) confere todo argumento
+OPCAO_DE_LIGACAO = re.compile(r'^(?:-[a-zA-Z]*[ls][a-zA-Z]*|--link|--symbolic-link)$')
+VERBOS_QUE_LIGAM_COM_OPCAO = ('cp',)
+# revisao do S3: o comando dentro de outro (bash -c, cmd /c, powershell -Command, Start-Process, xargs) e conferido de
+# novo, na mesma pasta. O que vem depois da opcao do embrulho e o comando; sem ela, os argumentos sem as opcoes
+VERBOS_QUE_EMBRULHAM = ('bash', 'sh', 'zsh', 'dash', 'ksh', 'fish', 'busybox', 'cmd', 'powershell', 'pwsh', 'wsl',
+                        'start', 'call', 'xargs', 'start-process', 'saps', 'invoke-expression', 'iex', 'nice',
+                        'nohup', 'runas', 'parallel')
+OPCOES_DO_EMBRULHO = ('-c', '/c', '/k', '/r', '-command', '-commandwithargs')
+PROFUNDIDADE_DO_EMBRULHO = 4  # numero-neutro: so limita a conferencia de comando dentro de comando
+# revisao do S3: a palavra do shell cola os pedacos entre aspas ao resto (sugestoes-"validadas".json e uma palavra so)
+PALAVRA_DO_SHELL = re.compile(r'(?:"[^"]*"|\'[^\']*\'|[^\s"\'])+')
+REDIRECAO = re.compile(r'(?:^|[^<>\d])\d?\*?>>?\|?\s*((?:"[^"]*"|\'[^\']*\'|[^\s|;&<>"\'])+)')
+SO_A_REDIRECAO = re.compile(r'\d?\*?>>?\|?\s*(?:"[^"]*"|\'[^\']*\'|[^\s|;&<>"\'])+')
+SEPARADOR_DE_COMANDO = re.compile(r'\|\|?|&&|;|\n|(?<![>\d])&(?!\d)')
+# revisao do S3: o nome que o shell monta na hora (variavel, substituicao de comando, curinga); na pasta do cd, chaves
+NOME_MONTADO = re.compile(r'[$%`*?\[]')
+PASTA_MONTADA = re.compile(r'[$%`*?\[{]')
+LIMITE_DAS_CHAVES = 64  # numero-neutro: so limita a expansao de chaves que o gancho confere
+# codigo que grava arquivo (Python, PowerShell, Node): nega com um caminho protegido em qualquer ponto do comando
+CODIGO_QUE_GRAVA = re.compile(r'write_text|write_bytes|WriteAll\w*|AppendAll\w*|'
+                              r'\bFile\s*\]?\s*::\s*(?:Create|Open\w*|Copy|Move|Replace)|'
+                              r'\bos\s*\.\s*(?:replace|rename|renames|link|symlink|makedirs|mkdir|open)\b|shutil\s*\.|'
+                              r'\.\s*(?:touch|mkdir|hardlink_to|symlink_to)\s*\(|\)\s*\.\s*(?:rename|replace)\s*\(|'
+                              r'open\s*\([^)]*[\'"][rbt]*[wax][rbt+]*[\'"]|'
+                              r'\b(?:writeFile|appendFile|copyFile|writeFileSync|appendFileSync|copyFileSync)\b|'
+                              r'\bgravar\w*\s*\(',
+                              re.IGNORECASE)
+# o codigo do motor que grava esses arquivos (os modulos e as funcoes que gravam): o Claude roda so a linha de comando
+# (sugestao pacote, sugestao importar)
+CODIGO_DE_SUGESTOES = re.compile(
+    r'desdobra[\s\'")\]]*\.\s*sugestao\s*\.\s*(?:importar|pacote|miniaturas|specs)(?![\w-])|'
+    r'from\s+desdobra\s*\.\s*sugestao\s+import\s+[^\n;]*\b(?:importar|pacote|miniaturas|specs)\b|'
+    r'(?:fromlist|getattr|import_module|__import__|find_spec|run_module|sys\s*\.\s*modules)[^\n;]*?'
+    r'[\'"]\.?sugestao\.(?:importar|pacote|miniaturas|specs)[\'"]|'
+    r'\b(?:gravar_pacote|refazer_pacotes?|gravar_miniaturas|gravar_validadas|apagar_escritos_do_claude)\b',
+    re.IGNORECASE)
+# revisao do S3: o nome do modulo ou da funcao montado em pedacos ('desdobra.sug' + 'estao', '_'.join([...])). Com
+# importacao dinamica no comando, o texto e conferido em minusculas, so com letras e algarismos
+IMPORTACAO_DINAMICA = re.compile(r'import_module|__import__|importlib|runpy|run_module|run_path|find_spec|spec_from|'
+                                 r'SourceFileLoader|pkgutil|zipimport|sys\s*\.\s*modules|getattr|__dict__|'
+                                 r'\b(?:exec|eval|compile|globals|vars)\s*\(', re.IGNORECASE)
+CODIGO_DE_SUGESTOES_ACHATADO = re.compile(r'sugestao(?:importar|pacote|miniaturas|specs)|gravarpacote|'
+                                          r'refazerpacotes?|gravarminiaturas|gravarvalidadas|apagarescritosdoclaude')
+# a linha de comando do motor e o pytest nao rodam codigo escrito no comando: saem do texto antes da conferencia
+CHAMADA_DO_MOTOR_OU_DO_TESTE = re.compile(r'-m\s+(?:desdobra|pytest)\b[^\n|;&]*', re.IGNORECASE)
+# revisao do S3: comando so de busca e leitura nao roda codigo; o nome da funcao nele e busca no fonte
+VERBOS_SO_DE_LEITURA = ('grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'findstr', 'select-string', 'sls', 'git', 'cat',
+                        'type', 'get-content', 'gc', 'head', 'tail', 'less', 'more', 'ls', 'dir', 'get-childitem',
+                        'gci', 'wc', 'sort', 'uniq', 'diff', 'fc', 'pwd', 'which', 'where', 'get-command', 'gcm')
+
+
+def _partes_do_caminho(caminho):
+    """Os segmentos do caminho em minusculas, sem o ponto e o espaco do fim (o Windows os tira) e sem o fluxo
+    alternativo do NTFS (nome:fluxo)."""
+    partes = [p for p in re.split(r'[\\/]', caminho) if p]
+    saida = []
+    for i, p in enumerate(partes):
+        if i > 0 or not re.match(r'^[A-Za-z]:$', p):
+            p = p.split(':')[0]
+        saida.append(p.rstrip(' .').lower())
+    return saida
+
+
+def _escrito_do_motor(caminho):
+    """True se o caminho absoluto e um arquivo que so o motor grava em sugestoes/ (ou a pasta das miniaturas)."""
+    partes = _partes_do_caminho(caminho)
+    for i in range(len(partes) - 1):
+        if partes[i] != PASTA_DE_SUGESTOES:
+            continue
+        if partes[i + 1] == PASTA_DE_MINIATURAS:
+            return True
+        if partes[i + 1] in NOMES_DO_MOTOR_EM_SUGESTOES and i + 1 == len(partes) - 1:
+            return True
+    return False
+
+
+def _desaspar(palavra):
+    """A palavra como o shell a entrega: sem as aspas (inclusive as do meio) e sem o escape do PowerShell (`)."""
+    pedacos = [next(g for g in m.groups() if g is not None)
+               for m in re.finditer(r'"([^"]*)"|\'([^\']*)\'|([^"\']+)', palavra)]
+    return re.sub(r'`(.)', r'\1', ''.join(pedacos))
+
+
+def _chaves(palavra):
+    """As palavras que a expansao de chaves da Bash produz ({a,b}), ate LIMITE_DAS_CHAVES."""
+    m = re.search(r'\{([^{}]*,[^{}]*)\}', palavra)
+    if not m:
+        return [palavra]
+    saida = []
+    for parte in m.group(1).split(','):
+        for e in _chaves(palavra[:m.start()] + parte + palavra[m.end():]):
+            saida.append(e)
+            if len(saida) >= LIMITE_DAS_CHAVES:
+                return saida
+    return saida
+
+
+def _segmentos(comando):
+    """Os comandos encadeados (|, ||, &&, ;, &, quebra de linha), sem partir o que esta entre aspas."""
+    partes, atual, aspa, i = [], [], None, 0
+    while i < len(comando):
+        ch = comando[i]
+        if aspa:
+            aspa = None if ch == aspa else aspa
+        elif ch in '"\'':
+            aspa = ch
+        else:
+            m = SEPARADOR_DE_COMANDO.match(comando, i)
+            if m and m.end() > i:
+                partes.append(''.join(atual))
+                atual = []
+                i = m.end()
+                continue
+        atual.append(ch)
+        i += 1
+    partes.append(''.join(atual))
+    return partes
+
+
+def _cita_escrito_do_motor(comando):
+    """True se o comando cita, de qualquer jeito, um dos arquivos do motor ou a pasta das miniaturas."""
+    for t in (re.sub('[\'"^`]', '', comando), re.sub('[\'"^`\\\\]', '', comando)):
+        t = t.lower().replace('\\', '/')
+        if any(n in t for n in NOMES_DO_MOTOR_EM_SUGESTOES) or 'sugestoes/miniaturas' in t:
+            return True
+    return False
+
+
+def _pasta_e_de_sugestoes(pasta):
+    return any(PASTA_DE_SUGESTOES in _partes_do_caminho(p) for p in (pasta, _real(pasta)))
+
+
+def _protegido(caminho, cwd, pelo_nome=False, cita=False):
+    """True se a palavra do shell, como destino de escrita, cai num escrito do motor em sugestoes/: pelo nome pedido,
+    pelo alvo real (ligacao simbolica de nome inocente) e pelo curinga que se expande para ele.
+
+    Revisao do S3: a palavra chega crua; as chaves se expandem, as aspas do meio e o escape do PowerShell saem, e o
+    escape da Bash (\\) e tirado numa segunda leitura. O nome montado na hora (variavel, substituicao de comando,
+    curinga) conta quando a parte fixa dele cai numa pasta sugestoes, quando o comando cita um dos arquivos do motor
+    (cita) ou quando a pasta e incerta (pelo_nome). pelo_nome: o nome sozinho de um dos arquivos do motor conta em
+    qualquer pasta (cd que o gancho nao acompanha, codigo que muda de pasta)."""
+    bruto = caminho.strip()
+    if not bruto:
+        return False
+    for expandido in _chaves(bruto):
+        limpo = _desaspar(expandido).strip()
+        if not limpo or limpo.startswith('-') or re.match(r'^/[A-Za-z?]{1,2}(?::.*)?$', limpo):
+            continue
+        montado = bool(NOME_MONTADO.search(expandido))
+        for c in {limpo, limpo.replace('\\', '')} if '\\' in limpo else {limpo}:
+            if pelo_nome:
+                partes = _partes_do_caminho(c)
+                if partes and partes[-1] in NOMES_DO_MOTOR_EM_SUGESTOES:
+                    return True
+            try:
+                alvo = _absoluto(c, cwd)
+            except (OSError, ValueError):
+                continue
+            if _escrito_do_motor(alvo) or _escrito_do_motor(_real(alvo)):
+                return True
+            if montado:
+                fixo = NOME_MONTADO.split(c)[0]
+                corte = max(fixo.rfind('/'), fixo.rfind('\\'))
+                try:
+                    pasta = _absoluto(fixo[:corte + 1] if corte >= 0 else '.', cwd)
+                except (OSError, ValueError):
+                    return True
+                if cita or pelo_nome or _pasta_e_de_sugestoes(pasta):
+                    return True
+            if _sem_curinga(alvo) != alvo:
+                vistos = 0
+                try:
+                    for achado in glob.iglob(alvo):
+                        vistos += 1
+                        if vistos > LIMITE_DO_CURINGA:
+                            return False
+                        if _escrito_do_motor(achado) or _escrito_do_motor(_real(achado)):
+                            return True
+                except (OSError, ValueError, re.error):
+                    return False
+    return False
+
+
+def decidir_escrito_do_motor_por_arquivo(caminho, cwd):
+    """'deny' quando uma ferramenta de arquivo grava o que so o motor grava em sugestoes/ (M7c, S3)."""
+    if not caminho.strip():
+        return None
+    alvo = _absoluto(caminho, cwd)
+    return 'deny' if _escrito_do_motor(alvo) or _escrito_do_motor(_real(alvo)) else None
+
+
+def _palavras(segmento):
+    """As palavras do segmento como o shell as entrega (sem aspas)."""
+    return [_desaspar(p) for p in PALAVRA_DO_SHELL.findall(segmento)]
+
+
+def _verbo(palavras):
+    """(indice, verbo em minusculas sem pasta e sem .exe) do comando do segmento."""
+    for i, p in enumerate(palavras):
+        nome = re.split(r'[\\/]', p.strip('&('))[-1].lower()
+        if nome in ('', 'sudo', 'env', 'command', 'builtin', 'exec', 'time', 'nohup'):
+            continue
+        return i, re.sub(r'\.exe$', '', nome)
+    return None, ''
+
+
+def _opcao(p):
+    return p.startswith('-') or bool(re.match(r'^/[A-Za-z?]{1,2}(?::.*)?$', p))
+
+
+def _comando_embrulhado(args):
+    """O comando que vai dentro do embrulho: o que vem depois de -c, /c ou -Command; sem a opcao, os argumentos sem as
+    opcoes (Start-Process cmd -ArgumentList '/c ...', xargs -I{} cp ...)."""
+    for k, a in enumerate(args):
+        if a.lower() in OPCOES_DO_EMBRULHO:
+            return ' '.join(args[k + 1:])
+    return ' '.join(a for a in args if not a.startswith('-'))
+
+
+def _roda_codigo(comando):
+    """True se algum comando encadeado nao e so de busca ou leitura (grep, rg, git, cat, Select-String)."""
+    for segmento in _segmentos(comando):
+        i, verbo = _verbo(_palavras(segmento))
+        if i is not None and verbo not in VERBOS_SO_DE_LEITURA:
+            return True
+    return False
+
+
+def _codigo_do_motor_que_grava(comando):
+    """True quando o comando roda o codigo do motor que grava em sugestoes/: o modulo ou a funcao pelo nome, ou montado
+    em pedacos junto com importacao dinamica (revisao do S3). A linha de comando do motor e o pytest saem do texto
+    antes; busca no fonte nao roda codigo e segue."""
+    if not _roda_codigo(comando):
+        return False
+    texto = CHAMADA_DO_MOTOR_OU_DO_TESTE.sub(' ', comando)
+    for c in (texto, normalizar(texto)):
+        if CODIGO_DE_SUGESTOES.search(c):
+            return True
+    if IMPORTACAO_DINAMICA.search(texto):
+        return bool(CODIGO_DE_SUGESTOES_ACHATADO.search(re.sub(r'[^a-z0-9]', '', texto.lower())))
+    return False
+
+
+def decidir_escrito_do_motor_por_comando(comando, cwd, _profundidade=0, _incerta=None, _cita=None):
+    """'deny' quando um comando da Bash, da PowerShell ou da Monitor grava o que so o motor grava em sugestoes/ (M7c,
+    S3): redirecao, o destino de copia, movimento, troca de nome ou ligacao, os verbos que gravam o argumento (tee,
+    Set-Content, Out-File, New-Item, touch, mkdir, sed -i, fsutil, link, cp -l), o codigo que grava arquivo com o
+    caminho no comando e o codigo do motor que grava esses arquivos. O cd feito antes no mesmo comando muda a pasta dos
+    caminhos relativos; o cd que o gancho nao acompanha (variavel, curinga, popd) deixa a pasta incerta, e o nome
+    sozinho de um dos arquivos do motor passa a contar. O comando dentro de outro (bash -c, cmd /c) e conferido de
+    novo. Ler e copiar dali para fora seguem."""
+    if _profundidade == 0:
+        if _codigo_do_motor_que_grava(comando):
+            return 'deny'
+        if CODIGO_QUE_GRAVA.search(comando):
+            for c in candidatos(comando)[:LIMITE_DE_CANDIDATOS]:
+                if _protegido(c, cwd, pelo_nome=True):
+                    return 'deny'
+    cita = _cita_escrito_do_motor(comando) if _cita is None else _cita
+    incerta = (not cwd) if _incerta is None else _incerta
+    pasta = cwd
+    for segmento in _segmentos(comando):
+        for m in REDIRECAO.finditer(segmento):
+            if _protegido(m.group(1), pasta, incerta, cita):
+                return 'deny'
+        cruas = PALAVRA_DO_SHELL.findall(SO_A_REDIRECAO.sub(' ', segmento))
+        palavras = [_desaspar(p) for p in cruas]
+        i, verbo = _verbo(palavras)
+        if i is None:
+            continue
+        args, crus = palavras[i + 1:], cruas[i + 1:]
+        livres = [c for a, c in zip(args, crus) if not _opcao(a)]
+        if verbo in VERBOS_DE_PASTA:
+            if not livres:
+                pasta = os.path.expanduser('~')
+            elif PASTA_MONTADA.search(livres[0]) or _desaspar(livres[0]) == '-':
+                incerta = True
+            else:
+                pasta = _absoluto(_desaspar(livres[0]), pasta)
+            continue
+        if verbo in VERBOS_QUE_DESFAZEM_PASTA:
+            incerta = True
+            continue
+        if verbo in VERBOS_QUE_EMBRULHAM:
+            dentro = _comando_embrulhado(args)
+            if _profundidade >= PROFUNDIDADE_DO_EMBRULHO:
+                if _cita_escrito_do_motor(dentro):
+                    return 'deny'
+            elif dentro and decidir_escrito_do_motor_por_comando(dentro, pasta, _profundidade + 1, incerta,
+                                                                cita) == 'deny':
+                return 'deny'
+            continue
+        liga = verbo in VERBOS_QUE_LIGAM_COM_OPCAO and any(OPCAO_DE_LIGACAO.match(a) for a in args)
+        if liga or verbo in VERBOS_QUE_GRAVAM or (verbo == 'sed' and any(re.match(r'^-\w*i', a) for a in args)):
+            if any(_protegido(c, pasta, incerta, cita) for c in livres):
+                return 'deny'
+            continue
+        if verbo in VERBOS_DESTINO_NO_FIM and livres:
+            destinos = [crus[k + 1] for k, a in enumerate(args[:-1]) if a.lower() in OPCOES_DE_DESTINO]
+            destinos = destinos or [livres[-1]]
+            fontes = [c for c in livres if c not in destinos]
+            for d in destinos:
+                if _protegido(d, pasta, incerta, cita):
+                    return 'deny'
+                d_limpo = _desaspar(d)
+                d_abs = _absoluto(d_limpo, pasta)
+                if os.path.isdir(d_abs) or d_limpo.endswith(('/', '\\')):
+                    for f in fontes:
+                        nome = re.split(r'[\\/]', _desaspar(f).rstrip('/\\'))[-1]
+                        if nome and _protegido(os.path.join(d_abs, nome), pasta):
+                            return 'deny'
+    return None
 
 
 def _absoluto(caminho, cwd):
@@ -787,6 +1135,8 @@ def decidir_com_motivo(evento):
             return ('deny', MOTIVO)
         if decidir_leitura_por_comando(bruto, cwd) == 'deny':
             return ('deny', MOTIVO_LEITURA)
+        if decidir_escrito_do_motor_por_comando(bruto, cwd) == 'deny':
+            return ('deny', MOTIVO_SUGESTOES)
         return (None, None)
     if ferramenta in FERRAMENTAS_DE_ARQUIVO:
         caminho = str(entrada.get('file_path') or entrada.get('notebook_path') or '')
@@ -794,6 +1144,8 @@ def decidir_com_motivo(evento):
             return ('deny', MOTIVO_MARCA)
         if ARQUIVOS_DO_DA.search(_caminhos(caminho)) or PERFIL_DA_TELA.search(_caminhos(caminho)):
             return ('deny', MOTIVO)
+        if decidir_escrito_do_motor_por_arquivo(caminho, cwd) == 'deny':
+            return ('deny', MOTIVO_SUGESTOES)
     return (None, None)
 
 

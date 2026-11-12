@@ -14,7 +14,9 @@ confere os dados antes do dialogo (validar), monta o texto do dialogo com o que 
   - render: o render dos formatos afetados, com uma confirmacao e um selo por formato (desdobra.tela.ato_render; M7b,
     B2);
   - aprovar: a aprovacao dos formatos marcados, com o arquivo final de cada um na janela e o sentido do giro que falta
-    gravado pela mesma confirmacao (desdobra.tela.ato_aprovar; M7b, B4).
+    gravado pela mesma confirmacao (desdobra.tela.ato_aprovar; M7b, B4);
+  - marca: a marca do job, entre as marcas da biblioteca da agencia, a "Marca nova" e "Sem marca", opcional
+    (desdobra.marca.job; M7c, M3; decisoes-v1.md, 190, Q5).
 Os textos sao do motor, em portugues para o DA, sem comando nem identificador; o que vem do cliente (nome de camada,
 nome de arquivo, texto da folha) a pagina poe so por textContent.
 """
@@ -133,7 +135,7 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         acao = confirmar.confirmar_da_tela(pasta, d['valor_id'], d.get('leitura'), disparo=disparo)
         return {'spec': acao is not None}
 
-    atos = {}
+    atos = {'marca': _ato_da_marca(pasta, conteudo)}
     if conteudo is not None:
         # as familias sao lidas do conteudo a cada pedido: no job novo elas nascem depois do passo 2, quando o servidor
         # monta o passo 3 de novo no mesmo dicionario (desdobra.tela.servidor, _atualizar)
@@ -152,6 +154,37 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         # a aprovacao dos formatos marcados, com o sentido do giro que falta (M7b, B4): ato longo, com preparo
         'aprovar': ato_aprovar.ato_de_aprovar(pasta),
     })
+
+
+MARCA_TROCA = 'Você pode trocar a marca aqui mesmo, depois.'
+
+
+def _ato_da_marca(pasta, conteudo):
+    """O ato "marca" do passo 1 (M7c, M3; decisoes-v1.md, 190, Q5): uma marca da biblioteca da agencia, a "Marca nova"
+    com o nome que o DA digitou ou "Sem marca", com a confirmacao na janela (desdobra.marca.job). A pasta da
+    biblioteca e a do conteudo da montagem (pasta_biblioteca, so no processo de fundo), lida a cada pedido; sem ela, so
+    "Sem marca" passa."""
+    from desdobra.marca import job as marca_job
+    from desdobra.tela.servidor import Ato
+
+    def biblioteca():
+        return (conteudo or {}).get('pasta_biblioteca')
+
+    def texto(d):
+        e = marca_job.conferir(d, biblioteca())
+        if e['escolha'] == 'sem_marca':
+            return 'O job segue sem marca, e nenhum padrão de marca aparece como sugestão. ' + MARCA_TROCA
+        if e['escolha'] == 'nova':
+            return ('A marca "%s" entra na biblioteca da agência, ainda sem padrão guardado, e o job passa a ser '
+                    'dela. %s' % (e['nome'], MARCA_TROCA))
+        return ('O job passa a ser da marca "%s". O padrão que ela tiver aparece como sugestão, e nada muda sem o seu '
+                'clique. %s' % (e['nome'], MARCA_TROCA))
+
+    def executar(disparo, d):
+        reg = marca_job.gravar(pasta, d, disparo=disparo, biblioteca=biblioteca())
+        return {'marca': reg['escolha']}
+    return Ato(comando=marca_job.COMANDO, titulo='Escolher a marca do job', texto=texto, sim=SIM, nao=NAO,
+               executar=executar, validar=lambda d: marca_job.conferir(d, biblioteca()) is not None)
 
 
 def _ato_da_familia(pasta, conteudo):

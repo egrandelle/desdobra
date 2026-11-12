@@ -297,6 +297,36 @@ main { flex: 1; min-height: 0; display: flex; }
 .modo[aria-pressed="true"] .modo-marca { border-color: var(--acento); box-shadow: inset 0 0 0 4px var(--superficie), inset 0 0 0 8px var(--acento); }
 .modo[aria-pressed="true"] .modo-nome { color: var(--acento); }
 
+/* M7c, M3: a marca do job, no mesmo desenho do modo de dados (linhas de escolha, nenhuma marcada ate o clique). A
+   lista da biblioteca rola sozinha quando passa de umas oito marcas; "Sem marca" fica sempre a vista, separada; a
+   "Marca nova" e um campo com o rotulo em cima e o botao ao lado */
+.opcional { margin-left: 6px; font-weight: 500; color: var(--mais-suave); }
+.marcas { display: grid; gap: 6px; max-height: 384px; overflow-y: auto; overscroll-behavior: contain; margin-bottom: 6px; }
+.marca-linha { padding: 10px 14px; align-items: center; }
+.marca-linha .modo-marca { margin-top: 0; }
+.marca-linha .modo-nome { overflow-wrap: anywhere; }
+.marca-sem { margin-bottom: 12px; }
+.marca-nova { display: grid; gap: 6px; padding-top: 12px; border-top: 1px dashed var(--linha); max-width: 62ch; }
+.marca-nova label { font-weight: 600; }
+.marca-nova-linha { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.marca-nova input {
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--raio-p);
+  background: var(--superficie);
+  transition: border-color 0.2s var(--curva);
+}
+.marca-nova input:hover:not(:disabled) { border-color: var(--mais-suave); }
+.marca-nova input:focus-visible { outline: 2px solid var(--foco); outline-offset: 1px; }
+.marca-nova input[aria-invalid="true"] { border-color: var(--aviso); }
+.marca-nova .botao { height: 32px; }
+.marca-nova .ajuda { font-size: 12px; }
+.marca-escolhida-fora { margin-bottom: 10px; }
+
 .decisao { padding: 12px 0; border-bottom: 1px solid var(--linha); }
 .decisao:last-child { border-bottom: 0; }
 .decisao-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:sugestoes:1",
+  "title": "Sugestoes de funcao do Claude (sugestoes/1)",
+  "description": "M7c, S3. Dois arquivos do job seguem este contrato. sugestoes/sugestoes.json e o que o Claude escreve depois de ler o pacote para o modelo: esquema, o sha256 do pacote que ele leu (pacote_sha256) e, por alvo (layer_id de uma camada ou de um grupo do laudo), uma funcao e uma alternativa do enum de funcoes do briefing/1. Nenhum numero alem dos ids, nenhum texto livre, nenhum campo extra. sugestoes/sugestoes-validadas.json e o que o motor grava depois de conferir (desdobra.sugestao.importar): os mesmos campos, so com as sugestoes aceitas, mais modo_dados, job_id e arquivo_sha256, que so o motor escreve (o importador recusa o arquivo do Claude que os traz). Sugestao nunca e valor: so vira funcao com o clique do DA na tela (decisoes-v1.md, 162).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "pacote_sha256",
+    "sugestoes"
+  ],
+  "dependentRequired": {
+    "modo_dados": [
+      "job_id",
+      "arquivo_sha256"
+    ],
+    "job_id": [
+      "modo_dados"
+    ],
+    "arquivo_sha256": [
+      "modo_dados"
+    ]
+  },
+  "properties": {
+    "esquema": {
+      "const": "sugestoes/1"
+    },
+    "pacote_sha256": {
+      "description": "sha256 dos bytes de sugestoes/pacote-modelo.json que o Claude leu (o desdobra sugestao pacote o devolve em ids.pacote_sha256)",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "modo_dados": {
+      "description": "So no arquivo validado: o modo efetivo na hora da importacao",
+      "enum": [
+        "a",
+        "b"
+      ]
+    },
+    "job_id": {
+      "description": "So no arquivo validado",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8,64}$"
+    },
+    "arquivo_sha256": {
+      "description": "So no arquivo validado: o sha256 do KV do laudo",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sugestoes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sugestao"
+      }
+    }
+  },
+  "$defs": {
+    "sugestao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "layer_id",
+        "funcao",
+        "alternativa"
+      ],
+      "properties": {
+        "layer_id": {
+          "description": "O alvo: layer_id de uma camada ou de um grupo do laudo",
+          "type": "integer",
+          "minimum": 0
+        },
+        "funcao": {
+          "description": "Igual ao $defs.funcao do briefing/1 (teste de igualdade)",
+          "enum": [
+            "fundo",
+            "imagem",
+            "sujeito",
+            "veu_de_legibilidade",
+            "grafismo",
+            "titulo",
+            "texto_de_apoio",
+            "cta",
+            "icone_de_cta",
+            "url_ou_contato",
+            "texto_legal",
+            "informacao_de_evento",
+            "destaque_numerico",
+            "logo_principal",
+            "assinatura_institucional",
+            "selo",
+            "logo_de_parceiro",
+            "ajuste_global",
+            "estrutura",
+            "fora_da_peca",
+            "indeterminado"
+          ]
+        },
+        "alternativa": {
+          "description": "Outra funcao do mesmo enum, diferente da sugestao",
+          "enum": [
+            "fundo",
+            "imagem",
+            "sujeito",
+            "veu_de_legibilidade",
+            "grafismo",
+            "titulo",
+            "texto_de_apoio",
+            "cta",
+            "icone_de_cta",
+            "url_ou_contato",
+            "texto_legal",
+            "informacao_de_evento",
+            "destaque_numerico",
+            "logo_principal",
+            "assinatura_institucional",
+            "selo",
+            "logo_de_parceiro",
+            "ajuste_global",
+            "estrutura",
+            "fora_da_peca",
+            "indeterminado"
+          ]
+        }
+      }
+    }
+  }
+}

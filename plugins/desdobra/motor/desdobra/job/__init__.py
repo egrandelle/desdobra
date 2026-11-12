@@ -115,6 +115,9 @@ def _estado(args):
     proxima = nucleo.calcular_proxima(estado, avaliacao, nucleo.ESTEIRA)
     contagens = {'fases_validas': sum(1 for v, _m in avaliacao.values() if v), 'fases': len(avaliacao),
                  'bloqueios_pendentes': len(pendentes)}
+    # M7c, M3: o Claude sabe so se o job tem marca escolhida na tela (1 ou 0), nunca o nome nem o id
+    from desdobra.marca import job as marca_job
+    contagens['marca_escolhida'] = marca_job.para_o_claude(args.pasta)
     if pendentes:
         for k, v in pendentes[0][1].get('contagens', {}).items():
             contagens.setdefault(k, v)

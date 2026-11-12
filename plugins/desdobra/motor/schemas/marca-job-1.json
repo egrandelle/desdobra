@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:marca-job:1",
+  "title": "Marca do job escolhida pelo DA (marca-job/1)",
+  "description": "briefing/marca.json, gravado so pelo servidor da tela, depois do clique do DA no passo 1 confirmado na propria janela (decisoes-v1.md, 159 e 190, Q5). Guarda so o id da marca na biblioteca da agencia (o nome fica no perfil, nunca no job) ou a escolha 'Sem marca'. A escolha e opcional: sem este arquivo, o job segue sem padrao de marca citado.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "escolha", "marca_id", "origem", "escolhido_por"],
+  "properties": {
+    "esquema": {"const": "marca-job/1"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "escolha": {"enum": ["marca", "sem_marca"]},
+    "marca_id": {"description": "O id do perfil da marca (perfil-marca/1); null em 'Sem marca'.",
+                 "type": ["string", "null"], "pattern": "^[0-9a-f]{32}$"},
+    "origem": {"enum": ["da", "fixture_de_teste"]},
+    "escolhido_por": {
+      "type": "object", "additionalProperties": false, "required": ["meio", "quando"],
+      "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                     "meio": {"enum": ["tela", "medicao"]}, "quando": {"type": "string"}}
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"escolha": {"const": "marca"}}},
+     "then": {"properties": {"marca_id": {"type": "string"}}}},
+    {"if": {"properties": {"escolha": {"const": "sem_marca"}}},
+     "then": {"properties": {"marca_id": {"type": "null"}}}}
+  ]
+}

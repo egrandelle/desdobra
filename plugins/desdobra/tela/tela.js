@@ -555,7 +555,10 @@
     if (nome === 'salvar') return { rascunho: corpoDoRascunho() };
     return dados;
   }
-  function pedirAto(nome, dados) {
+  function pedirAto(nome, dados, aoRecusar) {
+    /* aoRecusar (revisao do M3): quem chama sabe dizer ao DA por que o motor recusou o pedido (403 antes da janela);
+       entao o aviso fica com ele, sem a frase de tentar de novo, que nao resolve */
+    let recusado = false;
     raiz.dataset.estadoAto = '';
     // o rascunho que espera, ou que nao gravou, vai antes: o ato confirma o que esta gravado. Sem gravar, o ato nao
     // vai (revisao 1 da fase D)
@@ -566,7 +569,10 @@
     }
     return antes.then(function (gravou) {
       if (gravou === false) throw new Error('rascunho');
-      return enviar('/api/ato/pedir', { ato: nome, dados: comVista(nome, dados || {}) });
+      return enviar('/api/ato/pedir', { ato: nome, dados: comVista(nome, dados || {}) }).catch(function (e) {
+        recusado = !!(e && e.message === 'rota 403');
+        throw e;
+      });
     }).then(function (p) {
       return confirmarNaJanela(p).then(function (sim) {
         if (!sim) return enviar('/api/ato/cancelar', { pedido: p.pedido }).then(function () { raiz.dataset.estadoAto = 'cancelado'; });
@@ -585,6 +591,7 @@
       });
     }).catch(function () {
       raiz.dataset.estadoAto = 'erro';
+      if (recusado && aoRecusar) { aoRecusar(); return; }
       document.getElementById('selo').textContent = 'A tela não conseguiu registrar a ação. Tente de novo.';
     });
   }
@@ -968,6 +975,136 @@
     }
     if (!escrita) md.appendChild(el('p', SO_PARA_VER, 'nota modo-nota'));
   }
+  /* M7c, M3: a marca do job (decisao 190, Q5). As marcas da biblioteca da agencia, "Sem marca" e a "Marca nova",
+     nenhuma marcada ate o clique do DA; a escolha e opcional e nunca entra no que falta. Sem biblioteca que sirva, so
+     "Sem marca", com a nota de onde configurar. O nome da marca e dado do DA: so por textContent */
+  let marcaNova = '';
+  let marcaNovaRecusada = null;
+  const MARCA_NOVA_MAX = 120;
+  /* revisao do M3: o nome na forma que o motor grava (NFC, um espaco so entre as palavras) e a chave que diz se duas
+     marcas sao a mesma, perto do casefold do motor (desdobra.marca.job.chave). O motor confere de novo no pedido */
+  function formaDaMarca(s) { return String(s).split(/[^\S﻿]+/).filter(Boolean).join(' ').normalize('NFC'); }
+  function chaveDaMarca(s) { return formaDaMarca(s).toUpperCase().toLowerCase().normalize('NFC'); }
+  function extensaoDeFonte(extensoes) {
+    if (!extensoes || !extensoes.length) return null;
+    const partes = extensoes.map(function (x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+    return new RegExp('\\.(?:' + partes.join('|') + ')(?![A-Za-z0-9_-])', 'i');
+  }
+  function linhaMarca(nome, texto, dados, sim) {
+    const b = botaoAto('', 'marca', dados, 'modo marca-linha');
+    b.setAttribute('aria-pressed', sim ? 'true' : 'false');
+    b.appendChild(el('span', null, 'modo-marca'));
+    const corpo = el('span', null, 'modo-corpo');
+    corpo.appendChild(el('span', nome, 'modo-nome'));
+    if (texto) corpo.appendChild(el('span', texto, 'modo-texto'));
+    b.appendChild(corpo);
+    return b;
+  }
+  function montarMarca(m) {
+    const no = document.getElementById('lido-marca');
+    limpar(no);
+    if (!m) return;
+    const e = m.escolhida;
+    const usavel = !!(m.biblioteca && m.biblioteca.usavel);
+    no.appendChild(el('p', e ? 'A marca vale para o job inteiro. Você pode trocar quando quiser.' :
+      'Escolha de que marca é este job, se quiser. O padrão que a marca tiver aparece como sugestão, e nada muda sem o seu clique.',
+      'nota modo-nota'));
+    if (e && e.escolha === 'marca' && !e.nome) {
+      no.appendChild(el('p', 'Este job tem uma marca escolhida que não aparece na biblioteca desta janela.', 'nota marca-escolhida-fora'));
+    }
+    if (usavel && m.marcas.length) {
+      const lista = el('div', null, 'modos marcas');
+      lista.setAttribute('role', 'group');
+      lista.setAttribute('aria-label', 'Marcas da agência');
+      m.marcas.forEach(function (x) {
+        lista.appendChild(linhaMarca(x.nome, '', { escolha: 'marca', id: x.id }, !!e && e.escolha === 'marca' && e.id === x.id));
+      });
+      no.appendChild(lista);
+    } else if (usavel) {
+      no.appendChild(el('p', 'A biblioteca da agência ainda não tem marca. Crie a primeira abaixo, ou siga sem marca.', 'vazio-calmo modo-nota'));
+    } else {
+      no.appendChild(el('p', (m.biblioteca && m.biblioteca.o_que_fazer) || 'A biblioteca da agência não está configurada. O job segue sem marca.', 'nota modo-nota'));
+    }
+    const sem = el('div', null, 'modos marca-sem');
+    sem.appendChild(linhaMarca('Sem marca', 'O job segue sem padrão de marca.', { escolha: 'sem_marca' }, !!e && e.escolha === 'sem_marca'));
+    no.appendChild(sem);
+    if (usavel && m.pode_criar) no.appendChild(campoMarcaNova(m.marcas, m.extensoes_fonte));
+    if (!escrita) no.appendChild(el('p', SO_PARA_VER, 'nota modo-nota'));
+  }
+  function campoMarcaNova(marcas, extensoes) {
+    const deFonte = extensaoDeFonte(extensoes);
+    const chaves = marcas.map(function (x) { return chaveDaMarca(x.nome); });
+    const caixa = el('div', null, 'marca-nova');
+    const rotulo = el('label', 'Marca nova');
+    rotulo.htmlFor = 'marca-nova-nome';
+    const linha = el('div', null, 'marca-nova-linha');
+    const campo = el('input');
+    campo.id = 'marca-nova-nome';
+    campo.type = 'text';
+    campo.autocomplete = 'off';
+    campo.spellcheck = false;
+    campo.maxLength = MARCA_NOVA_MAX;
+    campo.value = marcaNova;
+    campo.disabled = !escrita;
+    campo.setAttribute('aria-describedby', 'marca-nova-ajuda');
+    const criar = botao('Criar e usar', 'botao');
+    criar.id = 'marca-nova-criar';
+    const ajuda = el('p', 'Digite o nome como a agência chama a marca. Ela entra na biblioteca, ainda sem padrão guardado.', 'nota ajuda');
+    ajuda.id = 'marca-nova-ajuda';
+    const erro = el('p', '', 'erro-campo');
+    erro.id = 'marca-nova-erro';
+    erro.hidden = true;
+    const conferir = function () {
+      marcaNova = campo.value;
+      const nome = formaDaMarca(campo.value);
+      const chave = chaveDaMarca(nome);
+      const repetida = !!nome && chaves.indexOf(chave) >= 0;
+      const ruim = /[\\/]/.test(nome);
+      const fonte = !!deFonte && deFonte.test(nome);
+      if (marcaNovaRecusada !== null && marcaNovaRecusada !== chave) marcaNovaRecusada = null;
+      const recusada = !!nome && marcaNovaRecusada === chave;
+      const texto = repetida ? 'Essa marca já está na lista acima. Escolha ela lá.' :
+        ruim ? 'O nome da marca não leva barra.' :
+        fonte ? 'O nome da marca não leva extensão de arquivo de fonte, como .otf ou .ttf.' :
+        recusada ? 'O desdobra não aceitou esse nome. Ele pode repetir de outro jeito uma marca da lista acima ou parecer dado de fonte. Mude o nome para criar a marca.' : '';
+      erro.hidden = !texto;
+      erro.textContent = texto;
+      campo.setAttribute('aria-invalid', texto ? 'true' : 'false');
+      criar.disabled = !escrita || !nome || !!texto;
+      return !criar.disabled;
+    };
+    campo.addEventListener('input', conferir);
+    campo.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' && conferir()) { ev.preventDefault(); criar.click(); }
+    });
+    criar.addEventListener('click', function () {
+      if (!conferir()) return;
+      const nome = formaDaMarca(campo.value);
+      pedirAto('marca', { escolha: 'nova', nome: nome }, function () {
+        // o motor recusou o nome antes da janela: o motivo fica no campo, e o botao desliga ate o DA mudar o nome
+        marcaNovaRecusada = chaveDaMarca(nome);
+        conferir();
+        campo.focus();
+      });
+    });
+    linha.appendChild(campo);
+    linha.appendChild(criar);
+    caixa.appendChild(rotulo);
+    caixa.appendChild(linha);
+    caixa.appendChild(erro);
+    caixa.appendChild(ajuda);
+    conferir();
+    return caixa;
+  }
+  depoisDoAto.marca = function (d) {
+    if (d && d.escolha === 'nova') {
+      marcaNova = '';
+      marcaNovaRecusada = null;
+      const campo = document.getElementById('marca-nova-nome');
+      if (campo) campo.value = '';
+      montarMarca(estado.lido && estado.lido.marca);
+    }
+  };
   function montarLido(l) {
     montarBloqueios(l);
     montarLinkados(l.linkados);
@@ -987,6 +1124,7 @@
     montarFormatos(s);
     montarQuadros(l.quadros || []);
     montarModo(l.modo_dados);
+    montarMarca(l.marca);
     const fo = document.getElementById('fontes');
     limpar(fo);
     if (!l.fontes.length) fo.appendChild(el('p', 'O job não tem fonte enviada.', 'vazio-calmo'));
