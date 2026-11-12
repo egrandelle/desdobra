@@ -6,8 +6,8 @@ Criterios de pronto cobertos aqui:
     cada formato membro, refaz o encaixe com o solver do repositorio e devolve o palco de cada membro (as miniaturas
     antes da confirmacao); o formato devolvido parte da versao da galeria escolhida;
   - a intencao de alinhamento (168): bordas e centros quase iguais viram o mesmo valor (x=40 e x=43 ficam iguais; 30 px
-    de diferenca ficam), o alinhamento do KV vence quando os dois ja estavam alinhados nele, e senao vence o elemento
-    mexido por ultimo; a tolerancia e proporcional a peca e tem fonte;
+    de diferenca ficam), o alinhamento do KV vence quando os dois ja estavam alinhados nele, e so o elemento mexido
+    por ultimo anda (decisao 185); a tolerancia e proporcional a peca e tem fonte;
   - o texto editado: a fonte do job precisa ter todos os caracteres (senao a recusa diz quais, em portugues), a previa
     leva o texto novo com a face real do job, e o texto vale so na familia onde foi editado (171);
   - o elemento apagado sai de todos os membros, fica registrado com origem da e deixa de reprovar a conferencia de
@@ -102,13 +102,14 @@ def test_tolerancia_do_alinhamento_tem_fonte_e_e_proporcional_a_peca():
     assert ed.tolerancia(1920, 1080) == pytest.approx(lim.valor * 1920)
 
 
-def test_x_40_e_43_ficam_iguais_e_vence_o_mexido_por_ultimo():
+def test_x_40_e_43_ficam_iguais_e_so_o_mexido_por_ultimo_anda():
     caixas = {'titulo': [40.0, 100.0, 400.0, 160.0], 'apoio': [43.0, 200.0, 300.0, 240.0]}
     novas, alinhados = ed.normalizar(caixas, ['titulo'], 1920, 1080)
-    # o titulo foi mexido por ultimo e fica onde o DA o pos; o apoio vem para o x dele, sem mudar de tamanho
-    assert novas['titulo'] == caixas['titulo']
-    assert novas['apoio'][0] == pytest.approx(40.0) and novas['apoio'][2] - novas['apoio'][0] == pytest.approx(257.0)
-    assert novas['apoio'][1] == caixas['apoio'][1]
+    # decisao 185: o titulo, mexido por ultimo, encaixa no x do apoio, sem mudar de tamanho; o apoio fica
+    assert novas['apoio'] == caixas['apoio']
+    assert novas['titulo'][0] == pytest.approx(43.0)
+    assert novas['titulo'][2] - novas['titulo'][0] == pytest.approx(360.0)
+    assert novas['titulo'][1] == caixas['titulo'][1]
     assert alinhados and alinhados[0]['linha'] == 'esquerda'
 
 
@@ -133,19 +134,19 @@ def test_alinhamento_do_kv_resolve_antes_e_nao_deixa_linha_quase_igual():
     caixas = {'a': [105.0, 0.0, 205.0, 50.0], 'b': [108.0, 600.0, 208.0, 650.0], 'c': [100.0, 300.0, 200.0, 350.0]}
     novas, _a = ed.normalizar(caixas, ['a'], 1000, 1000, kv_caixas=kv, kv_tamanho=(1000, 1000))
     assert novas['a'][0] == pytest.approx(100.0) and novas['c'] == caixas['c']
-    tol = ed.tolerancia(1000, 1000)
-    for o in ('b', 'c'):
-        for nome in ('esquerda', 'centro', 'direita'):
-            d = abs(ed._linha(novas['a'], 'x', nome) - ed._linha(novas[o], 'x', nome))
-            assert d <= ed.IGUAL or d > tol, (o, nome, d)
+    # decisao 185: b, que o DA nao mexeu, fica; o mexido encaixou uma vez no eixo, na linha do KV
+    assert novas['b'] == caixas['b']
+    for nome in ('esquerda', 'centro', 'direita'):
+        assert abs(ed._linha(novas['a'], 'x', nome) - ed._linha(novas['c'], 'x', nome)) <= ed.IGUAL, nome
 
 
 def test_centros_tambem_alinham_e_so_um_eixo_por_vez():
     caixas = {'a': [100.0, 100.0, 300.0, 150.0], 'b': [94.0, 400.0, 314.0, 450.0]}
     novas, alinhados = ed.normalizar(caixas, ['a'], 1920, 1080)
-    # o centro x de a e 200, o de b e 204 (as bordas a 6 e 14): o centro alinha, a diferenca menor, e o y fica
-    assert (novas['b'][0] + novas['b'][2]) / 2 == pytest.approx(200.0)
-    assert novas['b'][1] == caixas['b'][1]
+    # o centro x de a e 200, o de b e 204 (as bordas a 6 e 14): o centro alinha, a diferenca menor, e o y fica; so a,
+    # o mexido, anda (decisao 185)
+    assert (novas['a'][0] + novas['a'][2]) / 2 == pytest.approx(204.0) and novas['b'] == caixas['b']
+    assert novas['a'][1] == caixas['a'][1]
     assert [x['linha'] for x in alinhados] == ['centro']
 
 
@@ -203,9 +204,14 @@ def test_previa_diz_o_alinhamento_que_a_tela_mostra(conteudo):
     antes = conteudo['editar']({'familia': gid, 'versao': vid, 'edicoes': []})
     m = next(x for x in antes['membros'] if x['formato'] == 'v1')['palco']
     t, logo = _elemento(m, 'titulo'), _elemento(m, 'logo_principal')
+    # decisao 185: a linha que a edicao deixou para tras nao puxa o elemento de volta. O titulo sai 5 px da borda
+    # direita do logo e volta 4 px na direcao dela: para a 1 px da linha e encaixa
     dx = (logo['caixa'][2] - 1.0) - t['caixa'][2]  # numero-neutro: a 1 px da borda direita do logo
+    sai = -5.0  # numero-neutro: px, acima da tolerancia do formato pequeno
     r = conteudo['editar']({'familia': gid, 'versao': vid,
-                            'edicoes': [{'elemento': t['id'], 'acao': 'mover', 'dx': dx / m['largura'], 'dy': 0.0}]})
+                            'edicoes': [{'elemento': t['id'], 'acao': 'mover', 'dx': sai / m['largura'], 'dy': 0.0},
+                                        {'elemento': t['id'], 'acao': 'mover', 'dx': (dx - sai) / m['largura'],
+                                         'dy': 0.0}]})
     assert any(a['formato'] == 'v1' and t['id'] in a['elementos'] and a['eixo'] == 'x' and
                isinstance(a['valor'], float) for a in r['alinhados']), r['alinhados']
 

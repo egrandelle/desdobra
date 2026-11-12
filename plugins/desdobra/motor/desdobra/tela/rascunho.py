@@ -299,31 +299,35 @@ def mesma_vista(pasta, vista):
     return all((vista.get(k) or {}) == (dados.get(k) or {}) for k in CAMPOS_DAS_ESCOLHAS)
 
 
-def confirmada_para(familia, formatos, pecas=None):
+def confirmada_para(familia, formatos, pecas=None, sem_edicao=None):
     """A familia do rascunho esta confirmada para estes formatos: a confirmacao guarda os formatos que o DA viu
     (revisao do M7a), e a familia de mesmo id que ganhou ou perdeu formatos (desdobra.tela.estado.abas) pede a
     confirmacao de novo. pecas: a impressao do que a tela mostra hoje da familia
     (desdobra.tela.estado.impressao_das_pecas); com ela, a confirmacao vale so se foi feita sobre as mesmas pecas (a
     area de spec e a galeria de cada formato), e a confirmacao sem impressao nao vale (revisao 3 da regra
     spec_por_confirmar). O formato que outra familia levou depois da confirmacao (cedidos) e voltou tambem pede a
-    confirmacao de novo: no meio tempo o DA mexeu nele la (revisao do M7b, fase A)."""
+    confirmacao de novo: no meio tempo o DA mexeu nele la (revisao do M7b, fase A). sem_edicao: a impressao das
+    mesmas pecas pela regra da previa de antes da decisao 185 (estado.REGRA_SEM_EDICAO); vale tambem, so para a
+    familia sem edicao do DA, cuja previa e a mesma pelas duas regras."""
     f = familia or {}
     conf = f.get('confirmacao') or {}
-    if pecas is not None and conf.get('pecas') != pecas:
+    if pecas is not None and conf.get('pecas') != pecas and \
+            (sem_edicao is None or f.get('edicoes') or conf.get('pecas') != sem_edicao):
         return False
     if set(f.get('cedidos') or ()) & set(formatos):
         return False
     return bool(f.get('confirmada')) and conf.get('formatos') == list(formatos)
 
 
-def sem_confirmacao_velha(dados, familias, pecas=None):
+def sem_confirmacao_velha(dados, familias, pecas=None, sem_edicao=None):
     """O rascunho com a confirmacao tirada da familia que hoje tem outros formatos ou outras pecas (ou que a tela nao
-    tem mais). familias: {id: [formatos]}; pecas: {id: impressao} (confirmada_para). Nao grava."""
+    tem mais). familias: {id: [formatos]}; pecas e sem_edicao: {id: impressao} (confirmada_para). Nao grava."""
     if dados is None:
         return None
     saida = dict(dados, familias={})
     for g, f in (dados.get('familias') or {}).items():
-        if f.get('confirmada') and not confirmada_para(f, familias.get(g, ()), (pecas or {}).get(g)):
+        if f.get('confirmada') and not confirmada_para(f, familias.get(g, ()), (pecas or {}).get(g),
+                                                       (sem_edicao or {}).get(g)):
             f = {k: v for k, v in f.items() if k != 'confirmacao'}
             f['confirmada'] = False
         saida['familias'][g] = f

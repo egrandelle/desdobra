@@ -163,7 +163,8 @@ def quadros_do_membro(cf):
 
 def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, kv_tamanho):
     """O layout de um membro da familia com as edicoes do DA: as edicoes em proporcao ao formato (o alinhamento no
-    quadro com os quadros do membro, M7b, D2), a intencao de alinhamento entre os elementos de conteudo, o encaixe
+    quadro com os quadros do membro, M7b, D2), a intencao de alinhamento entre os elementos de conteudo depois de cada
+    edicao, so no que ela mexeu (edicao.editar, decisao 185), o encaixe
     refeito pelo solver (so quando o DA mexeu ou apagou), o alinhamento no quadro firmado de novo e a conferencia
     contra a mestre verdadeira. O lado em que o elemento mexido pelo DA passa da borda do formato vira sangria dele
     (sangria_do_da {id: [lados]}, M7b, D4), sem o lado que ja sangrava no KV. O piso de escala ou de distancia que o
@@ -190,17 +191,11 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
     # o lado em que o asset acaba na borda do KV (o que sangra no KV, nunca so na versao da galeria): no alinhamento no
     # quadro, o elemento fica preso a essa borda e anda com o grupo, fora da linha dele (revisoes 1 e 2 da fase D)
     borda = {(k, lado) for k in caixas if k in do_cf for lado, v in do_cf[k]['sangra'].items() if v}
-    caixas, apagados, textos, mexidos = edicao.aplicar(caixas, edicoes, W, H, quadros, borda)
-    so_conteudo = {k: v for k, v in caixas.items() if k in conteudo}
-    # o grupo (M7b, D1) anda inteiro no alinhamento, tambem o elemento dele que nao e de conteudo
-    grupos = edicao.grupos(edicoes)
-    junto = {k: caixas[k] for g in grupos for k in g if k in caixas and k not in so_conteudo}
-    # o alinhado no quadro fica na linha do quadro (M7b, D2)
+    # as edicoes uma a uma, cada uma com a intencao de alinhamento na hora dela: so o que ela mexeu encaixa no
+    # vizinho, com o grupo inteiro, e o alinhado no quadro fica na linha do quadro (decisao 185; M7b, D1 e D2)
+    caixas, apagados, textos, mexidos, alinhados = edicao.editar(
+        caixas, edicoes, W, H, quadros, borda, conteudo=set(conteudo), kv_caixas=kv_caixas, kv_tamanho=kv_tamanho)
     intencoes = edicao.intencoes(edicoes)
-    presos = {(k, i['eixo']) for i in intencoes for k in i['elementos']}
-    norm, alinhados = edicao.normalizar(so_conteudo, mexidos, W, H, kv_caixas, kv_tamanho, grupos=grupos,
-                                        acompanham=junto, presos=presos)
-    caixas.update(norm)
     # o lado que o DA deixou passar da borda vira sangria do elemento neste membro (M7b, D4): o solver nao o puxa de
     # volta, e a validacao e a conferencia nao o marcam como defeito; o texto e a marca nunca sangram. A conta e sem a
     # tolerancia do enquadramento (revisao 2 da fase D): o solver prende o lado que nao sangra sem folga nenhuma, e o

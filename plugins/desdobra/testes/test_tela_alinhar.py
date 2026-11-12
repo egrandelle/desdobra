@@ -123,11 +123,14 @@ def test_intencao_de_alinhamento_nao_tira_o_bloco_da_margem():
     # t foi alinhado a margem (preso na largura); o, mexido depois, para a 5 px da esquerda dele: o vem para a linha
     # de t, e t fica na margem
     caixas = {'t': [40.0, 100.0, 300.0, 140.0], 'o': [45.0, 400.0, 200.0, 450.0]}
-    novas, alinhados = ed.normalizar(caixas, ['t', 'o'], 1920, 1080, presos={('t', 'x')})
+    novas, alinhados = ed.normalizar(caixas, ['o'], 1920, 1080, presos={('t', 'x')})
     assert novas['t'] == caixas['t'] and novas['o'][0] == pytest.approx(40.0)
     assert [(a['elementos'], a['eixo']) for a in alinhados] == [(['o', 't'], 'x')]
+    # o mexido preso: nada anda naquele eixo (decisao 185); antes, o outro vinha para a linha dele
+    novas, alinhados = ed.normalizar(caixas, ['t'], 1920, 1080, presos={('t', 'x')})
+    assert novas == caixas and alinhados == []
     # os dois presos: nenhum anda
-    novas, alinhados = ed.normalizar(caixas, ['t', 'o'], 1920, 1080, presos={('t', 'x'), ('o', 'x')})
+    novas, alinhados = ed.normalizar(caixas, ['o'], 1920, 1080, presos={('t', 'x'), ('o', 'x')})
     assert novas == caixas and alinhados == []
 
 

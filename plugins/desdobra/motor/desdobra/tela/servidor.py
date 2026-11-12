@@ -263,6 +263,7 @@ class ServidorTela:
         self.familias_da_tela = {g: list(f.get('formatos') or ())
                                  for g, f in (conteudo.get('familias') or {}).items()}
         self.pecas_da_tela = {g: f.get('pecas') for g, f in (conteudo.get('familias') or {}).items()}
+        self.sem_edicao_da_tela = {g: f.get('pecas_sem_edicao') for g, f in (conteudo.get('familias') or {}).items()}
         # {id do elemento: [layer_ids]} da mestre da tela: a quebra de linha do rascunho cita um deles (revisao 2 do C)
         self.elementos_da_tela = conteudo.get('elementos')
         self.previas = dict(conteudo.get('previas') or {})
@@ -582,6 +583,7 @@ class ServidorTela:
         self.editar = novo.get('editar')
         self.familias_da_tela = {g: list(f.get('formatos') or ()) for g, f in (novo.get('familias') or {}).items()}
         self.pecas_da_tela = {g: f.get('pecas') for g, f in (novo.get('familias') or {}).items()}
+        self.sem_edicao_da_tela = {g: f.get('pecas_sem_edicao') for g, f in (novo.get('familias') or {}).items()}
         self.elementos_da_tela = novo.get('elementos')
         self._pendente = None  # o pedido de ato aberto e de antes do passo 3 novo
 
@@ -600,7 +602,8 @@ class ServidorTela:
         if dados is not None and dados['laudo_sha256'] != self.laudo_sha256:
             dados, de_outro = None, True
         if dados is not None and self.familias_da_tela:
-            dados = rascunho.sem_confirmacao_velha(dados, self.familias_da_tela, self.pecas_da_tela)
+            dados = rascunho.sem_confirmacao_velha(dados, self.familias_da_tela, self.pecas_da_tela,
+                                                   self.sem_edicao_da_tela)
         corpo = {'rascunho': dados, 'de_outro_laudo': de_outro, 'espera_ms': self.espera_rascunho_ms,
                  'job_id': self.job_id, 'laudo_sha256': self.laudo_sha256}
         return json.dumps(corpo, ensure_ascii=False).encode('utf-8'), MIME_JSON
@@ -672,7 +675,8 @@ class ServidorTela:
         if dados is None or dados['laudo_sha256'] != self.laudo_sha256:
             return False
         if self.familias_da_tela:
-            dados = rascunho.sem_confirmacao_velha(dados, self.familias_da_tela, self.pecas_da_tela)
+            dados = rascunho.sem_confirmacao_velha(dados, self.familias_da_tela, self.pecas_da_tela,
+                                                   self.sem_edicao_da_tela)
         return bool(((dados.get('familias') or {}).get(familia) or {}).get('confirmada'))
 
     def _cronometro_depois_do_ato(self, ato, resposta):

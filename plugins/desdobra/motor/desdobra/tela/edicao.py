@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Edicao da composicao no palco, por familia (M7a, fatia 4; decisoes-v1.md, 164, 166, 167, 168, 169 e 171).
+"""Edicao da composicao no palco, por familia (M7a, fatia 4; decisoes-v1.md, 164, 166, 167, 168, 169, 171 e 185).
 
 A familia (as composicoes de proporcao parecida de uma orientacao, desdobra.tela.estado.agrupar_por_proporcao) recebe
 as decisoes do DA de uma vez so, nunca peca a peca:
@@ -36,12 +36,16 @@ as decisoes do DA de uma vez so, nunca peca a peca:
     o valor no texto, e nao em falhas; a tela a mostra como "Decisão do DA", nunca como "Pede ajuste". O elemento que
     o encaixe refeito tirou do lugar continua falha, e a validacao do motor continua devolvendo o formato. O piso que
     a versao de partida ja furava, e a distancia de caixas que se sobrepoem, continuam falha (revisao 1 da fase D);
-  - depois de cada edicao, a intencao de alinhamento (168): bordas e centros de dois elementos de conteudo que ficam a
-    menos de derivacao.alinhamento_intencao_tolerancia do lado maior da peca viram o mesmo valor (normalizar). Quando
-    os dois ja estavam alinhados no KV, vence o alinhamento do KV (o mexido volta para a linha do outro); senao, vence o
-    elemento mexido por ultimo (o outro vem para a linha dele). Acima da tolerancia, a diferenca e intencao do DA. O
-    elemento que divide agora uma linha que ja dividia no KV com um terceiro nao anda para a linha do mexido, e a
-    linha mais perto vem primeiro, sem depender da ordem dos cliques (revisao 2 da fase D);
+  - depois de cada edicao, a intencao de alinhamento (168, revista pela 185): so o elemento que o DA acabou de mexer
+    (ou o grupo dele) anda. A borda ou o centro dele que fica a menos de derivacao.alinhamento_intencao_tolerancia do
+    lado maior da peca da linha de um vizinho encaixa nela (normalizar); com o vizinho com quem ja se alinhava no KV,
+    volta para a linha do KV. Nenhum outro elemento sai do lugar, nem o que o DA mexeu antes: o produto alinhado com o
+    bloco de texto no KV nao acompanha o bloco. O mexido preso a uma linha do quadro nao anda naquele eixo. Acima da
+    tolerancia, a diferenca e intencao do DA. A previa e o "Salvar e seguir" refazem as edicoes uma a uma, cada uma
+    com o alinhamento na hora dela (editar), cada uma a partir do que a tela mostrou. O vizinho de cuja linha a edicao
+    tirou o mexido nao o puxa de volta, e o eixo em que ele nao andou nao encaixa (o alinhar na largura nao muda a
+    altura). O mexido que divide agora uma linha que ja dividia no KV com um terceiro fica nela, e a linha mais perto
+    vem primeiro, sem depender da ordem dos cliques (revisao 2 da fase D);
   - o encaixe de cada membro e refeito pelo solver do repositorio, com as caixas editadas como mestre sintetica (como a
     galeria faz com a variante), e o layout e conferido contra a mestre verdadeira (desdobra.derivacao.galeria);
   - o texto editado precisa de todos os caracteres na face do job que o desenha (a cobertura do cmap lida pelo filho
@@ -385,47 +389,58 @@ def fora_da_peca(caixas, mexidos, W, H, tol):
         caixas[k][2] <= tol or caixas[k][3] <= tol or caixas[k][0] >= W - tol or caixas[k][1] >= H - tol)]
 
 
-def normalizar(caixas, mexidos, W, H, kv_caixas=None, kv_tamanho=None, grupos=(), acompanham=None, presos=()):
-    """A intencao de alinhamento (decisoes-v1.md, 168) entre cada elemento mexido e os outros de caixas. Em cada eixo,
-    o par que ja divide uma linha fica; senao, a linha mais perto abaixo da tolerancia vira o mesmo valor, so com
-    deslocamento (o tamanho nao muda), um encaixe por elemento e eixo. Duas passadas: primeiro os pares que ja estavam
-    alinhados no KV (o mexido volta para a linha do outro), depois os outros (vence o mexido por ultimo), ja com as
-    posicoes da primeira; assim um encaixe do KV nunca desfaz um encaixe ja feito e deixa linha quase igual (revisao do
-    M7a). O grupo (M7b, D1; grupos, as listas de ids) nunca se separa: os elementos do mesmo grupo nao se alinham
-    entre si, e o elemento do grupo que encosta na linha de outro leva o grupo inteiro com ele, tambem os membros fora
-    da conta do alinhamento (acompanham: {id: caixa}, os que nao sao de conteudo), num encaixe so por eixo. O elemento
-    alinhado no quadro pelo DA (M7b, D2; presos: {(id, eixo)}, de intencoes) nunca sai da linha do quadro: no par, o
-    outro vem para a linha dele; com os dois presos, nenhum anda. Revisao 2 da fase D: na segunda passada, o elemento
-    que andaria e que divide agora, naquele eixo, uma linha que ja dividia no KV com um terceiro fica (o produto que o
-    DA nao mexeu continua na base dos outros quando ele anda a assinatura); e os pares vao da linha mais perto para a
-    mais longe, com o empate pelos ids, para o resultado nao depender da ordem dos cliques no grupo. Devolve (caixas,
-    com as de acompanham; alinhados [{'elementos': [o que andou, o que ficou], 'eixo', 'linha', 'valor'}])."""
+def normalizar(caixas, mexidos, W, H, kv_caixas=None, kv_tamanho=None, grupos=(), acompanham=None, presos=(),
+               antes=None):
+    """A intencao de alinhamento (decisoes-v1.md, 168, revista pela 185) depois de uma edicao: so o elemento que o DA
+    acabou de mexer anda (mexidos: os elementos daquela edicao, o elemento so ou o grupo dele). Em cada eixo, o par
+    que ja divide uma linha fica; senao, o mexido encaixa na linha mais perto de um vizinho abaixo da tolerancia, so
+    com deslocamento (o tamanho nao muda), um encaixe por elemento e eixo. Nenhum outro elemento sai do lugar: nem o
+    que o DA nao mexeu, nem o que ele mexeu antes. Duas passadas: primeiro os vizinhos com quem o mexido ja estava
+    alinhado no KV (o mexido volta para a linha do outro), depois os outros, ja com as posicoes da primeira; assim um
+    encaixe do KV nunca e desfeito por outro e nao fica linha quase igual (revisao do M7a). O grupo (M7b, D1; grupos,
+    as listas de ids) nunca se separa: os elementos do mesmo grupo nao se alinham entre si, e o elemento do grupo que
+    encosta na linha de outro leva o grupo inteiro com ele, tambem os membros fora da conta do alinhamento
+    (acompanham: {id: caixa}, os que nao sao de conteudo), num encaixe so por eixo. O mexido alinhado no quadro pelo
+    DA (M7b, D2; presos: {(id, eixo)}, de intencoes) nunca sai da linha do quadro: naquele eixo nada anda. O mexido
+    que divide agora, naquele eixo, uma linha que ja dividia no KV com um terceiro fica nela (revisao 2 da fase D),
+    e os pares vao da linha mais perto para a mais longe, com o empate pelos ids, para o resultado nao depender da
+    ordem dos cliques no grupo. antes ({id: caixa antes da edicao}, de editar): a linha do mexido so encaixa na do
+    vizinho que fica a frente de onde a edicao o tirou, no sentido em que ela o levou; a linha que ele deixou para
+    tras nao o puxa de volta (o toque da seta sai da linha) e o eixo em que ele nao andou nao encaixa (o arraste so na
+    vertical nao muda o x, o alinhar na largura nao muda a altura). Sem antes, qualquer sentido. Devolve (caixas, com
+    as de acompanham; alinhados [{'elementos': [o que andou, o que ficou], 'eixo', 'linha', 'valor'}])."""
     tol = tolerancia(W, H)
     presos = set(presos)
     tol_kv = tolerancia(*kv_tamanho) if kv_tamanho else None
     caixas = {k: list(v) for k, v in caixas.items()}
     junto = {k: list(v) for k, v in (acompanham or {}).items() if k not in caixas}
     grupo_de = {eid: tuple(g) for g in grupos for eid in g}
-    ordem = {e: n for n, e in enumerate(mexidos)}
+    # o que anda nesta edicao: o mexido e o grupo dele; o resto fica (decisao 185)
+    andam = {x for m in mexidos for x in (grupo_de.get(m) or (m,))} | set(mexidos)
     feitos, alinhados = set(), []
+
+    def a_frente(m, o, eixo, n):
+        # a linha do vizinho fica a frente de onde a edicao tirou o mexido (antes): a linha que ele deixou para tras
+        # nao o puxa de volta, e o eixo em que ele nao andou nao encaixa (decisao 185)
+        if antes is None or m not in antes:
+            return True
+        v0 = _linha(antes[m], eixo, n)
+        andou, falta = _linha(caixas[m], eixo, n) - v0, _linha(caixas[o], eixo, n) - v0
+        return abs(andou) > IGUAL and abs(falta) > IGUAL and (andou > 0) == (falta > 0)
 
     def perto_de(m, o, eixo):
         nomes = [n for n, _i, _j in LINHAS[eixo]]
         difs = [(abs(_linha(caixas[m], eixo, n) - _linha(caixas[o], eixo, n)), n) for n in nomes]
         if any(d <= IGUAL for d, _n in difs):
             return []
-        return [(d, n) for d, n in difs if d <= tol]
+        return [(d, n) for d, n in difs if d <= tol and a_frente(m, o, eixo, n)]
 
     def preso(k, eixo):
         return any((x, eixo) in presos for x in grupo_de.get(k) or (k,))
 
     def encaixar(anda, fica, eixo, nome):
-        # o alinhado no quadro fica na linha do quadro (M7b, D2): anda o outro, ou nenhum
-        if preso(anda, eixo):
-            if preso(fica, eixo):
-                return
-            anda, fica = fica, anda
-        if (anda, eixo) in feitos:
+        # o mexido alinhado no quadro fica na linha do quadro (M7b, D2): naquele eixo nada anda (decisao 185)
+        if preso(anda, eixo) or (anda, eixo) in feitos:
             return
         valor = _linha(caixas[fica], eixo, nome)
         d = valor - _linha(caixas[anda], eixo, nome)
@@ -444,8 +459,8 @@ def normalizar(caixas, mexidos, W, H, kv_caixas=None, kv_tamanho=None, grupos=()
                 if abs(_linha(kv_caixas[m], eixo, n) - _linha(kv_caixas[o], eixo, n)) <= tol_kv]
 
     def linha_do_kv(k, eixo, fica):
-        # o elemento (ou o grupo dele) divide agora, naquele eixo, uma linha que ja dividia no KV com outro elemento
-        # (revisao 2 da fase D): andar o tiraria do alinhamento do KV, que vale (168)
+        # o mexido (ou o grupo dele) divide agora, naquele eixo, uma linha que ja dividia no KV com outro elemento
+        # (revisao 2 da fase D): encaixar no vizinho o tiraria do alinhamento do KV, que vale (168)
         if not (kv_caixas and tol_kv is not None):
             return False
         meus = grupo_de.get(k) or (k,)
@@ -472,33 +487,66 @@ def normalizar(caixas, mexidos, W, H, kv_caixas=None, kv_tamanho=None, grupos=()
                 cands.append((d, eixo, nome, sorted((m, o)), m, o))
         return [(m, o, eixo) for _d, eixo, _n, _ids, m, o in sorted(cands)]
 
-    # os pares do mesmo grupo ficam como o DA os deixou (M7b, D1)
-    pares = [(m, o, eixo) for m in mexidos if m in caixas for o in sorted(caixas)
-             if o != m and o not in (grupo_de.get(m) or ()) for eixo in ('x', 'y')]
+    # o mexido com cada vizinho que nao anda com ele; os do mesmo grupo ficam como o DA os deixou (M7b, D1)
+    pares = [(m, o, eixo) for m in sorted(set(mexidos)) if m in caixas for o in sorted(caixas)
+             if o not in andam for eixo in ('x', 'y')]
     # 1a passada: o alinhamento do KV vence, o mexido volta para a linha do outro
     for m, o, eixo in mais_perto_primeiro(lambda m, o, eixo: do_kv(m, o, eixo, perto_de(m, o, eixo))):
         no_kv = do_kv(m, o, eixo, perto_de(m, o, eixo))
         if no_kv:
             encaixar(m, o, eixo, min(no_kv)[1])
-    # 2a passada: o resto, com as posicoes da primeira; vence o mexido por ultimo. O que dividia uma linha do KV com
-    # um terceiro e continua nela nao anda (o produto que o DA nao mexeu continua na base dos outros)
+    # 2a passada: o resto, com as posicoes da primeira; o mexido encaixa na linha do vizinho. O mexido que dividia uma
+    # linha do KV com um terceiro e continua nela nao anda
     for m, o, eixo in mais_perto_primeiro(
             lambda m, o, eixo: [] if do_kv(m, o, eixo, perto_de(m, o, eixo)) else perto_de(m, o, eixo)):
         perto = perto_de(m, o, eixo)
-        if not perto or do_kv(m, o, eixo, perto):
+        if not perto or do_kv(m, o, eixo, perto) or linha_do_kv(m, eixo, o):
             continue
-        nome = min(perto)[1]
-        vence = m if ordem.get(m, -1) >= ordem.get(o, -1) else o
-        anda, fica = (o, m) if vence == m else (m, o)
-        if preso(anda, eixo):  # o alinhado no quadro fica (M7b, D2): anda o outro, ou nenhum
-            if preso(fica, eixo):
-                continue
-            anda, fica = fica, anda
-        if linha_do_kv(anda, eixo, fica):
-            continue
-        encaixar(anda, fica, eixo, nome)
+        encaixar(m, o, eixo, min(perto)[1])
     caixas.update(junto)
     return caixas, alinhados
+
+
+def editar(caixas, edicoes, W, H, quadros=None, borda=(), conteudo=None, kv_caixas=None, kv_tamanho=None):
+    """As edicoes do DA no formato W x H, uma a uma, cada uma com a intencao de alinhamento na hora dela (decisao
+    185): aplicar a edicao e normalizar so o que ela mexeu (o elemento ou o grupo dele), com os grupos e os
+    alinhamentos no quadro que valem ate ela. Cada edicao parte das caixas que a tela mostra depois da edicao de
+    antes, ja com o encaixe dela, como tela.js mede o arraste, o Tamanho e o alinhar: o elemento solta onde o DA o
+    soltou, o grupo anda inteiro como o DA o via e o canto fixo do Tamanho fica no lugar. A edicao depois nunca tira
+    do lugar o que o DA mexeu antes nem o que ele nao mexeu, e o rascunho refeito inteiro (a previa e o "Salvar e
+    seguir") da o mesmo layout que a tela mostrou edicao a edicao. O mexido so encaixa na linha que fica a frente de
+    onde a edicao o tirou (normalizar, antes): o toque de 1 px da seta anda 1 px nos dois sentidos, e o eixo em que
+    ele nao andou nao muda. A edicao de texto e a de apagar nao alinham nada. conteudo: os ids que entram na conta do
+    alinhamento (os de conteudo; None: todos); o elemento do grupo fora dela anda junto com o grupo. Devolve (caixas,
+    apagados, textos {id: texto}, mexidos na ordem, o ultimo por ultimo, alinhados da ultima edicao: vazio quando
+    ela nao mexeu em caixa)."""
+    atual = {k: [float(x) for x in v] for k, v in caixas.items()}
+    apagados, textos, mexidos, alinhados = [], {}, [], []
+    for n, uma in enumerate(edicoes):
+        antes = atual
+        atual, ap, tx, mx = aplicar(atual, [uma], W, H, quadros, borda)
+        textos.update(tx)
+        for k in ap:
+            apagados.append(k)
+            textos.pop(k, None)
+            if k in mexidos:
+                mexidos.remove(k)
+        for k in mx:
+            if k in mexidos:
+                mexidos.remove(k)
+            mexidos.append(k)
+        alinhados = []
+        if not mx:
+            continue
+        ate_aqui = edicoes[:n + 1]
+        gs = grupos(ate_aqui)
+        so = {k: v for k, v in atual.items() if conteudo is None or k in conteudo}
+        junto = {k: atual[k] for g in gs for k in g if k in atual and k not in so}
+        presos = {(k, i['eixo']) for i in intencoes(ate_aqui) for k in i['elementos']}
+        norm, alinhados = normalizar(so, mx, W, H, kv_caixas, kv_tamanho, grupos=gs, acompanham=junto, presos=presos,
+                                     antes={k: antes[k] for k in mx if k in antes})
+        atual.update(norm)
+    return atual, apagados, textos, mexidos, alinhados
 
 
 # ------------------------------------------------------------------ texto

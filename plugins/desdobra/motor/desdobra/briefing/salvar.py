@@ -172,7 +172,7 @@ def pendencias(pasta, conteudo, origem=None):
                           'formatos': list(fam['por_confirmar'])})
             continue
         # a confirmacao vale so para os formatos que a familia tinha quando o DA confirmou (revisao do M7a)
-        if not f or not rascunho.confirmada_para(f, fam['formatos'], fam.get('pecas')) or \
+        if not f or not rascunho.confirmada_para(f, fam['formatos'], fam.get('pecas'), fam.get('pecas_sem_edicao')) or \
                 (f.get('confirmacao') or {}).get('origem') not in origens:
             saida.append({'codigo': 'familia_sem_confirmacao', 'familia': gid})
             continue

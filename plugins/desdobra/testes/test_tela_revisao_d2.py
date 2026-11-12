@@ -274,7 +274,8 @@ def test_mexer_na_assinatura_nao_desmonta_o_packshot(edicoes):
         partida = tsg._caixas(antes[fid])
         for k in PACK_B:
             assert lay['caixas'][k] == pytest.approx(partida[k], abs=TOL), (fid, k, partida[k], lay['caixas'][k])
-        assert not [a for a in lay['alinhados'] if set(a['elementos']) & set(PACK_B)], lay['alinhados']
+        # decisao 185: a assinatura pode encaixar na linha de um produto, e nenhum produto anda
+        assert not [a for a in lay['alinhados'] if a['elementos'][0] in PACK_B], lay['alinhados']
 
 
 def test_intencao_de_alinhamento_nao_depende_da_ordem_dos_cliques():
@@ -285,7 +286,9 @@ def test_intencao_de_alinhamento_nao_depende_da_ordem_dos_cliques():
         novas, _alinhados = ed.normalizar(caixas, ordem, 800, 400, grupos=[ordem])
         saidas.append(novas)
     assert saidas[0] == saidas[1], saidas
-    assert saidas[0]['i'][1] == pytest.approx(92.0)  # a linha mais perto
+    # decisao 185: i fica, e o grupo encaixa pela linha mais perto (o topo de b no de i, 3 px)
+    assert saidas[0]['i'] == caixas['i']
+    assert saidas[0]['b'][1] == pytest.approx(95.0) and saidas[0]['a'][1] == pytest.approx(103.0)
 
 
 @pytest.mark.parametrize('fator', [1.32, 1.34, 1.36])

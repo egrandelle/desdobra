@@ -128,11 +128,11 @@ def test_alinhamento_nao_separa_o_grupo():
 
 
 def test_grupo_que_encosta_na_linha_de_outro_elemento_anda_inteiro():
-    # o titulo t, mexido por ultimo, para a 4 px da esquerda de b (do grupo): b vem para a linha dele e o grupo inteiro
-    # anda os mesmos 4 px, tambem o circulo c, que nao e de conteudo e vai junto (acompanham)
+    # o grupo, mexido por ultimo, para com b a 4 px da esquerda do titulo t: o grupo inteiro anda os mesmos 4 px ate a
+    # linha de t, tambem o circulo c, que nao e de conteudo e vai junto (acompanham); t fica (decisao 185)
     caixas = {'a': [500.0, 600.0, 560.0, 700.0], 'b': [104.0, 400.0, 180.0, 450.0], 't': [100.0, 50.0, 400.0, 90.0]}
     circulo = {'c': [450.0, 380.0, 700.0, 720.0]}
-    novas, alinhados = ed.normalizar(caixas, ['a', 'b', 'c', 't'], 1920, 1080, grupos=[['a', 'b', 'c']],
+    novas, alinhados = ed.normalizar(caixas, ['a', 'b', 'c'], 1920, 1080, grupos=[['a', 'b', 'c']],
                                      acompanham=circulo)
     assert novas['t'] == caixas['t']
     assert novas['b'][0] == pytest.approx(100.0)

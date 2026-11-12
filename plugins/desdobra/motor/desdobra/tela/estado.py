@@ -60,8 +60,12 @@ ALINHAMENTOS = {'LEFT': 'esquerda', 'CENTER': 'centro', 'RIGHT': 'direita'}
 POR = {'camada': 'camada', 'grupo': 'grupo', 'decisao_10': 'decisao_10'}
 # a regra com que a tela monta a previa da familia, na impressao da confirmacao (impressao_das_pecas; decisao 175):
 # muda quando a previa passa a mostrar outra coisa para a mesma familia, e a confirmacao de antes cai. Esta e a da
-# previa igual ao Salvar (M7b): a galeria pela regra da derivacao e as falhas da conferencia do motor
-REGRA_DA_PREVIA = 'previa_igual_ao_salvar'
+# previa igual ao Salvar (M7b), com o alinhamento so do mexido (decisao 185): a galeria pela regra da derivacao, as
+# falhas da conferencia do motor e a edicao que so move o que o DA acabou de mexer
+REGRA_DA_PREVIA = 'alinha_so_o_mexido'
+# a regra de antes da decisao 185: a previa da familia sem edicao do DA e a mesma pelas duas (sem edicao nao ha o que
+# alinhar), e a familia vista por ela sem nenhuma edicao continua valendo (rascunho.confirmada_para, sem_edicao)
+REGRA_SEM_EDICAO = 'previa_igual_ao_salvar'
 # O que a tela diz do formato que a derivacao devolve, em lugar do o_que_fazer do motor: o DA nunca e chamado a
 # desenhar uma mestre por orientacao (n 164 e comentarios de 05/11), e o texto da tela nao leva identificador do motor.
 PROPOSTA_DEPOIS = 'A proposta do desdobra para este arquivo chega com a galeria de variantes, na próxima versão.'
@@ -975,26 +979,28 @@ def por_confirmar(formatos):
             if (d.get('devolucao') or {}).get('motivo') in nd.MOTIVOS_POR_CONFIRMAR}
 
 
-def familias_confirmadas(pasta, familias, pendentes=(), pecas=None):
+def familias_confirmadas(pasta, familias, pendentes=(), pecas=None, sem_edicao=None):
     """Os ids das familias confirmadas no rascunho da tela agora (decisoes-v1.md, 167), so para os formatos que cada
     uma tem hoje (familias: {id: [formatos]}; desdobra.tela.rascunho.confirmada_para). A familia com formato em
     pendentes (por_confirmar) nunca conta como confirmada: o DA nao viu a galeria dele. pecas: {id: impressao}
-    (impressao_das_pecas); com ela, a confirmacao feita sobre outras pecas nao conta."""
+    (impressao_das_pecas); com ela, a confirmacao feita sobre outras pecas nao conta. sem_edicao: {id: impressao pela
+    REGRA_SEM_EDICAO}, que vale para a familia sem edicao (rascunho.confirmada_para)."""
     from desdobra.tela import rascunho
     dados, _de_outro = rascunho.ler(pasta, rascunho.laudo_sha256(pasta))
     return {g for g, f in ((dados or {}).get('familias') or {}).items()
-            if rascunho.confirmada_para(f, familias.get(g, ()), None if pecas is None else pecas.get(g, ''))
+            if rascunho.confirmada_para(f, familias.get(g, ()), None if pecas is None else pecas.get(g, ''),
+                                        sem_edicao=(sem_edicao or {}).get(g))
             and not set(familias.get(g, ())) & set(pendentes)}
 
 
-def impressao_das_pecas(fids, formatos, versoes):
+def impressao_das_pecas(fids, formatos, versoes, regra=None):
     """A impressao do que a tela mostra da familia (revisao 3 da regra spec_por_confirmar): de cada formato, a
     composicao, a situacao, o motivo da devolucao e as areas que vem da spec (a area util, as faixas e a area segura),
     e as versoes da galeria. A folha trocada (outra area segura) ou a galeria que aparece depois da confirmacao mudam
     a impressao, e a confirmacao de antes deixa de valer (desdobra.tela.rascunho.confirmada_para). A impressao leva
     tambem a regra da previa (REGRA_DA_PREVIA): a confirmacao feita numa tela que mostrava a familia por outra regra
     (sem as falhas que o "Salvar e seguir" acha, por exemplo) cai, e o DA confirma de novo o que a tela mostra agora.
-    formatos: {id: derivacao}."""
+    formatos: {id: derivacao}. regra: outra regra da previa (REGRA_SEM_EDICAO); None, a de agora."""
     import hashlib
     import json
     itens = []
@@ -1006,7 +1012,7 @@ def impressao_das_pecas(fids, formatos, versoes):
                       (d.get('devolucao') or {}).get('motivo'), au and au.get('caixa'),
                       [[x.get('lado'), x.get('px'), x.get('caixa')] for x in a.get('faixas') or []],
                       seg and [seg.get('caixa'), seg.get('lados')]])
-    texto = json.dumps({'formatos': itens, 'versoes': sorted(versoes), 'regra_da_previa': REGRA_DA_PREVIA},
+    texto = json.dumps({'formatos': itens, 'versoes': sorted(versoes), 'regra_da_previa': regra or REGRA_DA_PREVIA},
                        sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(texto.encode('utf-8')).hexdigest()
 
@@ -1760,8 +1766,11 @@ def montar(pasta, teto=None):
                                params=params)
     versoes = {gid: sorted(editor.versoes(gid)) if editor else [] for gid in familias}
     pecas = {gid: impressao_das_pecas(fids, r['formatos'], versoes[gid]) for gid, fids in familias.items()}
+    # a familia sem edicao vista pela regra de antes da 185 continua valendo: a previa dela e a mesma
+    sem_edicao = {gid: impressao_das_pecas(fids, r['formatos'], versoes[gid], regra=REGRA_SEM_EDICAO)
+                  for gid, fids in familias.items()}
     estado['faltam'] = faltam(lido_, r['formatos'], n_variantes, familias,
-                              familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas))
+                              familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao))
 
     def com_os_avisos_de_agora():
         # a familia confirmada (ou mexida) depois da montagem: os ids e os formatos ficam, e so a frase de cada uma
@@ -1779,7 +1788,7 @@ def montar(pasta, teto=None):
         com_os_layouts_salvos(lidas_agora)
         return dict(estado, lido=novo_lido, orientacoes=com_os_avisos_de_agora(),
                     faltam=faltam(novo_lido, r['formatos'], n_variantes, familias,
-                                  familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas)),
+                                  familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao)),
                     briefing=dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta)),
                     aprovacoes=aprovacoes, painel=painel)
 
@@ -1788,7 +1797,7 @@ def montar(pasta, teto=None):
                 # os elementos da mestre que a tela mostra, para o rascunho conferir a quebra de linha (revisao 2 do C)
                 'elementos': ({e['id']: list(e['layer_ids']) for e in r['kv']['elementos']}
                               if editor is not None else None),
-                'familias': {gid: {'formatos': fids, 'versoes': versoes[gid], 'pecas': pecas[gid],
+                'familias': {gid: {'formatos': fids, 'versoes': versoes[gid], 'pecas': pecas[gid], 'pecas_sem_edicao': sem_edicao[gid],
                                    'por_confirmar': sorted(set(fids) & por_confirmar(r['formatos'])),
                                    'aviso': avisos[gid]}
                              for gid, fids in familias.items()}}
