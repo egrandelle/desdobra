@@ -44,7 +44,7 @@ ASSINATURAS_IMAGEM = (b'\x89PNG', b'\xff\xd8\xff', b'GIF8', b'II*\x00', b'MM\x00
 # a imagem de referencia do autoteste do render, desenhada so com a fonte gerada pelo motor (decisoes-v1.md, n. 36)
 EXCECOES_IMAGEM = frozenset({'plugins/desdobra/motor/referencias/autoteste-render.png'})
 EXCECOES_SAIDA = frozenset()
-SAIDA_DO_MOTOR = re.compile(r'"esquema"\s*:\s*"(laudo|estrutura|recusa|estado|regressao|envelope|pacote-modelo)/1"')
+SAIDA_DO_MOTOR = re.compile(r'"esquema"\s*:\s*"(laudo|estrutura|recusa|estado|regressao|envelope)/1"|"esquema"\s*:\s*"pacote-modelo/[12]"')
 # relatorio da regressao (regressao-<data>.json e .md): leva os slugs do corpus no conteudo
 RELATORIO_REGRESSAO = re.compile(r'(^|/)regressao-\d{8}-\d{6}\.(json|md)$')
 

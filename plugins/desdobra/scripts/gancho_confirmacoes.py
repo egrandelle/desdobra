@@ -42,6 +42,14 @@ Le da entrada padrao o JSON do evento (tool_name e tool_input) e nega (permissio
     com outro caminho continua de fora (risco declarado na 7.6). Desde a revisao do P1, no terminal (Bash, PowerShell e
     Monitor) o caminho do job e conferido com qualquer verbo (decidir_leitura_por_comando), o alvo real de uma ligacao
     simbolica e a ligacao fisica na lista permitida tambem, e o root do Artifact e base dos caminhos de files.
+  - desde o M7c (M2), a escrita na biblioteca de marcas (perfil de marca, <biblioteca>/marcas/<id>/perfil-marca.json,
+    so muda pelo registro do padrao da marca, ato do DA na tela): nas ferramentas de arquivo, caminho com um segmento
+    marcas (pelo nome pedido, relativo ao cwd, e pelo alvo real); no terminal, caminho com um segmento marcas (ou o
+    cwd dentro de marcas) junto com escrita, apagamento ou criacao de pasta (ESCRITA_EM_MARCAS), o perfil-marca.json
+    em ARQUIVOS_DO_DA e o codigo que chama desdobra.marca.perfil ou desdobra.marca.registrar (CODIGO_DA_MARCA), com o
+    motivo MOTIVO_MARCA. A leitura de marcas ja era negada desde o P1. Revisao do M2: o pacote desdobra.marca por
+    qualquer forma de import, o pasta_marcas do motor, o segmento marcas. (o Windows tira o ponto), o nome marcas
+    sozinho com verbo que apaga ou grava por codigo, e o curinga ou a ligacao que cai na biblioteca.
 Escrita pelo terminal inclui redirecao, copia, movimento e troca de nome (os.replace, os.rename, shutil,
 Rename-Item, ren, Move-Item, Copy-Item) e a opcao --saida do motor. O motor chamado como desdobra, desdobra.exe,
 desdobra.cli ou desdobra.__main__ conta igual. O comando e conferido como chegou e normalizado (sem aspas, sem o
@@ -64,6 +72,7 @@ desvio feito de proposito (docs/m1-interfaces.md, M6). O motor confere o console
 comando; um arquivo do DA escrito a mao nao tem prova de quem gravou (confirmado_por e dado sem segredo). Os riscos
 residuais (esse e o de um processo do mesmo usuario, fora do Claude, que escreve teclas num console) ficam declarados.
 """
+import glob
 import json
 import os
 import re
@@ -78,6 +87,11 @@ MOTIVO_LEITURA = ('O desdobra recusa esta leitura pelo Claude. Dentro da pasta d
                   'o modelo e as sugestões, na pasta sugestoes/; o PSD, os arquivos de fonte, o laudo, o briefing, o '
                   'render, a entrega e a biblioteca de marcas não chegam ao Claude nem à API. O que o DA precisa ver '
                   'está na tela do desdobra. Não tente outro caminho para o mesmo efeito.')
+# M7c, M2: o perfil de marca da biblioteca da agencia so muda pelo registro do padrao da marca, ato do DA
+MOTIVO_MARCA = ('O desdobra recusa esta gravação pelo Claude: o perfil de marca da biblioteca da agência só muda '
+                'quando o DA registra o padrão da marca, por um clique na tela do desdobra. Diga ao DA que isso se faz '
+                'na tela, onde o desdobra mostra o que entra no perfil e grava. Não tente outro caminho para o mesmo '
+                'efeito.')
 MOTIVO_PAINEL = ('O desdobra recusa comandos do Claude no painel de terminal do app: o painel roda no terminal do DA, '
                  'e o que só o DA faz não parte do Claude. O que não é do DA (job proxima, doctor) segue pelas '
                  'ferramentas Bash ou PowerShell; o resto só parte do DA. Não tente outro caminho para o mesmo efeito.')
@@ -159,8 +173,49 @@ ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])((?<!skills[\\/])(?:(?<!desdobra[\\/])bri
                             r'specs[\\/]confirmacoes\.json|render[\\/][^\\/]+[\\/]'
                             r'(master\.png|render\.json|contrato\.json)|linkados-confirmados\.json|'
                             r'(?<!desdobra[\\/])entrega[\\/]|entrega[\\/](?!%(f)s)|manifesto-licenca\.json|relatorio-entrega\.json|'
-                            r'parametros[\\/]entrega\.json|aval-chromium-janela\.json)' % {'f': FONTE_DO_PACOTE},
+                            r'parametros[\\/]entrega\.json|aval-chromium-janela\.json|'
+                            # o perfil de marca (M7c, M2): marcas/<id>/perfil-marca.json, ou so o nome, com o cwd na
+                            # pasta da marca
+                            r'(?:marcas[\\/][^\\/]+[\\/])?perfil-marca\.json\b)' % {'f': FONTE_DO_PACOTE},
                             re.IGNORECASE)
+# a biblioteca de marcas no texto de um comando: o segmento marcas de um caminho (M7c, M2). docs/marcas.md e o
+# codigo-fonte desdobra/marca/ ficam de fora
+# Revisao do M2: o segmento marcas. ou "marcas. " tambem conta, porque o Windows tira o ponto e o espaco do fim do
+# segmento ao abrir o caminho (docs/marcas.md continua de fora)
+SEGMENTO_MARCAS = re.compile(r'(?<![\w.-])marcas[.\s]*[\\/]|[\\/]marcas(?![\w.-])|[\\/]marcas\.+(?![.\w-])',
+                             re.IGNORECASE)
+# revisao do M2: o nome marcas sozinho (um argumento de codigo como os.path.join(b, 'marcas'), ou rm -rf marcas depois
+# de um cd), negado so com um verbo que apaga, move, copia ou grava por codigo. O > sozinho nao conta, para o texto
+# comum (echo as marcas > notas.txt) seguir
+NOME_MARCAS = re.compile(r'(?<![\w.-])marcas\.*(?![\w.-])', re.IGNORECASE)
+ESCRITA_FORTE = re.compile(r'\b(?:cp|mv|ren|rename)\b|copy|move|New-Item|Set-Content|Out-File|Add-Content|'
+                           r'\bsed\s+-i|write_text|write_bytes|open\s*\(|os\s*\.\s*(?:replace|rename|link|symlink)|'
+                           r'shutil\s*\.|Rename-Item|Move-Item|Copy-Item|--saida|mkdir|unlink|rmdir', re.IGNORECASE)
+# curinga num caminho de comando que grava: no maximo tantos nomes conferidos pelo que existe
+LIMITE_DO_CURINGA = 2000  # numero-neutro: so limita o tempo do gancho num curinga largo
+# o que grava, apaga, cria pasta ou liga no terminal, alem de ESCRITA (M7c, M2): o perfil nunca e apagado
+ESCRITA_EM_MARCAS = re.compile(r'(?<![\w-])(?:rm|rmdir|rd|del|erase|mkdir|md|touch|truncate|unlink|ln|mklink|ri|ni|'
+                               r'Remove-Item|Clear-Content|rmtree|makedirs|remove|removedirs|chmod|attrib|icacls)'
+                               r'(?![\w-])', re.IGNORECASE)
+# o codigo do perfil de marca e do registro (M7c, M2; o registrar e do passo M5): o Claude nao le nem grava o perfil
+# pelo codigo do motor (a leitura da biblioteca e negada desde o P1)
+# Revisao do M2: qualquer referencia ao pacote desdobra.marca (por __import__, import_module, getattr, sys.modules ou
+# __import__('desdobra').marca), o import do perfil com a pasta do pacote no sys.path, o arquivo do perfil rodado ou
+# carregado (run_path, spec_from_file_location, python <arquivo>) e o caminho da biblioteca pelo motor
+# (desdobra.biblioteca.pasta_marcas e PASTA_MARCAS), com que o texto do comando nunca traz o segmento marcas/. O codigo
+# montado em variavel ou num script gravado antes continua passando (risco declarado do P1)
+CODIGO_DA_MARCA = re.compile(r'desdobra[\s\'")\]]*\.\s*marca(?![\w-])|'
+                             r'from\s+(?:desdobra\s*\.\s*)?marca\s+import\b|'
+                             r'from\s+desdobra\s+import\s+[^\n;]*\bmarca\b|\bmarca\s*\.\s*(?:perfil|registrar)\b|'
+                             r'(?:fromlist|getattr|import_module|__import__|find_spec|run_module|sys\s*\.\s*modules)'
+                             r'[^\n;]*?[\'"]\.?marca(?:\.\w+)?[\'"]|'
+                             r'(?:run_path|spec_from_file_location|SourceFileLoader|runpy|exec\s*\(|compile\s*\(|'
+                             r'sys\s*\.\s*path|PYTHONPATH)[^\n]*marca(?![\w-])|'
+                             r'marca[\\/][^\n]*(?:\bimport\s+(?:perfil|registrar)\b|from\s+(?:perfil|registrar)\s+import)|'
+                             r'(?:^|[\s|;&(\'"])(?:[^\s|;&\'"]*[\\/])?py(?:thon[\d.]*)?(?:\.exe)?[\'"]?\s+(?:-\S+\s+)*'
+                             r'[^\s|;&]*marca[\\/]+(?:perfil|registrar)|'
+                             r'\bpasta_marcas\b|\bPASTA_MARCAS\b',
+                             re.IGNORECASE)
 # tela de briefing (M7a2; decisoes-v1.md, 159; proposta do M7, 160c): o Claude abre a tela ("desdobra tela abrir"
 # passa), mas nao pede as rotas do servidor dela no loopback (a entrada, a api, a fonte, os assets e o controle), nao
 # chama o processo de fundo nem o servidor pelo codigo e nao toca no perfil temporario do navegador da tela (pastas
@@ -332,7 +387,8 @@ def _rel_permitido(rel):
 
 
 def _tem_marcas(caminho):
-    return any(p.lower() == PASTA_DE_MARCAS for p in re.split(r'[\\/]', caminho))
+    # revisao do M2: sem o ponto e o espaco do fim do segmento, que o Windows tira ao abrir (marcas. e marcas)
+    return any(p.rstrip(' .').lower() == PASTA_DE_MARCAS for p in re.split(r'[\\/]', caminho))
 
 
 def _contem_pasta_negada(raiz):
@@ -647,6 +703,63 @@ def decidir_navegador(entrada):
     return None
 
 
+def decidir_marca_por_arquivo(caminho, cwd):
+    """'deny' quando uma ferramenta de arquivo grava na biblioteca de marcas (M7c, M2): caminho com um segmento marcas,
+    pelo nome pedido, relativo ao cwd do evento, e pelo alvo real (ligacao simbolica de nome inocente)."""
+    if not caminho.strip():
+        return None
+    if ARQUIVOS_DO_DA.search(_caminhos(caminho)) and re.search(r'perfil-marca\.json', caminho, re.IGNORECASE):
+        return 'deny'
+    alvo = _absoluto(caminho, cwd)
+    if _tem_marcas(alvo) or _tem_marcas(_real(alvo)):
+        return 'deny'
+    return None
+
+
+def decidir_marca_por_comando(comando, cwd):
+    """'deny' quando um comando da Bash, da PowerShell ou da Monitor grava, apaga ou cria pasta na biblioteca de marcas,
+    ou chama o codigo do perfil de marca ou do registro (M7c, M2)."""
+    cwd_em_marcas = bool(cwd) and (_tem_marcas(cwd) or _tem_marcas(_real(cwd)))
+    escreve_algum = False
+    for c in (comando, normalizar(comando)):
+        if CODIGO_DA_MARCA.search(c):
+            return 'deny'
+        escreve = ESCRITA.search(c) or ESCRITA_EM_MARCAS.search(c)
+        escreve_algum = escreve_algum or bool(escreve)
+        if escreve and (SEGMENTO_MARCAS.search(c) or cwd_em_marcas or re.search(r'perfil-marca\.json\b', c, re.I)):
+            return 'deny'
+        if (ESCRITA_EM_MARCAS.search(c) or ESCRITA_FORTE.search(c)) and NOME_MARCAS.search(c):
+            return 'deny'
+    if escreve_algum and _caminho_cai_em_marcas(comando, cwd):
+        return 'deny'
+    return None
+
+
+def _caminho_cai_em_marcas(comando, cwd):
+    """Revisao do M2: um caminho do comando que, pelo que existe, cai na biblioteca de marcas (o curinga que a expande,
+    rm -rf <bib>/marc*, e a ligacao de nome inocente que aponta para ela)."""
+    vistos = 0
+    for c in candidatos(comando)[:LIMITE_DE_CANDIDATOS]:
+        if not _parece_caminho(c, cwd):
+            continue
+        alvo = _absoluto(c, cwd)
+        if _tem_marcas(alvo) or _tem_marcas(_real(alvo)):
+            return True
+        if _sem_curinga(alvo) == alvo:
+            continue
+        try:
+            achados = glob.iglob(alvo)
+            for achado in achados:
+                vistos += 1
+                if vistos > LIMITE_DO_CURINGA:
+                    return False
+                if _tem_marcas(achado) or _tem_marcas(_real(achado)):
+                    return True
+        except (OSError, ValueError, re.error):
+            continue
+    return False
+
+
 def decidir_com_motivo(evento):
     """('deny', motivo) ou (None, None)."""
     ferramenta = evento.get('tool_name') or ''
@@ -668,6 +781,8 @@ def decidir_com_motivo(evento):
         return ('deny', MOTIVO_LEITURA) if decidir_leitura(ferramenta, entrada, cwd) == 'deny' else (None, None)
     if ferramenta in FERRAMENTAS_DE_COMANDO:
         bruto = str(entrada.get('command') or '')
+        if decidir_marca_por_comando(bruto, cwd) == 'deny':
+            return ('deny', MOTIVO_MARCA)
         if _decidir_comando(bruto) == 'deny':
             return ('deny', MOTIVO)
         if decidir_leitura_por_comando(bruto, cwd) == 'deny':
@@ -675,6 +790,8 @@ def decidir_com_motivo(evento):
         return (None, None)
     if ferramenta in FERRAMENTAS_DE_ARQUIVO:
         caminho = str(entrada.get('file_path') or entrada.get('notebook_path') or '')
+        if decidir_marca_por_arquivo(caminho, cwd) == 'deny':
+            return ('deny', MOTIVO_MARCA)
         if ARQUIVOS_DO_DA.search(_caminhos(caminho)) or PERFIL_DA_TELA.search(_caminhos(caminho)):
             return ('deny', MOTIVO)
     return (None, None)

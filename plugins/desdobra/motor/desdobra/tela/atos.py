@@ -5,7 +5,8 @@ Cada ato e um botao da tela que pede a confirmacao do DA na propria janela (desd
 confere os dados antes do dialogo (validar), monta o texto do dialogo com o que sera gravado (texto) e, so depois do
 "Confirmar", grava com o Disparo da tela (meio tela; no modo de teste, meio medicao e origem fixture_de_teste):
   - modo_dados: a escolha do modo de dados do job (desdobra.job.modo_dados), so entre as opcoes dentro do teto da
-    agencia, conferido de novo na gravacao;
+    agencia, conferido de novo na gravacao; depois de gravar, refaz os dois pacotes do Claude no modo efetivo
+    (desdobra.sugestao.pacote.refazer_pacotes; M7c, S2);
   - linkado: o arquivo de entrada/campanha/ que vale para um smart object linkado, so entre os candidatos que o leitor
     propos para ele (desdobra.render.linkados.confirmar);
   - spec_valor: confirmar um valor de spec em rascunho, ou escolher a leitura de um campo com fontes divergentes, so
@@ -98,7 +99,14 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         return 'O job passa a usar o modo "%s". %s Você pode trocar o modo aqui mesmo, depois.' % (nome, explica)
 
     def modo_executar(disparo, d):
+        from desdobra.sugestao import pacote
         gravado = modo_dados.gravar(pasta, d['modo'], disparo=disparo, teto_=teto_agora())
+        # M7c, S2: os dois pacotes do Claude e a pasta das miniaturas seguem o modo efetivo de agora; no modo c saem
+        # tambem as sugestoes dele. Na falha, o Claude fica sem nada para ler (conferir_modo fecha)
+        try:
+            pacote.refazer_pacotes(pasta, teto=teto_agora())
+        except Exception:  # noqa: BLE001 - a escolha do DA ja esta gravada; o pacote nunca fica mais aberto que ela
+            pacote.conferir_modo(pasta, teto_agora())
         return {'modo': gravado['valor']}
 
     def linkado_texto(d):

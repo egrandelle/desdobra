@@ -4,6 +4,7 @@
 O teste principal roda a impressao sobre um laudo sintetico cheio de nomes e textos e confere, por varredura
 da linha impressa, que no modo c nada disso aparece, e que segredo nao aparece em modo nenhum.
 """
+import hashlib
 import io
 import json
 
@@ -79,8 +80,21 @@ def test_modo_b_leva_camadas_limpas_e_sem_miniaturas(tmp_path):
     assert 'miniaturas' not in env['conteudo']
 
 
+def _indice(job, ids, corromper=()):
+    """sugestoes/miniaturas/ como gravar_miniaturas deixa (M7c, S1), com PNG sintetico."""
+    pasta = job / 'sugestoes' / 'miniaturas'
+    pasta.mkdir(parents=True, exist_ok=True)
+    itens = []
+    for lid in ids:
+        dados = b'png-sintetico-%d' % lid
+        (pasta / ('%d.png' % lid)).write_bytes(dados + (b'!' if lid in corromper else b''))
+        itens.append({'layer_id': lid, 'sha256': hashlib.sha256(dados).hexdigest()})
+    (pasta / 'indice.json').write_text(json.dumps({'miniaturas': itens}), encoding='utf-8')
+
+
 def test_modo_a_so_miniaturas_de_camadas_sem_texto(tmp_path):
     laudo, _, _ = laudo_cheio_de_conteudo()
+    _indice(tmp_path, [1, 2, 4, 6])
     resultado = _resultado(laudo, pasta_job=tmp_path)
     resultado.conteudo['miniaturas'] = ['sugestoes/miniaturas/1.png', 'sugestoes/miniaturas/2.png',
                                         {'layer_id': 4, 'arquivo': 'sugestoes/miniaturas/4.png'},
@@ -88,6 +102,39 @@ def test_modo_a_so_miniaturas_de_camadas_sem_texto(tmp_path):
                                         'sugestoes/miniaturas/../../kv.png']
     _, env = _imprimir(resultado, 'a')
     assert env['conteudo']['miniaturas'] == ['sugestoes/miniaturas/1.png', 'sugestoes/miniaturas/4.png']
+
+
+def test_modo_a_sem_indice_nao_lista_miniatura(tmp_path):
+    # M7c, S2: o envelope lista so o que esta no indice.json do job
+    laudo, _, _ = laudo_cheio_de_conteudo()
+    resultado = _resultado(laudo, pasta_job=tmp_path)
+    resultado.conteudo['miniaturas'] = ['sugestoes/miniaturas/1.png', 'sugestoes/miniaturas/4.png']
+    _, env = _imprimir(resultado, 'a')
+    assert env['conteudo']['miniaturas'] == []
+    _, env = _imprimir(_resultado(laudo), 'a')
+    assert env['conteudo']['miniaturas'] == []
+
+
+def test_modo_a_fora_do_indice_ou_com_sha_trocado_fica_de_fora(tmp_path):
+    laudo, _, _ = laudo_cheio_de_conteudo()
+    _indice(tmp_path, [1, 4], corromper={4})
+    (tmp_path / 'sugestoes' / 'miniaturas' / '6.png').write_bytes(b'fora do indice')
+    resultado = _resultado(laudo, pasta_job=tmp_path)
+    resultado.conteudo['miniaturas'] = ['sugestoes/miniaturas/1.png', 'sugestoes/miniaturas/4.png',
+                                        'sugestoes/miniaturas/6.png']
+    _, env = _imprimir(resultado, 'a')
+    assert env['conteudo']['miniaturas'] == ['sugestoes/miniaturas/1.png']
+
+
+def test_modo_a_sem_lista_no_conteudo_usa_o_indice(tmp_path):
+    # o conteudo do ler nao traz miniaturas: o envelope do modo (a) lista as do indice, so de camada sem texto
+    laudo, _, _ = laudo_cheio_de_conteudo()
+    _indice(tmp_path, [1, 2, 6])
+    _, env = _imprimir(_resultado(laudo, pasta_job=tmp_path), 'a')
+    assert env['conteudo']['miniaturas'] == ['sugestoes/miniaturas/1.png', 'sugestoes/miniaturas/6.png']
+    for modo in ('b', 'c'):
+        _, env = _imprimir(_resultado(laudo, pasta_job=tmp_path), modo)
+        assert 'miniaturas' not in (env.get('conteudo') or {})
 
 
 def test_campos_fixos_fora_do_contrato_sao_descartados():

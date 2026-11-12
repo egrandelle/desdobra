@@ -86,9 +86,26 @@ def montar_pacote(rascunho, modo, *, job_id=None, detector=None):
     return pacote, achados
 
 
-def gravar_pacote(pasta_job, rascunho, modo, *, job_id=None, detector=None):
+def gravar_pacote(pasta_job, rascunho, modo, *, job_id=None, detector=None, comando='spec importar'):
     pacote, achados = montar_pacote(rascunho, modo, job_id=job_id, detector=detector)
     destino = Path(pasta_job) / ARQUIVO_PACOTE
     contratos.gravar(destino, pacote, CONTRATO)
-    segredos.gravar_bloqueios(pasta_job, achados, comando='spec importar')
+    segredos.gravar_bloqueios(pasta_job, achados, comando=comando)
     return destino, len(achados)
+
+
+def refazer_pacote(pasta_job, modo, *, job_id=None, detector=None):
+    """Refaz sugestoes/pacote-specs.json no modo dado a partir do rascunho gravado (specs/rascunho.json), sem ler as
+    folhas de novo (M7c, S2: o ato do modo e o "sugestao pacote" refazem os dois pacotes). Sem rascunho, o pacote das
+    specs nao existe: o que sobrou e apagado. Devolve (caminho ou None, numero de achados)."""
+    from desdobra.specs import importar
+    pasta_job = Path(pasta_job)
+    arq = pasta_job / importar.ARQUIVO_RASCUNHO
+    if not arq.is_file():
+        try:
+            (pasta_job / ARQUIVO_PACOTE).unlink()
+        except FileNotFoundError:
+            pass
+        return None, 0
+    rascunho = contratos.ler(arq, importar.ESQUEMA)
+    return gravar_pacote(pasta_job, rascunho, modo, job_id=job_id, detector=detector, comando='sugestao pacote')

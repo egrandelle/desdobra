@@ -36,8 +36,15 @@ COMPONENTES = (
     ('desdobra.derivacao', ('derivar',)),
     ('desdobra.entrega', ('aprovar', 'entregar', 'conferir-entrega', 'parametros-entrega')),
     ('desdobra.tela', ('tela',)),
+    ('desdobra.sugestao', ('sugestao',)),
 )
 MODULO_ENVELOPE = 'desdobra.sugestao.envelope'
+# M7c, S2: comandos que recalculam o modo efetivo com o teto da linha de comando antes e depois de rodar, e refazem os
+# pacotes do Claude quando o modo caiu (a agencia baixou o teto sem clique do DA) ou o KV mudou. Nome do comando ->
+# atributos de args com a pasta do job, em ordem. O ler e o spec importar gravam os pacotes; o job trocar-entrada
+# troca o KV e deixa o pacote do KV antigo para tras
+CONFEREM_O_MODO = {'tela abrir': ('job',), 'job proxima': ('pasta_job', 'pasta'), 'ler': ('job',),
+                   'spec importar': ('job',), 'job trocar-entrada': ('pasta',)}
 
 
 class _ErroArgumento(Exception):
@@ -152,8 +159,47 @@ def _imprimir_humano(resultado):
         print('\nO QUE FAZER: %s' % resultado.o_que_fazer)
 
 
+def _conferir_modo(args):
+    """M7c, S2: para os comandos de CONFEREM_O_MODO, refaz os pacotes do Claude se o modo efetivo de agora (com o teto
+    da linha de comando) nao for o deles. Nunca derruba o comando: desdobra.sugestao.pacote.conferir_modo fecha o que
+    o Claude le quando nao consegue refazer."""
+    from pathlib import Path
+    campos = CONFEREM_O_MODO.get(getattr(args, 'nome_comando', None))
+    if not campos:
+        return
+    pasta = next((getattr(args, c, None) for c in campos if getattr(args, c, None)), None)
+    if not pasta:
+        return
+    try:
+        pasta = Path(pasta).resolve()
+        if not (pasta / 'estado.json').is_file():
+            return
+        from desdobra.sugestao import pacote
+        pacote.conferir_modo(pasta, getattr(args, 'teto_modo_dados', None))
+    except Exception:  # noqa: BLE001 - a conferencia nunca derruba o comando
+        pass
+
+
+def _definir_teto_do_processo(teto):
+    """M7c, S2: o teto da linha de comando vale tambem para o que o comando grava para o Claude (pacotes)."""
+    try:
+        from desdobra.sugestao import pacote
+    except ModuleNotFoundError:
+        return
+    pacote.definir_teto_do_processo(teto)
+
+
 def _executar(args):
-    resultado = args.executar(args)
+    _definir_teto_do_processo(getattr(args, 'teto_modo_dados', None))
+    try:
+        _conferir_modo(args)
+        try:
+            resultado = args.executar(args)
+        finally:
+            _conferir_modo(args)
+    finally:
+        # o teto vale so para este comando (os testes chamam principal varias vezes no mesmo processo)
+        _definir_teto_do_processo(None)
     if not isinstance(resultado, Resultado):
         raise TypeError('o comando %s não devolveu um Resultado' % getattr(args, 'nome_comando', '?'))
     return resultado

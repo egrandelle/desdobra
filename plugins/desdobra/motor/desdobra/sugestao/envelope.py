@@ -7,7 +7,7 @@ O envelope leva o modo de dados, o comando, a fase, a situacao, o codigo, o "o q
 ids e os numeros do proprio motor, e o numero de segredos bloqueados. O campo conteudo depende do modo:
 
   modo a: camadas (layer_id, nome, tipo, situacao, textos) e miniaturas (so caminhos em sugestoes/miniaturas/,
-          so de camadas sem texto);
+          so de camadas sem texto e so os que estao no indice.json que o motor gravou ao copiar; M7c, S2);
   modo b: so camadas;
   modo c: o campo nao existe. Nenhum nome de camada, texto ou caminho de cliente sai.
 
@@ -23,6 +23,7 @@ import json
 import math
 import re
 import sys
+from pathlib import Path
 
 from desdobra.resultado import MODOS_DADOS, Codigo
 from desdobra.sugestao import segredos
@@ -146,10 +147,41 @@ def _miniaturas(itens):
     return saida
 
 
-def filtrar_conteudo(conteudo, modo, detector):
+def miniaturas_do_indice(pasta_job):
+    """Os caminhos das miniaturas que o motor copiou para sugestoes/miniaturas/ do job (M7c, S1), pelo indice.json:
+    so arquivo comum dentro da pasta, sem atalho, com o sha256 do indice. Sem job, sem indice ou com indice estranho,
+    nenhum (lista vazia)."""
+    from desdobra import arquivos
+    from desdobra.sugestao import miniaturas as mod_miniaturas
+    if pasta_job is None:
+        return []
+    try:
+        pasta = Path(pasta_job) / mod_miniaturas.PASTA
+        arq = Path(pasta_job) / mod_miniaturas.ARQUIVO_INDICE
+        if pasta.is_symlink() or arq.is_symlink() or not arq.is_file():
+            return []
+        dados = json.loads(arq.read_text(encoding='utf-8'))
+        saida = []
+        for item in dados.get('miniaturas') or []:
+            lid, sha = item.get('layer_id'), item.get('sha256')
+            if not _inteiro(lid) or lid < 1 or not isinstance(sha, str):
+                continue
+            png = pasta / ('%d.png' % lid)
+            if png.is_symlink() or not png.is_file() or arquivos.sha256_arquivo(png) != sha:
+                continue
+            png.resolve().relative_to(pasta.resolve())
+            saida.append('%s/%d.png' % (mod_miniaturas.PASTA.as_posix(), lid))
+        return saida
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+
+
+def filtrar_conteudo(conteudo, modo, detector, indice=None):
     """Passa o conteudo pelo detector e pelo filtro do modo. Devolve (conteudo do envelope ou None, achados).
 
     O detector roda em qualquer modo, inclusive no c, para que o DA saiba do segredo mesmo quando nada sai.
+    indice: os caminhos de miniaturas_do_indice; no modo a, so eles podem sair (M7c, S2). Quando o conteudo nao traz
+    a lista de miniaturas, o envelope do modo a usa a do indice.
     """
     conteudo = conteudo if isinstance(conteudo, dict) else {}
     achados = []
@@ -167,9 +199,11 @@ def filtrar_conteudo(conteudo, modo, detector):
 
     miniaturas = []
     if modo == 'a':
+        no_indice = set(indice or ())
         sem_texto = {c['layer_id'] for c in camadas if c.get('tipo') != 'texto' and not c.get('textos')}
-        for lid, caminho in _miniaturas(conteudo.get('miniaturas')):
-            if lid not in sem_texto:
+        pedidas = conteudo['miniaturas'] if 'miniaturas' in conteudo else list(indice or ())
+        for lid, caminho in _miniaturas(pedidas):
+            if lid not in sem_texto or caminho not in no_indice or caminho in miniaturas:
                 continue
             achado = detector.achado_em('miniatura', lid, {'arquivo': caminho})
             if achado is not None:
@@ -199,7 +233,8 @@ def montar(resultado, modo, *, detector=None, gravar_bloqueios=True):
         modo = modo if modo in MODOS_DADOS else 'c'
         detector = detector or segredos.detector_padrao()
         env = campos_fixos(resultado, modo)
-        conteudo, achados = filtrar_conteudo(resultado.conteudo, modo, detector)
+        indice = miniaturas_do_indice(resultado.pasta_job) if modo == 'a' else []
+        conteudo, achados = filtrar_conteudo(resultado.conteudo, modo, detector, indice)
         if env['o_que_fazer'] is not None:
             achado = detector.achado_em('o_que_fazer', None, {'o_que_fazer': env['o_que_fazer']})
             if achado is not None:

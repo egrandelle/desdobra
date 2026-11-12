@@ -1113,3 +1113,97 @@ Revisão do P1 (mesma leva). O revisor mostrou desvios que a regra por verbo de 
 Riscos que ficam: o script gravado antes (7.6); uma ligação física de nome inocente fora de um job, criada antes do gancho; um caminho montado em variável ou por partes; a busca de cima para baixo limitada a 4 níveis e 4000 entradas, que passa quando estoura; e uma ferramenta nova de fora do matcher.
 
 Testes: `test_gancho_leitura.py` (novo).
+
+## M7c, K2: a skill `continuar`
+
+`skills/continuar/SKILL.md` (nova) retoma um job que já existe (arquitetura-v1.md, 3.5: "Lê o estado e segue da próxima fase"). Ela não tem `references/` própria: lê as três referências da `novo-job` (`regras-do-modelo.md`, `fluxo.md`, `glossario.md`), e os passos 2, 6, 7 e 8 têm o mesmo número e o mesmo sentido nas duas skills, porque as referências citam "passo 2", "passo 7" e "passo 8 da skill".
+
+- Estado: só pelo envelope de `job estado` (`situacao`, `codigo`, `fase`, `contagens.fases_validas`, `contagens.fases`, `contagens.bloqueios_pendentes`); a skill nunca lê arquivo da pasta do job (7.4, P1).
+- Decisão: `codigo` diferente de 0, explica sem comando (pasta que não é job: pede o caminho de novo ou indica `/desdobra:novo-job`; 21: espera); `contagens.fases_validas` menor que `contagens.fases`: roda `job proxima` uma fase por vez, mesmo com bloqueio pendente, porque aí a `fase` é a próxima do motor e não a do bloqueio (o portão e o `concluido` levam à tela); fases em dia com bloqueio pendente: a `fase` é a do bloqueio, a skill explica por ela e oferece trocar fonte ou folha (passo 7) ou a tela (passo 8); `fase` nula e sem bloqueio: é o `concluido`, o que falta é clique do DA, e a skill reabre a tela com `tela abrir --biblioteca "BIBLIOTECA"`.
+- Resíduo do K1: o texto `FIM` de `job/fases.py` e os `o_que_fazer` do núcleo citam comandos de terminal. A skill nunca os repassa ao DA; ela não roda outro comando citado no `o_que_fazer` (`spec importar`, `ds montar`, `fontes conferir`): fase que falha duas vezes seguidas leva ao doctor e, depois dele, ao aviso à Trezion.
+- Mantidos da `novo-job`: `--teto-modo-dados TETO` em toda chamada do motor, `--biblioteca` sempre passada à tela (o motor trata a vazia como não configurada), a pasta do job só por caminho absoluto com a dica de "Copiar como caminho", nenhuma pergunta de modo, teto, valor ou regra, os avisos de `/feedback`, `/bug`, `/share`, da limpeza das transcrições e da entrega no próximo marco. `disable-model-invocation: true`, como a `novo-job`: a skill roda só quando o DA a chama.
+- Tela já aberta nesta conversa: a skill pergunta se a janela continua aberta antes de abrir outra.
+
+Testes: `test_skill_continuar.py` (novo): texto da skill (teto, subcomandos permitidos, sem ato do DA, sem terminal, sem pergunta de modo, biblioteca vazia sem guarda que cite o marcador, passos alinhados com as referências da `novo-job`, caminhos só pela raiz do plugin, sem travessão) e o contrato do envelope que a skill lê (`job estado` de um job novo: `fase` `ler`, 0 bloqueio, modo c; pasta que não é job: código diferente de 0; fases em dia: `fase` nula e o texto `FIM`; bloqueio na fase `fontes` com `ds` por rodar: `fase` `ds`; o ramo de bloqueio do passo 5 só vale com `fases_validas` igual a `fases`).
+
+## M7c, K4: a skill `ler-spec`
+
+O mapeamento de specs saiu da `novo-job` (K1) para `plugins/desdobra/skills/ler-spec/SKILL.md`. A `novo-job` e o `references/fluxo.md` dela já indicavam `/desdobra:ler-spec`; a K4 não mexeu na `novo-job`.
+
+- `disable-model-invocation: false`: o DA pede em linguagem natural ("me ajuda com a folha de spec") ou por `/desdobra:ler-spec`; a descrição diz que a skill só roda quando o DA pede.
+- O modo vem do campo `modo_dados` do envelope de `job estado` (o modo efetivo, com o teto da linha de comando). No modo (c), a skill para sem ler `sugestoes/pacote-specs.json`. Nos modos (a) e (b), roda `job proxima` até a fase `specs` estar em dia e depois `sugestao pacote --job`, que refaz os dois pacotes no modo de agora (o DA pode ter escolhido o modo na tela depois de a esteira rodar, e `briefing/modo-dados.json` não é entrada da fase `specs`). Só então lê o pacote e confere que o `modo_dados` dele bate com o do envelope do `sugestao pacote` e que `exposto.textos` é verdadeiro; se não bater, não propõe nada.
+- Escreve `sugestoes/mapeamento-specs.json` (`mapeamento-specs/1`) só com `folha`, `trecho`, `campo`, `alvo`, `recorte_texto` e `adicionais`, sem número nem valor, e mantém as propostas que já estavam no arquivo (o motor aplica o arquivo inteiro a cada rodada). Depois roda `job proxima`, que refaz a fase `specs` porque o arquivo de propostas é entrada dela, e lê `propostas_do_modelo`, `propostas_ignoradas` e `propostas_ignoradas_modo_c`. Arquivo de propostas fora do contrato volta como `codigo` 20 na fase `specs`, com `contagens.codigo_da_fase` 3: a skill reescreve uma vez e, se continuar, volta às propostas que já existiam (ou à lista vazia), sem repassar ao DA o `o_que_fazer`, que fala de terminal.
+- Sem folha no job, pede o caminho absoluto da folha e roda `job trocar-entrada` com `entrada/specs/<veiculador>/<arquivo>`.
+- A confirmação de cada valor continua com o DA, na tela ("Valores de spec", passo 1). A skill abre a tela com `tela abrir --job` e `--biblioteca` sempre passado. Toda chamada do motor leva `--envelope --teto-modo-dados`; o `o_que_fazer` nunca chega ao DA com comando; nenhuma pergunta de modo, teto, valor ou regra.
+
+Teste: `plugins/desdobra/testes/test_skill_ler_spec.py` (o exemplo da skill vale contra `mapeamento-specs/1`; os arquivos do job citados pela skill estão em `PERMITIDOS_NO_JOB` do gancho; a `novo-job` aponta para a `ler-spec` e não escreve mais o arquivo de propostas).
+
+## M7c, M2: esquema e módulo do perfil de marca (`desdobra/marca/perfil.py`, `schemas/perfil-marca-1.json`)
+
+Conteúdo pela decisoes-v1.md, 190, Q1 e Q3. Arquivo: `<biblioteca>/marcas/<id>/perfil-marca.json`, contrato `perfil-marca/1`.
+
+- Topo: `esquema`, `id` (32 hexadecimais de `secrets.token_hex`, gerado na criação, sem relação com o nome), `marca` (nome dado pelo DA; sem barra, sem caractere de controle, sem extensão de fonte, até 120 caracteres), `criado_em`, `versao`, `atual` e `historico`. O perfil criado sem registro tem `versao` 0, `atual` null e `historico` vazio (para a "Marca nova" do passo M3).
+- Cada versão: `versao`, `job_origem` (igual a `campanha.job`), `quando`, `campanha` (`job`, `data`, `formatos` com `formato` e `aprovacao_sha256`, pelo menos um, `confirmado_por` com `usuario` e `maquina`, `origem` sempre `da`, `meio` sempre `tela`: aprovação de teste nunca entra), `regras_escala` (`funcao`, `regra`, `job_origem`), `ancoras` (`funcao`, `x`, `y`, `job_origem`; só por função, nunca por camada), `faces` (objeto só com `postscript`, nome PostScript de ASCII imprimível sem barra, dois-pontos, delimitadores do formato nem extensão de fonte; a forma de objeto deixa acrescentar o sha256 depois, pela pergunta 12 da 10.2) e `cores` (opcional, `srgb` `#rrggbb` e `job_origem`, sem produtor no M7c).
+- `funcao` é o enum do `briefing/1` sem `indeterminado` (a regra do indeterminado é por camada, no job); `regra` é o mesmo enum do briefing. Teste de igualdade com o `briefing/1`.
+- O esquema recusa, por `additionalProperties: false`, arquivo, caminho e bytes de fonte, lockup de governo, limites, galeria, edições de palco, mestres e qualquer outro campo do job.
+- `perfil.criar(biblioteca, nome, *, quando=None)`, `ler(biblioteca, id)`, `listar(biblioteca)` (`[{id, marca}]` dos perfis legíveis, pelo nome; o que não é perfil fica de fora, sem erro), `atual(perfil)`, `validar(perfil)` e `nova_versao(biblioteca, id, *, campanha, regras_escala, ancoras, faces, cores=None, quando=None)`, que devolve `(perfil, criou)`. Erros saem como `ErroPerfil`, sem o caminho da biblioteca.
+- `nova_versao`: a versão atual vai inteira para o fim do `historico` (conferido byte a byte por `para_json`), e a nova vira `atual`. Registrar de novo o mesmo job sem mudança nas regras, âncoras, faces, cores e aprovações não cria versão nem regrava o arquivo; o mesmo job com mudança cria. O `job_origem` de cada regra, âncora e cor é o job da campanha da versão ou o de uma campanha registrada antes (o registro do M5 pode manter a origem de uma regra que não mudou). Uma função aparece uma vez só em `regras_escala` e em `ancoras`. A leitura confere versões seguidas de 1 até `versao` e recusa o perfil com histórico apagado, fora de ordem ou com versão que não bate, e a gravação nunca parte dele. Antes de gravar, o arquivo é relido: se mudou desde a leitura, a gravação é recusada (não há trava entre dois DAs, risco do plano).
+- `gravar_na_marca(biblioteca, id, nome, dados)`: gravação atômica em `<biblioteca>/marcas/<id>/`, só com nome simples; recusa nome ou assinatura de fonte (`ASSINATURAS_FONTE`), pasta da marca que, resolvida, sai de `<biblioteca>/marcas` e arquivo alvo que é ligação simbólica. Nada varre o resto da biblioteca.
+- O módulo não confere a biblioteca (`desdobra.biblioteca.conferir`): quem chama passa a pasta que já serve.
+
+Gancho (`scripts/gancho_confirmacoes.py`), com o motivo `MOTIVO_MARCA` (o perfil só muda quando o DA registra o padrão da marca, na tela):
+
+- ferramentas de arquivo: caminho com um segmento `marcas`, pelo nome pedido, relativo ao `cwd` do evento e pelo alvo real (`decidir_marca_por_arquivo`);
+- Bash, PowerShell e Monitor (`decidir_marca_por_comando`, antes das outras regras): um segmento `marcas` de caminho (`SEGMENTO_MARCAS`; `docs/marcas.md` e `desdobra/marca/` ficam de fora), o `cwd` dentro de `marcas` ou o nome `perfil-marca.json`, junto com `ESCRITA` ou `ESCRITA_EM_MARCAS` (apagar, criar pasta, `touch`, ligar, mudar permissão); e sempre o código `desdobra.marca.perfil` e `desdobra.marca.registrar` pelo módulo, pelo `from ... import` ou como atributo (`CODIGO_DA_MARCA`). A leitura do perfil também passa por esse código, e a leitura de `marcas` já era negada desde o P1, por isso a regra vale para qualquer chamada desses módulos, com gravação ou sem;
+- `ARQUIVOS_DO_DA` ganhou `marcas/<id>/perfil-marca.json` (e o nome sozinho).
+
+`humano.COMANDOS` e `SUBCOMANDOS_HUMANOS` não mudaram: o registro é ato da tela (M5).
+
+Medição (`test_marca_perfil.py`): escrita na biblioteca negada pelas ferramentas de arquivo 20/20 (Write, Edit, MultiEdit e NotebookEdit em quatro caminhos, caminho relativo com o `cwd` em `marcas` e ligação simbólica para `marcas`) e pelo terminal 23/23 (Bash e PowerShell: redireção, cópia, movimento, `rm`, `mkdir`, `touch`, `sed -i`, `open()`, `shutil.rmtree`, `Set-Content`, `Remove-Item`, `New-Item`, `del`, `Clear-Content` e o código do perfil e do registro), todas com `MOTIVO_MARCA`; 0 recusa em 11 casos do código-fonte, do esquema, dos testes e de `docs/marcas.md`.
+
+Testes: `testes/test_marca_perfil.py` (novo).
+
+Revisão do M2 (cinco defeitos confirmados pelas sondas do revisor e corrigidos):
+
+- gancho, código do perfil: `CODIGO_DA_MARCA` nega toda referência ao pacote `desdobra.marca` (inclusive por `__import__`, `import_module`, `getattr`, `fromlist`, `sys.modules` e `__import__('desdobra').marca`), o `import perfil` com a pasta do pacote no `sys.path` ou no `PYTHONPATH`, o arquivo do perfil carregado ou rodado (`run_path`, `spec_from_file_location`, `exec`, `python <arquivo>`) e o caminho da biblioteca pelo motor (`desdobra.biblioteca.pasta_marcas` e `PASTA_MARCAS`), com leitura ou gravação;
+- gancho, terminal: `SEGMENTO_MARCAS` aceita `marcas.` e `marcas. ` (o Windows tira o ponto e o espaço do fim do segmento); `NOME_MARCAS` nega o nome `marcas` sozinho (como em `os.path.join(b, 'marcas')` ou `cd <bib> && rm -rf marcas`) junto com um verbo que apaga, move, copia, cria pasta ou grava por código (`ESCRITA_FORTE`; o `>` sozinho não conta, para `echo as marcas > notas.txt` seguir); e, num comando que grava, cada caminho é conferido pelo que existe (`_caminho_cai_em_marcas`): o curinga que se expande para a biblioteca (`rm -rf <bib>/marc*`, até `LIMITE_DO_CURINGA` nomes) e a ligação de nome inocente que aponta para ela;
+- gancho, ferramentas de arquivo: `_tem_marcas` compara o segmento sem o ponto e o espaço do fim, então `marcas./` é negado mesmo antes da pasta existir;
+- esquema: `data` é `AAAA-MM-DD`, `criado_em` e `quando` são data ou data e hora ISO 8601 (`instante`), `formato` segue o id da aprovação (`^[a-z0-9][a-z0-9-]*$`), `usuario` e `maquina` (texto ou null) não aceitam barra, dois-pontos, controle nem extensão de fonte, e o nome da marca recusa extensão de fonte em qualquer ponto; `perfil.validar` recusa ainda todo texto (fora os hashes e ids) com extensão de fonte ou que, lido como base64 ou hex, começa com a assinatura de um arquivo de fonte;
+- módulo: `<biblioteca>/marcas` que é ligação (simbólica ou junção) ou que resolve fora da biblioteca é recusada na gravação, na leitura e na listagem (`_conferir_marcas`).
+
+Testes da revisão em `testes/test_marca_perfil.py`: 22 comandos negados novos, 3 livres novos, curinga (4 padrões), ligação pelo terminal, `marcas.` pela ferramenta de arquivo (3), 11 recusas novas do esquema, bytes de fonte codificados (25), texto comum e `null` aceitos, e a pasta `marcas` ligada para fora.
+
+## M7c, S2: `pacote-modelo/2` refeito sempre que o modo ou o PSD muda (`desdobra/sugestao/pacote.py`)
+
+Contrato novo `pacote-modelo/2` (`schemas/pacote-modelo-2.json`). O `pacote-modelo/1` fica só para leitura de jobs antigos (`pacote.ler_pacote` aceita os dois). Mudanças em relação ao `/1`:
+
+- sai o campo `nota` ("Rascunho do M1");
+- `miniaturas` lista os caminhos `sugestoes/miniaturas/<layer_id>.png` (padrão fixo, sem `idx`, sem `..`), só os do `indice.json` que `miniaturas.gravar_miniaturas` gravou e só de camada sem segredo;
+- `exposto.miniaturas` é verdadeiro só no modo (a) e só com ao menos uma miniatura listada; nos modos (b) e (c) o esquema exige `exposto.miniaturas = false` e `miniaturas` vazio;
+- `contagens.miniaturas` conta as listadas.
+
+Funções:
+
+- `montar_pacote(laudo, modo, job_id=None, detector=None, miniaturas=None)`: `miniaturas` são os itens do índice (`layer_id`, `sha256`); entram só no modo (a).
+- `gravar_pacote(pasta_job, detector=None, teto=None)`: com o modo efetivo (escolha do DA limitada pelo teto do `estado.json` e pelo `teto` da linha de comando), refaz `sugestoes/miniaturas/` (a cópia do S1 entra aqui, com as camadas bloqueadas pelo detector de fora), grava o pacote e o arquivo do DA. No modo (c), apaga também `sugestoes.json`, `sugestoes-validadas.json` e `mapeamento-specs.json`. Grava em `log/eventos.jsonl` o evento `pacote_modelo_exposto` com `modo`, `camadas`, `textos`, `segredos_bloqueados` e `miniaturas` (só `layer_id` e `sha256`), sem nome, texto ou caminho. Uma cópia de miniatura que não bate (`ErroMiniatura`) deixa o pacote sem miniatura.
+- `refazer_pacotes(pasta_job, teto=None)`: refaz os dois pacotes no modo efetivo de agora. O das specs sai de `specs/rascunho.json` por `desdobra.sugestao.specs.refazer_pacote(pasta_job, modo, job_id=None)`, sem ler as folhas de novo; sem rascunho, o `pacote-specs.json` que sobrou é apagado. Sem laudo, ou com o laudo de um KV que já foi trocado (o `sha256` do laudo diferente do `entrada/kv.*` do `estado.json`), não há `pacote-modelo.json` nem pasta de miniaturas, e saem `sugestoes.json` e `sugestoes-validadas.json` (no modo (c), também `mapeamento-specs.json`). Devolve as contagens (`modo`, `camadas`, `miniaturas`, `segredos_bloqueados`, `pacote_modelo`, `pacote_specs`, `sugestoes_apagadas`).
+- `conferir_modo(pasta_job, teto=None)`: refaz quando o gravado não bate com o modo efetivo de agora (pasta de miniaturas fora do (a), pacote de outro modo ou do contrato `/1`, pacote de outro KV, pacote das specs de outro modo, sugestões do Claude no modo (c)). Nunca levanta exceção: na falha, `fechar` apaga tudo o que o Claude lê em `sugestoes/`. Devolve se mexeu.
+- `fechar(pasta_job)`: apaga os dois pacotes, a pasta das miniaturas e as sugestões do Claude.
+
+Quem refaz:
+
+- a fase `ler` (inclusive a releitura depois de `job trocar-entrada` do KV): `gravar_pacote`, como antes;
+- o ato `modo_dados` da tela (`tela/atos.py`): depois de gravar a escolha, `refazer_pacotes` com o teto da tela; na falha, `conferir_modo` fecha. A escolha de teste (origem `fixture_de_teste`) continua valendo (c): o pacote sai em (c), sem a pasta;
+- `desdobra sugestao pacote --job <pasta>` (novo, `desdobra/sugestao/__init__.py`, registrado em `cli.COMPONENTES`; não é ato do DA e não está em `humano.COMANDOS`): `refazer_pacotes` com o `--teto-modo-dados` global; o envelope leva só contagens e `numeros.tempo_s`, e o modo no próprio `modo_dados`. Na falha, fecha e responde erro;
+- `tela abrir`, `job proxima`, `ler`, `spec importar` e `job trocar-entrada`: `cli._conferir_modo` chama `conferir_modo` com o teto da linha de comando antes e depois do comando (`cli.CONFEREM_O_MODO`). Assim a queda de teto pela agência, sem clique do DA, derruba o pacote no próximo comando, e o KV trocado fecha o pacote velho logo na troca, antes da releitura;
+- teto do processo: `cli._executar` passa o `--teto-modo-dados` global a `pacote.definir_teto_do_processo` durante o comando (e volta a None no fim). `pacote.modo_do_job` junta esse teto ao do `estado.json` e ao que vier no argumento, e por isso a gravação do pacote pela fase `ler` e a do pacote das specs pelo `spec importar` nunca saem mais abertas que o envelope do mesmo comando. Esse teto só fecha.
+
+Envelope (`envelope.py`): no modo (a), `conteudo.miniaturas` sai só do que está no `indice.json` do job (`envelope.miniaturas_do_indice(pasta_job)`: arquivo comum dentro de `sugestoes/miniaturas/`, sem atalho, com o `sha256` do índice) e de camada sem texto do próprio envelope. Sem job ou sem índice, nenhuma miniatura. Quando o conteúdo do comando não traz a lista (o `ler`), o envelope do modo (a) usa a do índice. `filtrar_conteudo(conteudo, modo, detector, indice=None)` ganhou o parâmetro `indice`.
+
+Medição (`plano_m7c.md`, seção 4, em 7 jobs sintéticos: o PSD das miniaturas do S1 e o PSD com segredos nos três modos, mais a queda de teto de (a) para (c), cada um com uma folha de spec e uma fonte sintéticas):
+
+- pacote por modo: 7 de 7 jobs com os dois pacotes batendo com o modo efetivo; no (a), só as miniaturas permitidas; no (b) e no (c), 0 miniatura e sem a pasta; no (c), 0 nome de camada, texto ou trecho de folha nos arquivos que o Claude lê;
+- segredo e fonte: segredo sintético bloqueado em 3 de 3 jobs com segredo, 0 ocorrência no envelope, no log e nos pacotes; 0 byte, 0 caminho, 0 nome de arquivo de fonte e 0 miniatura de camada de texto em todos os modos;
+- tempo do `sugestao pacote` pela linha de comando (com a partida do Python): de 0,78 s a 0,96 s por job.
+
+Testes: `testes/test_sugestao_pacote.py`, `testes/test_sugestao_envelope.py` e `testes/test_integracao.py` (troca do PSD no modo (a), queda de teto com a escolha (a) gravada, `ler` e `spec importar` com o teto (c) depois da queda, e `job trocar-entrada` fechando o pacote do KV antigo).

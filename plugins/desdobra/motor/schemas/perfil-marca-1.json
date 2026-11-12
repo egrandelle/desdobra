@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:perfil-marca:1",
+  "title": "Perfil de marca (perfil-marca/1)",
+  "description": "<biblioteca da agencia>/marcas/<id>/perfil-marca.json (arquitetura-v1.md, 4.14 e 5.7; decisoes-v1.md, 190, Q1 e Q3; desdobra.marca.perfil). O id e gerado ao acaso pelo motor, nunca derivado do nome. O perfil guarda so as regras de escala e as ancoras por funcao confirmadas pelo DA, cada uma com o job de origem, e o nome PostScript das faces usadas; as cores sao campo opcional, sem produtor no M7c. A versao da galeria, as edicoes de palco, o lockup de governo, os limites e o arquivo ou caminho de fonte ficam no job e o esquema os recusa. Cada registro vira uma versao nova (atual); a anterior vai inteira para o historico, na ordem, e nunca e apagada. versao 0 e o perfil criado sem registro (atual null). Nenhum campo de texto aceita caminho, arquivo ou bytes de fonte: datas e ids tem padrao fixo, e desdobra.marca.perfil.validar recusa ainda o texto que, lido como base64 ou hex, comeca com a assinatura de um arquivo de fonte. A campanha de cada versao leva o job, a data, o sha256 da aprovacao de cada formato e quem confirmou, sempre com origem da e meio tela: a aprovacao de teste nunca entra.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "id", "marca", "criado_em", "versao", "atual", "historico"],
+  "$defs": {
+    "data": {"description": "Data ISO 8601 (AAAA-MM-DD). Nunca caminho nem bytes", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "instante": {
+      "description": "Data, ou data e hora ISO 8601 com fuso, como o motor grava (datetime.isoformat). Nunca caminho nem bytes",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]{1,6})?)?(Z|[+-][0-9]{2}:[0-9]{2})?)?$"
+    },
+    "formato_id": {"description": "Id do formato, como na aprovacao (aprovacao/2)", "type": "string", "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "quem": {
+      "description": "Usuario ou maquina de quem confirmou: sem barra, sem dois-pontos, sem controle e sem extensao de arquivo de fonte",
+      "type": ["string", "null"],
+      "maxLength": 128,
+      "pattern": "^[^/\\\\:*?\"<>|\\u0000-\\u001f]+$",
+      "not": {"type": "string", "pattern":"\\.([Tt][Tt][Ff]|[Oo][Tt][Ff]|[Ww][Oo][Ff][Ff]2?|[Tt][Tt][Cc]|[Oo][Tt][Cc]|[Dd][Ff][Oo][Nn][Tt]|[Pp][Ff][BbMmAa]|[Aa][Ff][Mm]|[Ee][Oo][Tt]|[Ff][Oo][Nn]|[Ff][Nn][Tt]|[Bb][Dd][Ff]|[Pp][Cc][Ff]|[Ss][Uu][Ii][Tt]|[Ll][Ww][Ff][Nn]|[Tt]42)(?![A-Za-z0-9_-])"}
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{8,64}$"},
+    "funcao": {
+      "description": "As funcoes do briefing/1 sem indeterminado (a regra da camada indeterminado e por camada, no job: arquitetura-v1.md, 4.10)",
+      "enum": ["fundo", "imagem", "sujeito", "veu_de_legibilidade", "grafismo", "titulo", "texto_de_apoio", "cta",
+               "icone_de_cta", "url_ou_contato", "texto_legal", "informacao_de_evento", "destaque_numerico",
+               "logo_principal", "assinatura_institucional", "selo", "logo_de_parceiro", "ajuste_global", "estrutura",
+               "fora_da_peca"]
+    },
+    "regra": {"enum": ["largura", "altura", "lado_curto", "lado_longo", "raiz_area", "constante", "contain", "cover"]},
+    "postscript": {
+      "description": "Nome PostScript da face: ASCII imprimivel sem espaco nem os caracteres que o formato proibe, sem barra, sem dois-pontos e sem extensao de arquivo de fonte. Nunca o arquivo, o caminho ou os bytes",
+      "type": "string",
+      "pattern": "^[!-~]{1,63}$",
+      "not": {"anyOf": [
+        {"pattern": "[\\[\\](){}<>/%\\\\:]"},
+        {"pattern": "\\.([Tt][Tt][Ff]|[Oo][Tt][Ff]|[Ww][Oo][Ff][Ff]2?|[Tt][Tt][Cc]|[Oo][Tt][Cc]|[Dd][Ff][Oo][Nn][Tt]|[Pp][Ff][BbMmAa]|[Aa][Ff][Mm]|[Ee][Oo][Tt]|[Ff][Oo][Nn]|[Ff][Nn][Tt]|[Bb][Dd][Ff]|[Pp][Cc][Ff]|[Ss][Uu][Ii][Tt]|[Ll][Ww][Ff][Nn]|[Tt]42)$"}
+      ]}
+    },
+    "campanha": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "data", "formatos", "confirmado_por", "origem", "meio"],
+      "properties": {
+        "job": {"$ref": "#/$defs/job_id"},
+        "data": {"$ref": "#/$defs/data"},
+        "formatos": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["formato", "aprovacao_sha256"],
+            "properties": {
+              "formato": {"$ref": "#/$defs/formato_id"},
+              "aprovacao_sha256": {"$ref": "#/$defs/sha256"}
+            }
+          }
+        },
+        "confirmado_por": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["usuario", "maquina"],
+          "properties": {
+            "usuario": {"$ref": "#/$defs/quem"},
+            "maquina": {"$ref": "#/$defs/quem"}
+          }
+        },
+        "origem": {"const": "da"},
+        "meio": {"const": "tela"}
+      }
+    },
+    "versao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["versao", "job_origem", "quando", "campanha", "regras_escala", "ancoras", "faces"],
+      "properties": {
+        "versao": {"type": "integer", "minimum": 1},
+        "job_origem": {"$ref": "#/$defs/job_id"},
+        "quando": {"$ref": "#/$defs/instante"},
+        "campanha": {"$ref": "#/$defs/campanha"},
+        "regras_escala": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["funcao", "regra", "job_origem"],
+            "properties": {
+              "funcao": {"$ref": "#/$defs/funcao"},
+              "regra": {"$ref": "#/$defs/regra"},
+              "job_origem": {"$ref": "#/$defs/job_id"}
+            }
+          }
+        },
+        "ancoras": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["funcao", "x", "y", "job_origem"],
+            "properties": {
+              "funcao": {"$ref": "#/$defs/funcao"},
+              "x": {"enum": ["esquerda", "centro", "direita"]},
+              "y": {"enum": ["topo", "meio", "base"]},
+              "job_origem": {"$ref": "#/$defs/job_id"}
+            }
+          }
+        },
+        "faces": {
+          "description": "So o nome PostScript. A forma de objeto deixa acrescentar o sha256 depois, se a pergunta 12 da 10.2 pedir",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["postscript"],
+            "properties": {"postscript": {"$ref": "#/$defs/postscript"}}
+          }
+        },
+        "cores": {
+          "description": "Cores recorrentes: campo opcional, sem produtor no M7c",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["srgb", "job_origem"],
+            "properties": {
+              "srgb": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+              "job_origem": {"$ref": "#/$defs/job_id"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "esquema": {"const": "perfil-marca/1"},
+    "id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "marca": {
+      "description": "Nome dado pelo DA. Sem barra, sem controle e sem extensao de arquivo de fonte",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^/\\\\\\u0000-\\u001f]+$",
+      "not": {"pattern": "\\.([Tt][Tt][Ff]|[Oo][Tt][Ff]|[Ww][Oo][Ff][Ff]2?|[Tt][Tt][Cc]|[Oo][Tt][Cc]|[Dd][Ff][Oo][Nn][Tt]|[Pp][Ff][BbMmAa]|[Aa][Ff][Mm]|[Ee][Oo][Tt]|[Ff][Oo][Nn]|[Ff][Nn][Tt]|[Bb][Dd][Ff]|[Pp][Cc][Ff]|[Ss][Uu][Ii][Tt]|[Ll][Ww][Ff][Nn]|[Tt]42)(?![A-Za-z0-9_-])"}
+    },
+    "criado_em": {"$ref": "#/$defs/instante"},
+    "versao": {"type": "integer", "minimum": 0},
+    "atual": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/versao"}]},
+    "historico": {"type": "array", "items": {"$ref": "#/$defs/versao"}}
+  }
+}
