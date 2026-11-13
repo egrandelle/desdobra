@@ -1043,6 +1043,56 @@ Cada verificação tem `nome`, `situacao` (`ok`, `reprova`, `avisa` ou `registra
 
 Com fonte em `motor/fontes-de-limites.json`: `entrega.peso_reprova_acima_da_leitura_decimal`, `entrega.jpeg_qualidade_min`, `entrega.jpeg_qualidade_max`, `entrega.jpeg_qualidade_piso_aviso` (avisa), `entrega.jpeg_subamostragem`, `entrega.jpeg_progressivo`, `entrega.jpeg_optimize`, `entrega.jpeg_buffer_bytes`, `entrega.png_nivel_compressao`, `entrega.encoder_build_referencia` e `entrega.tolerancia_area_px`.
 
+## M7c: visão geral (versão 0.9.0)
+
+Esta seção junta o que as seções "M7c, ..." abaixo detalham passo a passo. Fontes: decisoes-v1.md, 159, 162, 170 e 190 (Q1 a Q7); arquitetura-v1.md, 3.5, 5.7 e 7.3 a 7.6. Tudo foi conferido em fixtures sintéticas; a rodada com os três KVs autorizados (nº155) é do Duda, na tela.
+
+### Contratos novos
+
+| Contrato | Arquivo | Quem grava | Quem lê |
+|---|---|---|---|
+| `pacote-modelo/2` | `sugestoes/pacote-modelo.json` | motor (`sugestao.pacote`) | Claude |
+| `sugestoes/1` | `sugestoes/sugestoes.json` e `sugestoes/sugestoes-validadas.json` | Claude (o primeiro); motor (o validado) | motor; tela |
+| `medicoes-sugestao/1` | `medicoes/sugestao.json` | motor, ao salvar | Trezion e testes |
+| `perfil-marca/1` | `<biblioteca>/marcas/<id>/perfil-marca.json` | motor, pelo ato da tela | tela |
+| `marca-job/1` | `briefing/marca.json` | motor, pelo ato da tela | tela; o Claude vê só `contagens.marca_escolhida` |
+
+`estado/1` aceita `modo_dados` nulo (job criado sem modo); `rascunho-tela/1` aceita a origem `padrao_marca` por função no Design system; `medicoes-tela/1` ganha o passo 2. `pacote-modelo/1` fica só para ler job antigo.
+
+### Fluxo da sugestão de função
+
+1. `job criar` sem `--modo-dados`: o job vale (c) até o DA escolher.
+2. O DA escolhe o modo no passo 1 da tela (ato `modo_dados`). O motor refaz os dois pacotes no modo efetivo (`refazer_pacotes`): no (a), copia para `sugestoes/miniaturas/` só as camadas que `miniatura_permitida` aceita; no (b) e no (c), apaga a pasta; no (c), apaga também as sugestões. A escolha com origem `fixture_de_teste` continua valendo (c).
+3. Com o modo (a) ou (b) gravado e valendo, a tela mostra a frase do pedido (`FRASE_PEDIR_SUGESTOES`). O DA escreve ao Claude "quero sugestões", e a skill `sugerir-funcoes` roda `sugestao pacote` (modo e `ids.pacote_sha256`), lê o pacote e, só no (a), as miniaturas listadas nele, escreve `sugestoes/sugestoes.json` (uma função e uma alternativa por alvo, só ids e o enum) e roda `sugestao importar`, que confere e grava `sugestoes-validadas.json`.
+4. A página consulta `GET /api/sugestoes` a cada 3 s com o passo "Funções" aberto. A sugestão aparece ao lado da função, com a fonte; "Usar" é o mesmo clique dos botões de função (origem do rascunho). Nada do rascunho muda com a chegada.
+5. O "Salvar e seguir" grava `sugestoes_ref` no briefing e a métrica de acerto em `medicoes/sugestao.json`; o cronômetro do passo 2 grava em `medicoes/tela.json`. A falha dessas medições nunca chega ao DA.
+6. Modo que cai (ato da tela ou teto da agência): `conferir_modo` refaz ou fecha os pacotes no próximo `tela abrir`, `job proxima`, `ler`, `spec importar`, `job trocar-entrada`, `sugestao pacote`, `sugestao importar` ou `sugestao acerto`, e a tela deixa de mostrar sugestão. Os pacotes ficam fora da validade das fases (`Fase.refeitas`), então a troca de modo não deixa fase desatualizada.
+
+### Perfil de marca e biblioteca da agência
+
+- Biblioteca: `userConfig.biblioteca_agencia` (`directory`, opcional), passada ao motor por `--biblioteca`. `biblioteca.conferir` diz `ok`, `nao_configurada`, `ausente`, `sem_escrita`, `dentro_do_plugin`, `dentro_dos_dados` ou `marcas_bloqueada`; os envelopes que vão ao Claude (o do doctor e o da tela) levam só a situação, nunca o caminho nem a lista de marcas. A lista de marcas (id e nome) vai só à página da tela, no estado da página (`tela.estado.marca_na_tela`, que chama `marca.job.na_tela`), para o passo 1. Sem biblioteca que sirva, o job roda sem marca.
+- Marca do job: passo 1, ato `marca` (`marca escolher`), com as marcas da biblioteca, "Marca nova" e "Sem marca", nenhuma marcada; opcional.
+- Padrão citado: no Design system, `funcoes.padrao_da_marca` mostra a regra e a âncora de cada função do perfil com "Padrão da marca, versão N, do job X"; "Usar o padrão" põe no rascunho a origem `padrao_marca` com o `ref` `marca:<id>@v<N>#job:<id>`. O gravador mantém essa origem só quando o `ref` vale para o perfil atual.
+- Registro: botão "Guardar o padrão desta marca" no passo 5, ato `marca_registrar` (`marca registrar`), só com todos os formatos aprovados pelo DA e o briefing do DA no fim do índice. Vão ao perfil as regras de escala e as âncoras das funções que as peças aprovadas aplicam, com o job de origem, e o nome PostScript das faces. Cada registro é uma versão nova (`perfil.nova_versao`, sob trava por marca e com `versao_esperada`); a anterior vai inteira ao histórico.
+
+### Regras de leitura e escrita do job pelo Claude (gancho do plugin)
+
+| O quê | Leitura pelo Claude | Escrita pelo Claude |
+|---|---|---|
+| `sugestoes/pacote-modelo.json`, `sugestoes/pacote-specs.json` | sim | não (`MOTIVO_SUGESTOES`) |
+| `sugestoes/miniaturas/**` (só existe no modo a) | sim | não (`MOTIVO_SUGESTOES`) |
+| `sugestoes/sugestoes.json`, `sugestoes/mapeamento-specs.json` | sim | sim |
+| `sugestoes/sugestoes-validadas.json` | não | não (`MOTIVO_SUGESTOES`) |
+| `sugestoes/segredos-bloqueados.json` e o resto do job (`estado.json`, `entrada/`, `laudo/`, `briefing/`, `derivacao/`, `ds/`, `specs/`, `fontes/`, `medicoes/`, `render/`, `entrega/`) | não (`MOTIVO_LEITURA`) | negada nos arquivos do DA (`ARQUIVOS_DO_DA`: `briefing/`, `derivacao/`, `estado.json`, `specs/confirmacoes.json`, o master e o contrato do render, `entrega/` e afins) |
+| fora de um job: PSD, PSB, arquivo de fonte | não | sem regra própria |
+| qualquer caminho com o segmento `marcas` (biblioteca da agência) | não | não (`MOTIVO_MARCA`) |
+
+Vale para Read, Glob, Grep, Bash, PowerShell, Monitor, as ferramentas `mcp__*`, `Artifact` e `SendUserFile`. Passam os três comandos do motor que recebem PSD ou fonte (`job criar`, `job trocar-entrada`, `job remover-entrada`). O código do perfil e do registro (`desdobra.marca`) e as funções da tela que leem o perfil são negados ao Claude. `marca escolher` e `marca registrar` são atos da tela (`humano.ATOS_DA_TELA`), sem comando de terminal.
+
+### Skills (tabela 3.5)
+
+`novo-job`, `continuar`, `doctor`, `sugerir-funcoes` e `ler-spec`. Toda chamada do motor sai pelo Python do `interpretador.json`, com `--envelope --teto-modo-dados TETO`; nenhuma pergunta de modo, teto, valor ou regra; nenhum ato do DA; nunca ler a biblioteca da agência. `sugerir-funcoes` e `ler-spec` rodam só quando o DA pede (`disable-model-invocation: false`); `novo-job` e `continuar`, só pela chamada do DA. O teste `test_skills.py` confere essas regras em todas as skills.
+
 ## M7c S1: miniaturas permitidas do modo (a) (`desdobra/sugestao/miniaturas.py`)
 
 Decisão 190, Q7: no modo (a), vão ao Claude só imagens de camadas sem texto, e na dúvida a camada fica de fora. A regra mora numa função só, `miniatura_permitida(camada, laudo, contexto=None, *, pasta_laudo=None)`, que lê o `laudo/1` e, para o smart object, a estrutura interna que o leitor gravou em `pasta_laudo/bruto/<sha256>/estrutura.json`:
@@ -1419,3 +1469,43 @@ Revisão da correção A (dois defeitos, os dois corrigidos). Primeiro: a troca 
 Ajuste da revisão (leva 6): a regra "a fase estava em dia antes do ato" deixava a fase `specs` desatualizada para sempre quando o ato do modo não conseguia refazê-la (job ocupado por outro processo entre a gravação do modo e o refazer). A regra passou a ser `sugestao.pacote._specs_so_pelo_mapeamento`: a fase rodou com o mapeamento (hash dele no `estado.json`), o arquivo não existe mais e ele é a única entrada que mudou. Ela vale no ato (`refazer_pacotes`) e também na conferência (`_precisa_refazer`, motivo novo `specs`), e é conferida de novo dentro da trava; assim `tela abrir`, `job proxima` ou `sugestao pacote` refazem a fase sem passo no terminal para o DA, e a refação fica no log (`specs_refeita_sem_mapeamento`, só o modo). A conta cara (hash das folhas) só roda quando o `estado.json` diz que a fase usou o mapeamento e ele sumiu. Mapeamento novo do Claude no (a) ou no (b) continua desatualizando `specs`, que o `job proxima` refaz (a conferência não mexe). Para o pacote mexido, ficou a comparação de conteúdo e não um hash gravado pelo motor: ela pega também o pacote que não bate com o laudo ou o rascunho de agora, sem campo novo no `estado.json`, e custa uma montagem do pacote em memória por conferência. Testes novos: o ato com o job ocupado e a conferência seguinte, a fase atrasada só pelo mapeamento com os pacotes em dia, o mapeamento novo no (b) e os dois pacotes mexidos nos três modos (6 casos). Vermelho antes do ajuste: 2 falhas em 18; depois, 24 de 24.
 
 Segunda revisão da correção A (leva 6). Pacote com chave repetida: o `json.load` fica com a última chave, então um pacote com uma chave repetida no começo do objeto (nome ou texto injetado) era lido igual ao que o motor monta e continuava servido nos três modos. `_conteudo_mexido` agora compara os bytes do arquivo com os que o motor grava para o pacote montado agora (`arquivos.para_json`, o mesmo de `contratos.gravar`), nos dois pacotes. É a "serialização canônica" que a revisão aceitou no lugar de um hash gravado: o `estado.json` é regravado pelo `job proxima` com a cópia em memória depois de cada fase (a fase `ler` roda em processo filho), e um hash gravado ali pela fase se perderia. Corrida no ato do modo: outro processo pegando o job entre a gravação do modo e o refazer deixava `specs` atrasada até um comando do Claude. Agora a tela se cura sozinha: `sugestao.pacote.curar_specs` (só age quando `_specs_so_pelo_mapeamento`; a conta é ler o `estado.json` e ver se o mapeamento existe) roda no começo de `tela.estado.montar` e no `atualizar` de cada pedido do estado, que o servidor também faz antes de cada ato. Testes novos: os dois pacotes com chave repetida nos três modos (6 casos), o ato do modo com o job ocupado curado pela tela aberta e a tela montada de novo se curando. Vermelho: 8 de 8 nos testes novos; depois, 32 de 32.
+
+## M7c, E2
+
+Roteiro da marca com três jobs, só com testes (`testes/e2e/test_marca_tres_jobs.py`, novo), pelo plano do M7c (E2 e seção 4). Uma marca sintética numa biblioteca em pasta temporária e três jobs do mesmo PSD sintético (`test_derivacao_apoio.psd_derivacao`), cada um com o seu id, com a fonte inventada dos testes do M5. Os ajudantes são os do `test_marca_registrar.py` (a marca do job com origem `da` e meio `tela`, o briefing gravado como a tela grava, com a entrada no índice encadeado, e o encoder de teste com os parâmetros que não dependem do master).
+
+O roteiro:
+- job 1: a marca escolhida pelo DA, o briefing do DA, a derivação, o render dos dois formatos e a aprovação de todos pelo núcleo do aprovar com o Disparo da tela (origem `da`, meio `tela`); antes do registro, `funcoes.padrao_da_marca` é None (versão 0); o registro pelo ato `marca_registrar` da tela (pedir e confirmar pela rota genérica, com a prova de `humano.py`, como os testes do M5) grava a versão 1, com o job 1 de origem de toda regra e âncora;
+- job 2: a tela (`estado.montar` com a biblioteca) cita o padrão da versão 1 em todas as regras e âncoras do perfil, com o `ref` do job 1; a tela não grava rascunho e o Design system pede a regra e a âncora de cada função do perfil; o DA usa o padrão (o que o clique em "Usar o padrão" põe no rascunho, conferido pelo esquema `rascunho-tela/1`) em todas as funções do perfil menos uma, que ele escolhe à mão com o mesmo valor; o rascunho passa pelo gravador real do "Salvar e seguir" (`briefing.salvar.montar`, com o conteúdo da tela do job e a origem `da`), que decide a origem de cada regra e âncora, e o briefing grava `padrao_marca` com o `ref` só nas funções clicadas, e a escolhida à mão fica com a origem `da`;
+- job 3: o DA usa o padrão em todas as funções e muda a regra do título; a janela do registro mostra só essa regra como "deste job"; antes do registro, a cópia do job 3 aprovada pelo modo de teste da tela (origem `fixture_de_teste`) fica sem botão (motivo `formato_sem_aprovacao`); o pedido do ato e o `gravar` levam a impressão que a janela mostraria se a aprovação de teste valesse, e mesmo assim o ato é recusado (403) e o `gravar` levanta `ErroRegistro` com o motivo `formato_sem_aprovacao`, e o arquivo do perfil não muda; depois, o registro do job 3 pela tela grava a versão 2, com o job 3 de origem só da regra mudada, o job 1 em todas as outras e a versão 1 igual byte a byte (`arquivos.para_json`) no histórico;
+- a pasta de dados do plugin do teste (`CLAUDE_PLUGIN_DATA`, pasta temporária, com `biblioteca._dados_padrao` apontando para ela) é apagada; a biblioteca continua `ok`, a marca continua na lista, o arquivo do perfil é o mesmo byte a byte, e a tela reaberta no job 3 mostra o padrão da versão 2 e o "Padrão guardado" da versão 2; a biblioteca dentro da pasta de dados é recusada (`dentro_dos_dados`);
+- nenhum arquivo em `marcas/` tem nome ou assinatura de fonte (`arquivos.eh_nome_de_fonte` e `arquivos.assinatura_de_fonte`), e o perfil leva só o nome PostScript da face, sem o nome do arquivo nem o caminho da fonte (procurado cru, com a barra invertida escapada do JSON, com a barra normal e pelo nome da pasta).
+
+Medições (seção 4 do plano; saem na saída do pytest e, com a variável `DESDOBRA_MEDICAO_MARCA_TRES_JOBS`, num JSON fora do repositório):
+
+| Medição | Resultado | Meta |
+|---|---|---|
+| Job 2: regras e âncoras citadas sobre as do perfil | 8 de 8 (100%) | 100% |
+| Job 2: campo do Design system preenchido antes do clique | 0 | 0 |
+| Job 2: origem `padrao_marca` gravada sem clique | 0 | 0 |
+| Job 3: versão gravada e origem da regra mudada | versão 2, job 3 | versão 2 com o job 3 |
+| Job 3: versão 1 no histórico | igual byte a byte | igual |
+| Perfil depois de apagar a pasta de dados do plugin | presente, versão 2, arquivo igual | presente |
+| Registro com aprovação de teste | 0 | 0 |
+| Arquivo de fonte em `marcas/` | 0 | 0 |
+
+Nenhum defeito do motor apareceu no roteiro: o teste passou na primeira rodada contra o motor da leva 6. A sensibilidade foi conferida fora do repositório, com o motor mexido só em memória: o roteiro falha (3 de 3) quando o registro ignora o job do `ref` do padrão, quando a origem `padrao_marca` entra sem o clique e quando o registro aceita a aprovação do modo de teste.
+
+Revisão do E2: o roteiro passou a chamar o gravador real (`briefing.salvar.montar`) no job 2 e no job 3, procura o caminho da fonte também na forma escapada do JSON e, no caso negativo, confere o motivo da recusa com a impressão que a janela mostraria. Conferido fora do repositório: com `montar` quebrado, com `montar` pondo `padrao_marca` na função sem o clique e com o `gravar` aceitando a aprovação de teste (a janela e o ato recusando), o roteiro novo falha nos 3; o de antes passava nos 2 últimos.
+
+Riscos que ficam: o clique em "Usar o padrão" é reproduzido no rascunho em memória e o "Salvar e seguir" do job 2 e do job 3 passa pelo `montar` do gravador sem o ato da tela (sem o rascunho gravado, o Disparo do salvar e a derivação do salvar), sem o servidor da tela nem o Chromium (o caminho da página tem os testes do M4); o render roda pelo Disparo do terminal simulado, como nos testes do M5; a pasta de dados do plugin é simulada (sem o venv de verdade), e o teste mede só que a biblioteca não depende dela.
+
+## M7c, E3
+
+Documentação e versão do M7c, pelo plano do M7c (E3).
+
+- Versão 0.9.0: `plugins/desdobra/.claude-plugin/plugin.json` (a única fonte; `desdobra.__version__` lê dela) e o `motor_versao` das duas bibliotecas de specs (`biblioteca-specs/*.json`), como na 0.8.0. Os `'0.8.0'` e `'0.7.0'` de `test_biblioteca.py` são nomes de pasta de um plugin instalado sintético, sem relação com a versão do manifesto, e ficaram como estavam.
+- `CHANGELOG.md`: entrada 0.9.0, com o que muda para quem já usava a 0.8.0 (a versão entra na impressão de cada formato e pode pedir render e aprovação de novo, uma vez; as specs são lidas de novo, uma vez; o pacote do Claude é refeito no contrato novo) e o que ainda não funciona.
+- Este documento ganhou a "M7c: visão geral (versão 0.9.0)", antes das seções do M7c: contratos novos, fluxo da sugestão, perfil de marca e biblioteca, regras de leitura e escrita do job pelo Claude e as skills.
+- Teste novo `testes/test_versao.py` (5): o motor lê a versão do manifesto; os contratos do M7c existem e a versão é 0.9.0 ou posterior; a primeira entrada do CHANGELOG é a versão do manifesto, sem entrada repetida; o CHANGELOG sem travessão nem meia-risca; as bibliotecas de specs na versão do manifesto. Vermelho antes da troca (1 de 5: `(0, 8, 0) >= (0, 9, 0)`), verde depois (5 de 5).
+- O texto proposto ao Duda para a seção 9.8, as decisões novas, a troca da proposta da pergunta 8 da 10.2 e os pontos abertos dos passos do M7c ficou fora do repositório, sem gravar em `decisoes-v1.md` nem em `arquitetura-v1.md`, até o aval dele.
