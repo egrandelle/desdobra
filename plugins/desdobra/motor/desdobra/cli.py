@@ -44,8 +44,10 @@ MODULO_ENVELOPE = 'desdobra.sugestao.envelope'
 # atributos de args com a pasta do job, em ordem. O ler e o spec importar gravam os pacotes; o job trocar-entrada
 # troca o KV e deixa o pacote do KV antigo para tras
 # M7c, S3: o sugestao importar tambem, para o pacote de um modo que caiu ser refeito antes da conferencia
+# M7c, S5: e o sugestao acerto, para a sugestao de um modo que caiu sair antes da medida
 CONFEREM_O_MODO = {'tela abrir': ('job',), 'job proxima': ('pasta_job', 'pasta'), 'ler': ('job',),
-                   'spec importar': ('job',), 'job trocar-entrada': ('pasta',), 'sugestao importar': ('job',)}
+                   'spec importar': ('job',), 'job trocar-entrada': ('pasta',), 'sugestao importar': ('job',),
+                   'sugestao acerto': ('job',)}
 
 
 class _ErroArgumento(Exception):

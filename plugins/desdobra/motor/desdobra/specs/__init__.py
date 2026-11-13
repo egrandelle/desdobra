@@ -122,9 +122,9 @@ def _confirmar(args):
         disparo = humano.exigir('spec confirmar')
     except humano.ErroHumano as e:
         return Resultado(comando='spec confirmar', codigo=int(Codigo.RECUSADO), situacao='recusado',
-                         o_que_fazer=confirmar.O_QUE_FAZER_TERMINAL + ' ' + humano.O_QUE_FAZER, pasta_job=pasta,
+                         o_que_fazer=humano.o_que_fazer('spec confirmar'), pasta_job=pasta,
                          contagens={'recusa_%s' % e: 1},
-                         linhas_humanas=['spec confirmar só roda num terminal interativo, pelo DA.'])
+                         linhas_humanas=[humano.linha_recusa('spec confirmar')])
     if not (pasta / 'estado.json').is_file():
         return _uso('spec confirmar', 'Rode a confirmação numa pasta de job ("desdobra job criar").', pasta)
     novas, rascunho, formatos, info = confirmar.sessao(pasta, disparo=disparo, filtro_formato=args.formato,

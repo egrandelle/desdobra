@@ -66,9 +66,16 @@ ATOS_DA_TELA = ('modo dados escolher', 'familia confirmar', 'marca escolher')
 MARCAS_DO_PAINEL = {'TERM_PROGRAM': 'claude-desktop'}
 VARIAVEIS_DO_PAINEL = ('CLAUDE_AGENT_SDK_VERSION',)
 PROCESSOS_DO_CLAUDE = ('claude.exe',)
-O_QUE_FAZER = ('Isto é do DA: abra um terminal próprio (Prompt de Comando, PowerShell ou Terminal), fora do Claude, e '
-               'rode o comando lá. O desdobra recusa rodar com --envelope, com a entrada ou a saída redirecionada, '
-               'sem console interativo, em processo aberto pelo Claude ou no painel de terminal do app do Claude.')
+# o que o DA le quando um ato so dele parte de fora da tela (M7c, K5; decisoes-v1.md, 159: o DA nunca roda comando).
+# O caminho pelo console interativo (exigir) fica no motor so para os testes e para a Trezion, e o texto nao o cita
+O_QUE_FAZER = ('Isto é um clique seu na tela do desdobra, com a confirmação na própria janela. Peça ao Claude para '
+               'abrir a tela do job e faça o clique lá. O desdobra recusa este ato quando ele parte do Claude.')
+# atos so do DA que a tela ainda nao tem (o botao de entregar e o M8, decisoes-v1.md, 180): a recusa deles nao promete
+# um clique que o DA nao acha na tela
+ATOS_SEM_BOTAO = ('entregar', 'parametros-entrega')
+O_QUE_FAZER_SEM_BOTAO = ('A entrega dos arquivos finais chega no próximo marco do desdobra. Por enquanto, o job '
+                         'termina na aprovação de cada formato, na tela. O desdobra recusa este ato quando ele parte '
+                         'do Claude.')
 TEXTO_MOTIVO = {
     'terminal_do_claude': ('O comando veio do painel de terminal do app do Claude ou de um processo aberto pelo '
                            'Claude, e o que só o DA faz não parte de lá.'),
@@ -83,6 +90,16 @@ ORIGEM_FIXTURE = 'fixture_de_teste'
 _SELOS = {}
 # sessoes da tela abertas neste processo: chave -> modo de teste (so o servidor da tela abre e fecha)
 _SESSOES_TELA = {}
+
+
+def o_que_fazer(comando):
+    """O o_que_fazer da recusa de um ato so do DA que partiu de fora da tela (M7c, revisao do K5)."""
+    return O_QUE_FAZER_SEM_BOTAO if comando in ATOS_SEM_BOTAO else O_QUE_FAZER
+
+
+def linha_recusa(comando):
+    """A linha humana que acompanha o o_que_fazer da recusa: diz de quem e o ato, sem mandar ao terminal."""
+    return 'O ato %s é só do DA, e o desdobra recusou este pedido.' % comando
 
 
 class ErroHumano(Exception):

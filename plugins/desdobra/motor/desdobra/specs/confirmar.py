@@ -19,8 +19,6 @@ from pathlib import Path
 from desdobra import contratos
 from desdobra.specs import importar, modelo
 
-O_QUE_FAZER_TERMINAL = ('A confirmação das specs é do DA: rode "desdobra spec confirmar --job <pasta>" num terminal '
-                        'interativo, fora do Claude.')
 COMANDO = 'spec confirmar'  # o comando humano do Disparo (desdobra.humano.COMANDOS), no terminal e na tela
 SAIR = ('s', 'sair')
 QUEM_MAPEOU = {'rotulo_da_folha': 'pelo rótulo da própria folha', 'proposta_do_modelo': 'por proposta do Claude',

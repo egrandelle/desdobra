@@ -23,7 +23,11 @@ do DA (a aprovacao da quebra proposta nao e mudanca). Regras:
   - medicoes/tela.json (esquema medicoes-tela/1), gravado so por este modulo, de forma atomica: fica fora do briefing e
     fora da impressao de cada formato (desdobra.derivacao.impressao le so a derivacao e o briefing), e nenhuma fase o
     le. O arquivo que nao se le fica ao lado (ARQUIVO_ILEGIVEL) e a medicao recomeca;
-  - a medicao nunca atrapalha o DA: a falha ao gravar fica so na memoria, e o sinal e o ato seguem.
+  - a medicao nunca atrapalha o DA: a falha ao gravar fica so na memoria, e o sinal e o ato seguem;
+  - o passo 2, "Funcoes" (M7c, S4; plano do M7c, secao 4, rotulagem cronometrada), no mesmo molde: com o passo
+    aberto, o sinal leva passo_2 e sugestao (havia sugestao do Claude a vista). O tempo desde um sinal do passo 2 e
+    dele, ate a pausa maxima; o total vai do primeiro clique no passo ate o ultimo instante contado. A sessao guarda
+    o tempo ativo, o total, o tempo ativo com sugestao a vista e se a sugestao apareceu; passo_2 soma as sessoes.
 """
 import secrets
 import threading
@@ -38,6 +42,9 @@ ARQUIVO = Path('medicoes') / 'tela.json'
 ARQUIVO_ILEGIVEL = Path('medicoes') / 'tela-ilegivel.json'
 # o que a pagina manda em cada sinal (tela/tela.js, sinalizar)
 CAMPOS_DO_SINAL = ('familia', 'edicoes', 'quebras', 'atraso_ms')
+# M7c, S4: o sinal com o passo 2 ("Funcoes") aberto leva tambem estes dois, os dois booleanos (sugestao: havia
+# sugestao do Claude a vista na tela); fora do passo 2, a pagina manda so os campos de cima
+CAMPOS_DO_PASSO_2 = ('passo_2', 'sugestao')
 CONTAGEM_MAX = 2 ** 31 - 1  # numero-neutro: o maior inteiro de 32 bits, teto de sanidade de uma contagem da pagina
 CASAS = 3  # numero-neutro: milissegundos nos tempos gravados
 MS = 1000  # numero-neutro: milissegundos num segundo
@@ -54,14 +61,25 @@ def conferir_sinal(dados, familias):
     """(familia ou None, edicoes, quebras, atraso em segundos) do sinal da pagina, ou None quando ele nao segue o
     formato: as chaves exatas, a familia entre as da tela agora (ou null, fora do passo 3) e as contagens e o atraso
     inteiros, sem sinal."""
-    if not isinstance(dados, dict) or set(dados) != set(CAMPOS_DO_SINAL):
+    if not isinstance(dados, dict) or set(dados) not in (set(CAMPOS_DO_SINAL),
+                                                         set(CAMPOS_DO_SINAL + CAMPOS_DO_PASSO_2)):
         return None
     gid = dados['familia']
+    if 'passo_2' in dados:
+        if not all(isinstance(dados[k], bool) for k in CAMPOS_DO_PASSO_2):
+            return None
+        if dados['passo_2'] and gid is not None:
+            return None  # o passo 2 aberto nunca tem familia aberta
     if gid is not None and (not isinstance(gid, str) or gid not in familias):
         return None
     if not all(_inteiro(dados[k]) for k in ('edicoes', 'quebras', 'atraso_ms')):
         return None
     return gid, dados['edicoes'], dados['quebras'], dados['atraso_ms'] / MS
+
+
+def passo_do_sinal(dados):
+    """{'passo_2', 'sugestao'} do sinal ja conferido (conferir_sinal): falsos quando o sinal nao os traz."""
+    return {k: dados.get(k) is True for k in CAMPOS_DO_PASSO_2}
 
 
 def ler(pasta):
@@ -108,12 +126,17 @@ class Cronometro:
         self._ultimo = None   # o instante do ultimo sinal da sessao
         self._corrente = None  # a familia do ultimo sinal, quando o cronometro dela corre
         self._familias = {}    # {familia: {'inicio', 'ultimo', 'confirmada', 'ativo', 'edicoes', 'quebras'}}
+        # M7c, S4: o passo 2 desta janela ({'inicio', 'ultimo', 'ativo', 'ativo_com', 'sugestao'}) e, quando o ultimo
+        # sinal foi do passo 2, se havia sugestao a vista nele (None fora do passo 2)
+        self._p2 = None
+        self._p2_corrente = None
         self._id = secrets.token_hex(ID_BYTES)  # a sessao desta janela no arquivo
 
     # -------------------------------------------------------------- o que a tela chama
-    def sinal(self, familia, edicoes=0, quebras=0, atraso_s=0.0):
+    def sinal(self, familia, edicoes=0, quebras=0, atraso_s=0.0, passo_2=False, sugestao=False):
         """Um clique ou tecla na pagina, com a familia aberta (None fora do passo 3) e o que o DA fez desde o sinal
-        anterior. atraso_s: ha quanto tempo foi o ultimo clique que este sinal leva."""
+        anterior. atraso_s: ha quanto tempo foi o ultimo clique que este sinal leva. passo_2: o passo "Funcoes"
+        esta aberto (M7c, S4; so com familia None); sugestao: havia sugestao do Claude a vista na tela."""
         chegou = self.relogio()
         # o sinal sem edicao pergunta se a familia esta confirmada antes da trava do cronometro: quem responde pode
         # esperar a trava de escrita do servidor (revisao do C5), e o ato que confirma chama confirmar com ela
@@ -136,6 +159,14 @@ class Cronometro:
                 f['quebras'] += quebras
                 f['ultimo'] = t
             self._corrente = familia if f is not None else None
+            if passo_2 and familia is None:
+                if self._p2 is None:
+                    self._p2 = {'inicio': t, 'ultimo': t, 'ativo': 0.0, 'ativo_com': 0.0, 'sugestao': False}
+                self._p2['ultimo'] = t
+                self._p2['sugestao'] = self._p2['sugestao'] or bool(sugestao)
+                self._p2_corrente = bool(sugestao)
+            else:
+                self._p2_corrente = None
             self._ultimo = t
             self._gravar()
 
@@ -153,6 +184,7 @@ class Cronometro:
             f['ultimo'] = t
             f['confirmada'] = t
             self._corrente = None
+            self._p2_corrente = None
             self._ultimo = t
             self._gravar()
 
@@ -167,12 +199,26 @@ class Cronometro:
 
     def _passar(self, t):
         """O tempo desde o ultimo sinal vai a familia dele, quando o cronometro dela corre e a pausa nao passou do
-        teto."""
-        if self._corrente is None or self._ultimo is None:
+        teto. O mesmo vale para o passo 2 (M7c, S4): o tempo desde o ultimo sinal do passo 2 e dele, e conta tambem
+        como tempo com sugestao quando ela estava a vista naquele sinal; o total do passo vai ate esse instante."""
+        if self._ultimo is None:
             return
         passou = t - self._ultimo
-        if 0 < passou <= self.pausa:
+        if not 0 < passou <= self.pausa:
+            return
+        if self._corrente is not None:
             self._familias[self._corrente]['ativo'] += passou
+        if self._p2_corrente is not None:
+            self._p2['ativo'] += passou
+            if self._p2_corrente:
+                self._p2['ativo_com'] += passou
+            self._p2['ultimo'] = t
+
+    def _passo_2(self):
+        p = self._p2
+        return {'aberta_em': _quando(p['inicio']), 'ultima_atividade_em': _quando(p['ultimo']),
+                'ativo_s': round(p['ativo'], CASAS), 'total_s': round(max(p['ultimo'] - p['inicio'], 0.0), CASAS),
+                'ativo_com_sugestao_s': round(p['ativo_com'], CASAS), 'sugestao_na_tela': p['sugestao']}
 
     def _sessao(self):
         familias = {}
@@ -183,12 +229,15 @@ class Cronometro:
                              'ativo_s': round(f['ativo'], CASAS), 'total_s': round(max(fim - f['inicio'], 0.0), CASAS),
                              'edicoes': f['edicoes'], 'quebras': f['quebras']}
         ultimo = self._ultimo
-        return {'id': self._id, 'aberta_em': _quando(self._aberta),
-                'ultima_atividade_em': _quando(ultimo) if ultimo is not None else None,
-                'origem': self.origem,
-                'ativo_s': round(sum(f['ativo'] for f in self._familias.values()), CASAS),
-                'total_s': round(max((ultimo if ultimo is not None else self._aberta) - self._aberta, 0.0), CASAS),
-                'familias': familias}
+        sessao = {'id': self._id, 'aberta_em': _quando(self._aberta),
+                  'ultima_atividade_em': _quando(ultimo) if ultimo is not None else None,
+                  'origem': self.origem,
+                  'ativo_s': round(sum(f['ativo'] for f in self._familias.values()), CASAS),
+                  'total_s': round(max((ultimo if ultimo is not None else self._aberta) - self._aberta, 0.0), CASAS),
+                  'familias': familias}
+        if self._p2 is not None:
+            sessao['passo_2'] = self._passo_2()
+        return sessao
 
     def _gravadas(self):
         """As sessoes no arquivo de agora, lidas a cada gravacao (as de outras janelas e a desta, se ja gravou). O
@@ -221,10 +270,24 @@ class Cronometro:
             sessoes[lugar:lugar + 1] = [esta]
             dados = {'esquema': ESQUEMA, 'job_id': self.job_id, 'pausa_max_s': self.pausa,
                      'atualizado_em': _quando(self.relogio()), 'sessoes': sessoes, 'familias': _somar(sessoes)}
+            passo_2 = _somar_passo_2(sessoes)
+            if passo_2 is not None:
+                dados['passo_2'] = passo_2
             try:
                 contratos.gravar(self.pasta / ARQUIVO, dados, ESQUEMA)
             except (OSError, contratos.ErroContrato):
                 pass  # a medicao nunca atrapalha o DA: o que nao gravou fica na memoria e vai no proximo sinal
+
+
+def _somar_passo_2(sessoes):
+    """O passo 2 somado sobre as sessoes que o mediram (M7c, S4), ou None quando nenhuma mediu."""
+    com = [s['passo_2'] for s in sessoes if s.get('passo_2')]
+    if not com:
+        return None
+    return {'sessoes': len(com), 'sessoes_com_sugestao': sum(1 for p in com if p['sugestao_na_tela']),
+            'ativo_s': round(sum(p['ativo_s'] for p in com), CASAS),
+            'total_s': round(sum(p['total_s'] for p in com), CASAS),
+            'ativo_com_sugestao_s': round(sum(p['ativo_com_sugestao_s'] for p in com), CASAS)}
 
 
 def _somar(sessoes):

@@ -113,8 +113,8 @@ def _confirmar(args):
         disparo = humano.exigir(nome)
     except humano.ErroHumano as e:
         return Resultado(comando=nome, codigo=int(Codigo.RECUSADO), situacao='recusado',
-                         o_que_fazer=humano.O_QUE_FAZER, pasta_job=pasta, contagens={'recusa_%s' % e: 1},
-                         linhas_humanas=['Este comando só roda num terminal interativo.'])
+                         o_que_fazer=humano.o_que_fazer(nome), pasta_job=pasta, contagens={'recusa_%s' % e: 1},
+                         linhas_humanas=[humano.linha_recusa(nome)])
     if not (pasta / 'estado.json').is_file():
         return _erro(nome, pasta, 'A pasta não é um job do desdobra.')
     try:

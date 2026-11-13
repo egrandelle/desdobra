@@ -72,4 +72,4 @@ Um `portao` (`codigo` 10) quer dizer que o próximo passo é do DA. Explique o `
 
 ## Fim das fases (`concluido`)
 
-Com a `situacao` `concluido`, e já no `ok` da fase `specs`, o `o_que_fazer` traz o texto final do motor. Esse texto cita, com comandos de terminal, a confirmação das specs, o render, os parâmetros de entrega, a aprovação e a entrega. Não repasse esse texto ao DA. Diga a ele que a leitura, as fontes, o design system e o rascunho das specs estão prontos e abra a tela (passo 8 da skill): a confirmação das specs, o render e a aprovação são cliques dele na tela. A entrega dos arquivos finais chega no próximo marco do desdobra.
+Com a `situacao` `concluido`, e já no `ok` da fase `specs`, o `o_que_fazer` traz o texto final do motor. Esse texto é escrito para você e resume o que falta ao DA na tela. Não repasse esse texto ao DA. Diga a ele que a leitura, as fontes, o design system e o rascunho das specs estão prontos e abra a tela (passo 8 da skill): a confirmação das specs, o render e a aprovação são cliques dele na tela. A entrega dos arquivos finais chega no próximo marco do desdobra.

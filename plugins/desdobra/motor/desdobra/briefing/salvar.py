@@ -65,6 +65,19 @@ def _modo(pasta, origem):
     return reg['valor']
 
 
+def sugestoes_ref(pasta, conteudo=None):
+    """M7c, S4: o sha256 de sugestoes/sugestoes-validadas.json que a tela mostra agora (o mesmo arquivo, no modo
+    efetivo de agora e do KV de agora; desdobra.tela.funcoes.sugestoes_na_tela), ou None. Vai ao briefing so como
+    referencia: a sugestao nunca e valor. Com o conteudo da tela, a mesma leitura da rota /api/sugestoes, com o teto
+    desta tela (o da linha de comando tambem; revisao do S4); sem ele, o teto do job."""
+    ler = (conteudo or {}).get('sugestoes')
+    if callable(ler):
+        return (ler() or {}).get('sha256')
+    from desdobra.job import modo_dados
+    from desdobra.tela import funcoes
+    return funcoes.sugestoes_na_tela(pasta, modo_dados.teto_do_job(pasta))['sha256']
+
+
 def _com_origem(itens, tipo):
     saida = copy.deepcopy(itens)
     for item in saida:
@@ -108,6 +121,8 @@ def montar(pasta, conteudo, dados, *, origem, meio, por, quando, modo):
         novo[k] = _com_origem(parcial[k], tipo)
     novo['modo_dados'] = {'valor': modo, 'situacao': 'confirmado' if modo else 'pendente',
                           'origem': {'tipo': tipo, 'ref': REF_MODO}}
+    # M7c, S4: as sugestoes que a tela mostrava ao salvar, so pelo sha256 do arquivo validado
+    novo['sugestoes_ref'] = sugestoes_ref(pasta, conteudo)
     novo['composicoes'] = []
     for gid, fam in conteudo['familias'].items():
         f = dados['familias'].get(gid) or {}
@@ -261,8 +276,20 @@ def _salvar(pasta, conteudo, disparo):
             _gravar_mudancas(pasta, mudancas)
     nucleo.registrar_evento(pasta, 'briefing_confirmado', origem=disparo.origem, meio=disparo.meio,
                             familias=len(b['composicoes']), derivado=derivado, motivo=motivo, afetados=afetados)
+    _medir_sugestao(pasta, b, conteudo)
     return {'briefing': b, 'historico': guardada, 'derivado': derivado, 'motivo': motivo, 'devolucoes': devolucoes,
             'afetados': afetados}
+
+
+def _medir_sugestao(pasta, b, conteudo):
+    """M7c, S5: o acerto da sugestao que a tela mostrava contra o briefing que acabou de ser gravado, em
+    medicoes/sugestao.json (fora do briefing; desdobra.sugestao.acerto). Toda falha e engolida: a medicao nunca
+    interrompe o salvar nem chega ao DA."""
+    try:
+        from desdobra.sugestao import acerto
+        acerto.ao_salvar(pasta, b, conteudo)
+    except Exception:  # noqa: BLE001 - so registro
+        pass
 
 
 def _resolvido_gravado(pasta, laudo, specs):

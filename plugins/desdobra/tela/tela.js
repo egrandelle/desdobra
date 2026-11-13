@@ -64,10 +64,16 @@
   const POR = { camada: 'da própria camada', grupo: 'herdada da pasta', decisao_10: 'pela sugestão para camada coberta' };
   /* os mesmos nomes e explicacoes do dialogo (desdobra/tela/atos.py MODOS) */
   const MODOS = {
-    a: ['Textos e miniaturas', 'O Claude recebe os nomes e os textos das camadas e miniaturas das imagens sem texto, para sugerir as funções.'],
+    a: ['Textos e miniaturas', 'O Claude recebe os nomes e os textos das camadas e miniaturas das imagens sem texto, para sugerir as funções. Uma letra desenhada em pixel ou em forma vetorial o desdobra não enxerga, e ela pode ir na imagem.'],
     b: ['Sem imagens', 'O Claude recebe os nomes e os textos das camadas, sem nenhuma imagem.'],
     c: ['Sem conteúdo', 'Nada do conteúdo do arquivo vai ao Claude. Ele recebe só contagens e medidas.']
   };
+  /* M7c, S4 (decisao 190, Q4): a frase que o DA escreve ao Claude para pedir sugestoes (desdobra/tela/funcoes.py
+     FRASE_PEDIR_SUGESTOES). A tela nunca chama o Claude; ela so mostra a sugestao que o desdobra conferiu */
+  const FRASE_PEDIR_SUGESTOES = 'Para ver sugestões de função, escreva ao Claude: quero sugestões';
+  const PEDIDO_SUGESTOES = 'quero sugestões';
+  // a consulta leve do sha256 das sugestoes, so com o passo 2 aberto
+  const SUGESTOES_MS = 3000;
   const SO_PARA_VER = 'Nesta janela a tela só mostra. As escolhas ficam para a janela que o desdobra abre para você.';
   const SITUACOES = { derivado: 'proposta', devolvido: 'sem proposta ainda' };
   /* as funcoes do briefing (briefing/modelo.py CLASSES) com acento, para o DA; o id cru nunca vai a tela */
@@ -124,6 +130,9 @@
   const CAMPOS_P2 = ['funcoes', 'cobertas', 'design', 'design_camadas'];
   const p2 = { funcoes: {}, cobertas: {}, design: {}, design_camadas: {} };
   const p2obs = {}; // indeterminado sem observacao: fica so na tela ate o DA escrever
+  /* M7c, S4: a sugestao do Claude que o desdobra conferiu (GET /api/sugestoes), por camada ou pasta. Ela so aparece:
+     nunca entra em p2 sem o clique do DA em "Usar". chegou: a leitura nova que espera o "Mostrar" */
+  const sug = { modo: null, sha: null, por: new Map(), chegou: null, lida: false, consultando: false };
   /* as escolhas do passo 1 (revisao do M7a): a prancheta (id do quadro) e o giro por chave do formato na folha */
   const p1 = { quadro: null, rotacoes: {} };
   const giroSemSentido = {}; // quarto de volta escolhido sem o sentido: fica so na tela ate o DA escolher o sentido
@@ -348,6 +357,8 @@
     if (!document.getElementById('passo-pecas').hidden) iniciarPecas(null);
     mostrarAvisos(e);
     atualizarFaltam();
+    // M7c, S4: o ato (o modo de dados, por exemplo) pode ter mudado o que a tela mostra como sugestao
+    if (sug.lida) lerSugestoes();
     return Promise.resolve(montarLido(e.lido)).then(sincronizarConfirmacoes);
   }
   /* as familias que o servidor deixou de contar como confirmadas (um formato entrou ou saiu, ou voltou de outra
@@ -444,11 +455,19 @@
   function familiaDoSinal() {
     return !document.getElementById('passo-pecas').hidden && vista.familia ? vista.familia : null;
   }
+  /* M7c, S4: com o passo 2 aberto, o sinal leva tambem passo_2 e se havia sugestao do Claude a vista */
+  function passo2DoSinal() {
+    if (document.getElementById('passo-funcoes').hidden) return null;
+    return { passo_2: true, sugestao: sug.por.size > 0 };
+  }
+  function chaveDoSinal(familia, p) { return String(familia) + '|' + (p ? (p.sugestao ? 's' : 'p') : ''); }
   function anotarSinal(familia, edicoes, quebras) {
     if (!escrita) return;
-    // a familia mudou: o sinal da anterior sai antes, com o tempo dela
-    if (cron.pendente && cron.pendente.familia !== familia) enviarSinal();
-    if (!cron.pendente) cron.pendente = { familia: familia, edicoes: 0, quebras: 0, em: 0 };
+    const p = familia === null ? passo2DoSinal() : null;
+    const chave = chaveDoSinal(familia, p);
+    // a familia (ou o passo 2) mudou: o sinal da anterior sai antes, com o tempo dela
+    if (cron.pendente && cron.pendente.chave !== chave) enviarSinal();
+    if (!cron.pendente) cron.pendente = { familia: familia, passo: p, chave: chave, edicoes: 0, quebras: 0, em: 0 };
     cron.pendente.edicoes += edicoes;
     cron.pendente.quebras += quebras;
     cron.pendente.em = performance.now();
@@ -468,6 +487,7 @@
     raiz.dataset.sinal = 'enviando';
     const corpo = { familia: p.familia, edicoes: p.edicoes, quebras: p.quebras,
       atraso_ms: Math.max(0, Math.round(agora - p.em)) };
+    if (p.passo) { corpo.passo_2 = true; corpo.sugestao = p.passo.sugestao; }
     // a medicao nunca atrapalha o DA: o sinal recusado ou perdido so fica de fora
     enviar('/api/medicao', corpo).catch(function () { return null; }).then(function () {
       if (!cron.pendente && !cron.espera) raiz.dataset.sinal = 'enviado';
@@ -540,6 +560,8 @@
       trocarPainel(e);
       mostrarAvisos(e);
       atualizarFaltam();
+      // revisao do S4: depois de qualquer ato (o modo de dados, por exemplo), o modo que vale e as sugestoes de novo
+      if (sug.lida) lerSugestoes();
       return Promise.resolve(montarLido(e.lido)).then(sincronizarConfirmacoes);
     });
   }
@@ -948,6 +970,27 @@
     if (qs.length && !escrita) no.appendChild(el('p', SO_PARA_VER, 'nota'));
   }
 
+  /* M7c, S4: a frase do pedido de sugestoes, com o que o DA escreve destacado (a tela nunca chama o Claude) */
+  function frasePedirSugestoes(classe) {
+    const p = el('p', FRASE_PEDIR_SUGESTOES.slice(0, FRASE_PEDIR_SUGESTOES.length - PEDIDO_SUGESTOES.length), 'pedir-sugestoes ' + classe);
+    p.appendChild(el('span', PEDIDO_SUGESTOES, 'pedido'));
+    return p;
+  }
+  /* revisao do S4: a frase do passo 1 aparece com o modo a ou b gravado E valendo. O modo que vale (a escolha do DA
+     limitada pelo teto do job e da linha de comando; a escolha de teste vale c) vem da rota das sugestoes, a mesma
+     conta da importacao: com o teto em c, o pedido seria recusado, e a frase nao aparece */
+  let modoNoPasso1 = null;
+  function atualizarPedidoDoPasso1() {
+    const lugar = document.getElementById('modo-pedido-lugar');
+    if (!lugar) return;
+    const gravado = !!modoNoPasso1 && (modoNoPasso1.escolhido === 'a' || modoNoPasso1.escolhido === 'b');
+    const vale = sug.modo === 'a' || sug.modo === 'b';
+    if (gravado && vale) {
+      if (!lugar.firstChild) lugar.appendChild(frasePedirSugestoes('modo-pedido'));
+    } else {
+      limpar(lugar);
+    }
+  }
   /* o modo de dados (decisao 170): nada marcado ate o DA escolher; so os modos dentro do teto aparecem */
   function montarModo(m) {
     const md = document.getElementById('lido-modo');
@@ -970,6 +1013,11 @@
       grade.appendChild(b);
     });
     md.appendChild(grade);
+    modoNoPasso1 = m;
+    const lugar = el('div', null, 'modo-pedido-lugar');
+    lugar.id = 'modo-pedido-lugar';
+    md.appendChild(lugar);
+    atualizarPedidoDoPasso1();
     if (m.teto && m.opcoes.length < 3) {
       md.appendChild(el('p', 'A agência limita este job aos modos mostrados aqui.', 'nota modo-nota'));
     }
@@ -1161,6 +1209,94 @@
     detalhar(null);
     montarDesign();
   }
+
+  /* ---------------------------------------------------------------- sugestao do Claude (M7c, S4; decisao 190, Q4)
+     a pagina le a rota leve na partida, depois de cada ato e a cada SUGESTOES_MS com o passo 2 aberto. A primeira
+     leitura aparece direto; quando o sha256 muda depois, a faixa "Chegaram as sugestoes" espera o "Mostrar", e nada do
+     que o DA escolheu muda. Sem sugestao no modo de agora (modo c, outro modo, outro KV), ela some na hora */
+  function sugestaoDe(lid) { return sug.por.get(Number(lid)) || null; }
+  function redesenharSugestoes() {
+    atualizarArvore();
+    if (p2idx.atual !== null) detalhar(p2idx.por.get(p2idx.atual));
+    else detalhar(null);
+  }
+  function aplicarSugestoes(r) {
+    sug.modo = r.modo || null;
+    sug.sha = r.sha256 || null;
+    sug.por = new Map();
+    (r.sugestoes || []).forEach(function (x) { sug.por.set(x.layer_id, x); });
+    sug.chegou = null;
+    document.getElementById('sugestoes-chegaram').hidden = true;
+    raiz.dataset.sugestoes = sug.sha ? 'mostradas' : 'nenhuma';
+    redesenharSugestoes();
+    atualizarPedidoDoPasso1();
+  }
+  function lerSugestoes() {
+    if (sug.consultando) return Promise.resolve(null);
+    sug.consultando = true;
+    return pedir('/api/sugestoes').then(function (r) {
+      sug.consultando = false;
+      if (!r || typeof r !== 'object') return;
+      const sha = r.sha256 || null;
+      if (!sug.lida || !sha) {
+        // a primeira leitura, ou nenhuma sugestao no modo de agora: a tela segue direto, sem esperar clique
+        sug.lida = true;
+        if (!sha || sha !== sug.sha || r.modo !== sug.modo) aplicarSugestoes(r);
+        return;
+      }
+      if (sha === sug.sha) {
+        if (sug.chegou) { sug.chegou = null; document.getElementById('sugestoes-chegaram').hidden = true; }
+        return;
+      }
+      if (sug.chegou && sug.chegou.sha256 === sha) return;
+      sug.chegou = r;
+      raiz.dataset.sugestoes = 'chegaram';
+      document.getElementById('sugestoes-chegaram').hidden = false;
+      // revisao do S4: com a faixa a vista, o painel sem camada aberta deixa de pedir as sugestoes que ja chegaram
+      if (p2idx.atual === null) detalhar(null);
+    }).catch(function () { sug.consultando = false; });
+  }
+  function ligarSugestoes() {
+    document.getElementById('mostrar-sugestoes').addEventListener('click', function () {
+      if (sug.chegou) aplicarSugestoes(sug.chegou);
+    });
+    lerSugestoes();
+    setInterval(function () {
+      if (!document.getElementById('passo-funcoes').hidden && !document.hidden) lerSugestoes();
+    }, SUGESTOES_MS);
+  }
+  function quadroDaSugestao(n) {
+    const s = sugestaoDe(n.camada);
+    if (!s) return null;
+    const lid = String(n.camada);
+    const own = p2.funcoes[lid] || null;
+    const box = el('section', null, 'sugestao');
+    box.dataset.sugestao = lid;
+    box.setAttribute('aria-label', 'Sugestão do Claude');
+    const topo = el('p', null, 'sugestao-fonte');
+    topo.appendChild(el('span', 'Sugestão do Claude, modo (' + sug.modo + ')', 'sugestao-selo'));
+    box.appendChild(topo);
+    [[s.funcao, 'Sugestão'], [s.alternativa, 'Alternativa']].forEach(function (par, i) {
+      const linha = el('div', null, 'sugestao-linha' + (i ? ' alternativa' : ''));
+      const info = el('span', null, 'sugestao-info');
+      info.appendChild(el('span', par[1], 'sugestao-rotulo'));
+      info.appendChild(el('span', maiuscula(nomeFuncao(par[0])), 'sugestao-funcao'));
+      linha.appendChild(info);
+      if (own && own.funcao === par[0]) {
+        linha.appendChild(el('span', 'Em uso', 'sugestao-em-uso'));
+      } else {
+        const b = botao('Usar', 'botao usar');
+        b.dataset.usar = par[0];
+        b.setAttribute('aria-label', 'Usar ' + nomeFuncao(par[0]));
+        if (!escrita) b.disabled = true;
+        b.addEventListener('click', function () { escolherFuncao(n, par[0]); });
+        linha.appendChild(b);
+      }
+      box.appendChild(linha);
+    });
+    box.appendChild(el('p', 'Nada fica gravado até você clicar em Usar ou escolher outra função abaixo.', 'nota sugestao-nota'));
+    return box;
+  }
   function geometria(f) {
     const o = (p2idx.opcoes.funcoes || []).find(function (x) { return x.id === f; });
     return o ? o.geometria : true;
@@ -1319,6 +1455,9 @@
         b.dataset.camada = String(n.camada);
         b.appendChild(el('span', n.nome || 'Camada sem nome', 'nome'));
         b.appendChild(el('span', '', 'funcao'));
+        const marcaSug = el('span', '', 'sugestao-arvore');
+        marcaSug.hidden = true;
+        b.appendChild(marcaSug);
         b.addEventListener('click', function () { escolherNo(n.camada); });
         li.appendChild(b);
         if (p2idx.filhos.has(n.camada)) li.appendChild(ramo(n.camada));
@@ -1346,6 +1485,12 @@
       b.querySelector('.funcao').textContent = descricaoDoNo(n);
       b.classList.toggle('falta', falta(n));
       b.classList.toggle('propria', !!p2.funcoes[b.dataset.camada]);
+      // M7c, S4: a sugestao do Claude ao lado, so enquanto o DA nao escolheu a funcao desta camada ou pasta
+      const s = sugestaoDe(b.dataset.camada);
+      const marca = b.querySelector('.sugestao-arvore');
+      const mostrar = !!s && !p2.funcoes[b.dataset.camada];
+      marca.hidden = !mostrar;
+      marca.textContent = mostrar ? 'Sugestão: ' + nomeFuncao(s.funcao) : '';
     });
   }
   function escolherNo(lid) {
@@ -1393,10 +1538,13 @@
     b.addEventListener('click', acao);
     return b;
   }
+  function chaveDoControle(x) {
+    return x.id || x.dataset.funcao || (x.dataset.usar ? 'usar:' + x.dataset.usar : '') || x.textContent;
+  }
   function detalhar(n) {
     const d = document.getElementById('detalhe');
     const foco = document.activeElement && d.contains(document.activeElement) ? document.activeElement : null;
-    const chaveFoco = foco ? (foco.id || foco.dataset.funcao || foco.textContent) : null;
+    const chaveFoco = foco ? chaveDoControle(foco) : null;
     limpar(d);
     marcarNoKv('palco-kv', n ? camadasDentro(n) : [], null);
     if (!n) {
@@ -1404,6 +1552,16 @@
       d.appendChild(el('h2', 'Funções da peça'));
       d.appendChild(el('p', 'Escolha uma pasta ou uma camada à esquerda. A função dada a uma pasta passa para as ' +
         'camadas de dentro, e você pode trocar uma camada depois.', 'nota'));
+      // M7c, S4: com o modo a ou b, quantas tem sugestao, ou a frase para pedir ao Claude
+      if (sug.modo === 'a' || sug.modo === 'b') {
+        if (sug.por.size) {
+          d.appendChild(el('p', plural(sug.por.size, 'pasta ou camada tem', 'pastas ou camadas têm') +
+            ' sugestão do Claude, marcada na lista à esquerda. Nada muda sem o seu clique.', 'nota sugestao-resumo'));
+        } else if (escrita && !sug.chegou) {
+          // com sugestoes chegadas a espera do "Mostrar", a faixa ja diz o que fazer (revisao do S4)
+          d.appendChild(frasePedirSugestoes('passo-pedido'));
+        }
+      }
       if (!escrita) d.appendChild(el('p', SO_PARA_VER, 'nota'));
       return;
     }
@@ -1445,6 +1603,8 @@
       (herda ? 'Herdada da pasta: ' + nomeFuncao(herdada.funcao) + '. Escolha abaixo para trocar só aqui.' :
         'Sem função ainda.');
     d.appendChild(el('p', estadoTxt, 'estado-funcao'));
+    const quadroSug = quadroDaSugestao(n);
+    if (quadroSug) d.appendChild(quadroSug);
     const escolhida = p2obs[lid] !== undefined ? 'indeterminado' : (own ? own.funcao : null);
     CLASSES_FUNCAO.forEach(function (c) {
       const fs = (p2idx.opcoes.funcoes || []).filter(function (f) { return f.classe === c[0]; });
@@ -1502,7 +1662,7 @@
     /* o painel foi redesenhado: o foco volta ao mesmo controle, para o teclado seguir dali */
     if (chaveFoco) {
       const alvo = Array.from(d.querySelectorAll('button, textarea')).find(function (x) {
-        return (x.id || x.dataset.funcao || x.textContent) === chaveFoco;
+        return chaveDoControle(x) === chaveFoco;
       });
       if (alvo) alvo.focus();
     }
@@ -4132,6 +4292,7 @@
     salvoNaTela = !!(e.briefing && e.briefing.salvo);
     (e.fontes || []).forEach(function (f) { familiaCss.set(f.id, f.familia_css); });
     iniciarPasso2(e.funcoes);
+    ligarSugestoes();
     mostrarAvisos(e);
     atualizarFaltam();
     mostrarPasso('lido');

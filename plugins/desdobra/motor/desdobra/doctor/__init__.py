@@ -110,7 +110,8 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
 def _quebrou(ident, e):
     return v.Verificacao(ident, 'Verificação %s' % ident, situacao='falha',
                          detalhe='A verificação parou com um erro interno (%s).' % type(e).__name__,
-                         o_que_fazer='Rode "desdobra doctor" no terminal, sem --envelope, e mande a saída para a Trezion.')
+                         o_que_fazer=('Peça ao Claude para conferir a instalação do desdobra (doctor) de novo. Se '
+                                      'esta verificação falhar outra vez, avise a Trezion com o nome dela.'))
 
 
 def resumir(lista):

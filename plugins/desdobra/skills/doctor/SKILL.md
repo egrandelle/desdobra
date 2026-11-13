@@ -30,7 +30,7 @@ Regras desta skill:
    - `0`: o ambiente está pronto. Se `contagens.avisos` for maior que zero, conte quantos avisos há.
    - `3`: alguma verificação falhou. Diga ao DA o que está no campo `o_que_fazer`, com as palavras do motor.
    - `9`: este sistema ainda não tem o isolador de memória. O desdobra só lê PSD no Windows por enquanto.
-   - `1` ou `2`: erro do motor. Peça ao DA para rodar o mesmo comando sem `--envelope` no terminal e mandar a saída para a Trezion.
+   - `1` ou `2`: erro do motor. Rode o passo 4 de novo uma vez. Se o erro continuar, diga ao DA, sem passar comando a ele, que a conferência da instalação travou e que isso é um caso para avisar a Trezion.
 6. Para o detalhe de cada verificação, leia `${CLAUDE_PLUGIN_DATA}/doctor.json`. Ele só tem fatos do ambiente (versões, caminhos da instalação, números do teste do isolador), sem nada de job. Liste ao DA só as verificações com `situacao` igual a `falha` ou `aviso`, com o título e o `o_que_fazer` de cada uma.
 
 Lembre o DA de não usar `/feedback`, `/bug` nem `/share` numa sessão com job de cliente, porque esses comandos enviam a conversa.

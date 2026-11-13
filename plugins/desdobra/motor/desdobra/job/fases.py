@@ -55,14 +55,18 @@ def comando_motor(*argumentos):
     return montar
 
 
+# o que o DA le quando uma fase falha (M7c, K5): o Claude segue o job de novo; a falha que volta leva ao doctor, e o
+# doctor diz quando avisar a Trezion (skill continuar). Nada de comando de terminal
+SE_A_FASE_FALHA = ('Peça ao Claude para seguir o job; se a falha voltar, peça a ele para conferir a instalação do '
+                   'desdobra (doctor).')
+
 FASES_M1 = (
     Fase(id='ler', tipo='fase', descricao='Leitura isolada do PSD e laudo',
          # entrada/campanha: o laudo propoe o casamento de cada smart object linkado com os arquivos dela
          entradas=('entrada/kv.*', 'entrada/campanha'), saidas=('laudo/laudo.json', 'sugestoes/pacote-modelo.json'),
          comando=comando_motor('ler'),
-         o_que_fazer='A leitura do PSD falhou. Rode "desdobra job estado" para ver o código e "desdobra doctor" '
-                     'para conferir o ambiente. Se o arquivo foi recusado, salve o PSD de novo no Photoshop e troque '
-                     'a entrada com "desdobra job trocar-entrada".'),
+         o_que_fazer='A leitura do PSD falhou. ' + SE_A_FASE_FALHA + ' Se o arquivo foi recusado, salve o PSD de novo '
+                     'no Photoshop e peça ao Claude para trocar a entrada do job.'),
 )
 
 
@@ -75,8 +79,7 @@ def _fase_ds(anteriores):
                 depende_de=tuple(f.id for f in anteriores if f.id in ('ler', 'fontes')),
                 saidas=('ds/design-system.json', 'ds/limites.json'),
                 comando=comando_motor('ds', 'montar'),
-                o_que_fazer='A montagem do design system falhou. Rode "desdobra ds montar --job <pasta>" para ver '
-                            'o motivo no terminal e "desdobra job estado" para ver o código.')
+                o_que_fazer='A montagem do design system falhou. ' + SE_A_FASE_FALHA)
 
 
 # M2, fontes (arquitetura-v1.md, 4.4 e 4.5): a conferencia contra o arquivo enviado em entrada/fontes/ e a
@@ -91,13 +94,12 @@ FASE_FONTES = Fase(
     # de largura pede decisao do DA. Os dois casos ficam no estado ate a fase rodar sem bloqueio. Licenca nao entra
     # no portao (decisoes-v1.md, n. 19)
     bloqueio_persiste=True,
-    o_que_fazer='A conferência de fontes falhou. Rode "desdobra fontes conferir --job <pasta>" para ver o motivo no '
-                'terminal, "desdobra job estado" para ver o código e "desdobra doctor" para conferir o ambiente.')
+    o_que_fazer='A conferência de fontes falhou. ' + SE_A_FASE_FALHA)
 FASE_LAUDO_FONTES = Fase(
     id='laudo-fontes', tipo='fase', descricao='Segunda passada do laudo com a conferência de fontes (regra B3)',
     depende_de=('ler', 'fontes'), saidas=('laudo/laudo-fontes.json',),
     comando=comando_motor('fontes', 'laudo'),
-    o_que_fazer='A segunda passada do laudo falhou. Rode "desdobra fontes laudo --job <pasta>" para ver o motivo.')
+    o_que_fazer='A segunda passada do laudo falhou. ' + SE_A_FASE_FALHA)
 
 _FASES_FONTES = FASES_M1 + (FASE_FONTES, FASE_LAUDO_FONTES)
 FASES_M2 = _FASES_FONTES + (_fase_ds(_FASES_FONTES),)
@@ -119,35 +121,17 @@ FASE_SPECS = Fase(
     comando=comando_motor('spec', 'importar'),
     externas=(('externa:biblioteca-specs', lambda: _specs_importar().hash_da_biblioteca()),
               ('externa:limites-specs', lambda: _specs_importar().hash_dos_limites())),
-    o_que_fazer='A importação das specs falhou. Rode "desdobra spec importar --job <pasta>" para ver o motivo no '
-                'terminal e "desdobra doctor" para conferir o ambiente.')
+    o_que_fazer='A importação das specs falhou. ' + SE_A_FASE_FALHA)
 FASES_M3 = FASES_M2 + (FASE_SPECS,)
 # a esteira que job criar e job proxima usam
 ESTEIRA = FASES_M3
 
-FIM_M1 = ('O laudo está pronto em laudo/laudo.json. As próximas fases (fontes, specs, design system e briefing) '
-          'entram nos marcos seguintes.')
-FIM_M2 = ('O laudo, a conferência de fontes (fontes/conferencia.json e laudo/laudo-fontes.json) e o design system '
-          'da peça estão prontos. As próximas fases (specs e briefing) entram nos marcos seguintes.')
-FIM_M3 = ('O laudo, a conferência de fontes, o design system e o rascunho das specs (specs/rascunho.json) estão '
-          'prontos. Os valores das specs só valem depois que o DA confirma, no terminal, com "desdobra spec '
-          'confirmar --job <pasta>"; os confirmados ficam em specs/formatos-do-job.json. As próximas fases (render e '
-          'briefing) entram nos marcos seguintes.')
-FIM_M4 = ('O laudo, a conferência de fontes, o design system e o rascunho das specs (specs/rascunho.json) estão '
-          'prontos. Os valores das specs só valem depois que o DA confirma, no terminal, com "desdobra spec '
-          'confirmar --job <pasta>"; os confirmados ficam em specs/formatos-do-job.json. O render da origem é do DA: '
-          'ele roda "desdobra render --job <pasta>" num terminal interativo e confirma. A tela de briefing entra num '
-          'marco seguinte.')
-FIM_M5 = ('O laudo, a conferência de fontes, o design system e o rascunho das specs (specs/rascunho.json) estão '
-          'prontos. Os valores das specs só valem depois que o DA confirma, no terminal, com "desdobra spec '
-          'confirmar --job <pasta>"; os confirmados ficam em specs/formatos-do-job.json. A derivação dos formatos sai '
-          'do briefing com "desdobra derivar --job <pasta>" (até a tela, o briefing de teste entra por "desdobra '
-          'briefing importar --teste"). O render da origem e de cada formato derivado é do DA: ele roda "desdobra '
-          'render --job <pasta> [--formato <id>]" num terminal interativo e confirma.')
-FIM_M6 = FIM_M5 + (' A entrega também é do DA, num terminal interativo: "desdobra parametros-entrega" (quando o '
-                   'formato pede uma decisão), depois "desdobra aprovar" e "desdobra entregar". "desdobra '
-                   'conferir-entrega --job <pasta>" só lê e confere entrega/ contra o relatório.')
-FIM = FIM_M6
+# o que o DA le quando a esteira termina (M7c, K5; decisoes-v1.md, 159): o resto do job e clique do DA na tela, nunca
+# comando de terminal. Os FIM dos marcos M1 a M6 citavam comandos e sairam
+FIM = ('O laudo, a conferência de fontes, o design system e o rascunho das specs estão prontos. O resto do job é '
+       'clique seu na tela do desdobra, cada um com a confirmação na própria janela: o modo de dados, os valores de '
+       'spec, o briefing, o render e a aprovação de cada formato. Peça ao Claude para abrir a tela do job. A entrega '
+       'dos arquivos finais chega no próximo marco do desdobra; por enquanto, o job termina na aprovação, na tela.')
 
 
 def validar_esteira(fases):

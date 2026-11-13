@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:medicoes-sugestao:1",
+  "title": "Acerto da sugestao de funcao (medicoes-sugestao/1)",
+  "description": "medicoes/sugestao.json, gravado pelo motor (desdobra.sugestao.acerto; M7c, S5; arquitetura-v1.md, 9.8, acerto da sugestao por modo com comparar_gabarito). Fica fora do briefing, no molde de medicoes/tela.json (decisoes-v1.md, 189): nenhuma fase, derivacao ou aprovacao le este arquivo, e nenhuma meta reprova. briefing guarda, por modo de dados, a medicao feita ao salvar o briefing (a sugestao que a tela mostrava contra a funcao confirmada pelo DA); gabarito guarda, por modo, a do comando nao humano 'desdobra sugestao acerto --gabarito' (contra um gabarito fora do repositorio). So ids, o enum de funcoes e numeros: nenhum nome de camada, texto, caminho, respondente ou observacao.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "atualizado_em", "briefing", "gabarito"],
+  "properties": {
+    "esquema": {"const": "medicoes-sugestao/1"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "atualizado_em": {"type": "string"},
+    "briefing": {"$ref": "#/$defs/por_modo"},
+    "gabarito": {"$ref": "#/$defs/por_modo"}
+  },
+  "$defs": {
+    "funcao": {"description": "Igual ao $defs.funcao do briefing/1 (teste de igualdade)", "enum": ["fundo", "imagem", "sujeito", "veu_de_legibilidade", "grafismo", "titulo", "texto_de_apoio", "cta", "icone_de_cta", "url_ou_contato", "texto_legal", "informacao_de_evento", "destaque_numerico", "logo_principal", "assinatura_institucional", "selo", "logo_de_parceiro", "ajuste_global", "estrutura", "fora_da_peca", "indeterminado"]},
+    "funcao_ou_nulo": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/funcao"}]},
+    "fracao": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "contagem": {"type": "integer", "minimum": 0},
+    "por_modo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "a": {"$ref": "#/$defs/medicao"},
+        "b": {"$ref": "#/$defs/medicao"},
+        "c": {"$ref": "#/$defs/medicao"}
+      }
+    },
+    "acerto": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["certas", "total", "acerto"],
+      "properties": {
+        "certas": {"$ref": "#/$defs/contagem"},
+        "total": {"$ref": "#/$defs/contagem"},
+        "acerto": {"$ref": "#/$defs/fracao"}
+      }
+    },
+    "cobertura": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["com_sugestao", "total", "cobertura"],
+      "properties": {
+        "com_sugestao": {"$ref": "#/$defs/contagem"},
+        "total": {"$ref": "#/$defs/contagem"},
+        "cobertura": {"$ref": "#/$defs/fracao"}
+      }
+    },
+    "camada": {
+      "description": "Uma camada contada: a funcao de referencia (a do DA, resolvida pela heranca do motor, ou a do gabarito) e a sugestao e a alternativa do Claude resolvidas pela mesma heranca (null sem sugestao).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer_id", "funcao", "sugestao", "alternativa"],
+      "properties": {
+        "layer_id": {"type": "integer"},
+        "funcao": {"$ref": "#/$defs/funcao"},
+        "sugestao": {"$ref": "#/$defs/funcao_ou_nulo"},
+        "alternativa": {"$ref": "#/$defs/funcao_ou_nulo"}
+      }
+    },
+    "medicao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quando", "modo", "referencia", "situacao", "sugestoes_ref", "por_camada", "por_decisao",
+                   "alternativa", "cobertura", "sem_par", "fora_do_laudo", "camadas"],
+      "properties": {
+        "quando": {"type": "string"},
+        "modo": {"enum": ["a", "b", "c"]},
+        "referencia": {"enum": ["briefing", "gabarito"]},
+        "situacao": {"description": "medido: havia sugestao conferida na tela do modo; sem_sugestao: modo c ou nenhuma sugestao conferida (os numeros ficam null).", "enum": ["medido", "sem_sugestao"]},
+        "sugestoes_ref": {"description": "O sha256 de sugestoes/sugestoes-validadas.json medido.", "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "por_camada": {"description": "Funcao resolvida por camada (para comparar com 60,7% e 50,0%; pesquisa/gabarito-resultado.md, 4).", "$ref": "#/$defs/acerto"},
+        "por_decisao": {"description": "Decisao por grupo: as decisoes minimas da referencia (desdobra.tela.funcoes.decisoes_minimas) em que a sugestao da a funcao certa a todas as camadas da decisao.", "$ref": "#/$defs/acerto"},
+        "alternativa": {"$ref": "#/$defs/acerto"},
+        "cobertura": {"$ref": "#/$defs/cobertura"},
+        "sem_par": {"description": "Respostas do gabarito sem par no esquema (nao sei, vazia ou fora da tabela): nem acerto nem erro.", "$ref": "#/$defs/contagem"},
+        "fora_do_laudo": {"description": "Respostas do gabarito de layer_id que o laudo do job nao tem.", "$ref": "#/$defs/contagem"},
+        "camadas": {"type": "array", "items": {"$ref": "#/$defs/camada"}}
+      }
+    }
+  }
+}

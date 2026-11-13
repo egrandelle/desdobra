@@ -101,7 +101,8 @@ def test_exigir_recusa_o_painel_em_todo_comando_humano(console_limpo, comando, m
 
 def test_o_motivo_tem_texto_em_portugues():
     assert 'painel de terminal do app do Claude' in humano.TEXTO_MOTIVO['terminal_do_claude']
-    assert 'painel de terminal do app do Claude' in humano.O_QUE_FAZER
+    # M7c, K5: o o_que_fazer manda o DA a tela, sem terminal (o motivo continua no TEXTO_MOTIVO)
+    assert 'tela' in humano.O_QUE_FAZER and 'terminal' not in humano.O_QUE_FAZER
     assert humano.TEXTO_MOTIVO['cadeia_de_processos_ilegivel']
 
 
@@ -121,7 +122,7 @@ def test_render_aprovar_e_entregar_recusam_o_painel_e_nao_gravam(tmp_path, conso
     r = args.executar(args)
     assert r.codigo == int(Codigo.RECUSADO)
     assert r.contagens == {'recusa_terminal_do_claude': 1}
-    assert r.o_que_fazer == humano.O_QUE_FAZER and perguntas == []
+    assert r.o_que_fazer == humano.o_que_fazer(argv[0]) and perguntas == []
     assert sorted(p.name for p in tmp_path.rglob('*')) == ['estado.json']
 
 

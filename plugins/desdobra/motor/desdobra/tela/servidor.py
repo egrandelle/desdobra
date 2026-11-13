@@ -43,7 +43,8 @@ Regras (cada uma com teste em testes/test_tela_servidor.py e testes/test_tela_es
   - depois, Host igual a 127.0.0.1:<porta>, cliente 127.0.0.1, Origin ausente ou a propria, Sec-Fetch-Site ausente ou
     da mesma origem (contra pagina de outro site e DNS rebinding): fora disso, 403;
   - rotas explicitas (tabela em _rota): /entrar/<token>, /, /tela.js, /tela.css, /fontes.css, /controle,
-    /api/estado, /api/saude, /api/previa/<id>, /api/tarefa/<id> (so no servidor que grava, so JSON), /asset/<id>,
+    /api/estado, /api/saude, /api/sugestoes (M7c, S4: a leitura leve das sugestoes validadas, com o sha256 do
+    arquivo), /api/previa/<id>, /api/tarefa/<id> (so no servidor que grava, so JSON), /asset/<id>,
     /fonte/<id ou sha256> e, so no servidor que grava, /render/<formato> e /final/<formato>. Caminho fora da tabela,
     com query, com % ou com barra a mais da 404;
   - rotas de imagem (M7b, B3): o id segue ID_PREVIA e e formato do briefing confirmado, e tudo e lido do disco so
@@ -128,7 +129,7 @@ MIME_IMAGEM = {'png': 'image/png', 'jpg': 'image/jpeg'}
 ASSINATURAS_IMAGEM = {'png': b'\x89PNG\r\n\x1a\n', 'jpg': b'\xff\xd8\xff'}  # numero-neutro: assinaturas dos formatos
 # contagem por rota servida; as recusas tem contagem propria
 ROTAS = ('entrar', 'pagina', 'estatico', 'controle', 'estado', 'saude', 'previa', 'asset', 'fonte', 'rascunho_lido',
-         'tarefa') + ROTAS_DE_IMAGEM + tuple(ESCRITAS.values())
+         'tarefa', 'sugestoes') + ROTAS_DE_IMAGEM + tuple(ESCRITAS.values())
 RECUSAS = ('proibido', 'nao_encontrado', 'sem_cookie', 'extensao_recusada', 'metodo_recusado', 'entrada_reusada',
            'tipo_recusado', 'csrf_recusado', 'corpo_recusado', 'dado_recusado', 'erro_do_ato', 'tarefa_em_andamento')
 MIME_JSON = 'application/json; charset=utf-8'
@@ -398,6 +399,8 @@ class ServidorTela:
             return 'saude', (json.dumps({'ok': True, 'somente_leitura': not self.escreve}).encode('utf-8'), MIME_JSON)
         if caminho == '/api/rascunho' and self.escreve:
             return 'rascunho_lido', self._rascunho_lido  # lido so depois do cookie
+        if caminho == '/api/sugestoes' and callable(self._conteudo.get('sugestoes')):
+            return 'sugestoes', self._sugestoes_lidas  # lido so depois do cookie, sem montar a tela de novo
         if len(partes) != 3:  # numero-neutro: /<rota>/<id>
             return None
         _vazio, nome, ident = partes
@@ -608,6 +611,16 @@ class ServidorTela:
                  'job_id': self.job_id, 'laudo_sha256': self.laudo_sha256}
         return json.dumps(corpo, ensure_ascii=False).encode('utf-8'), MIME_JSON
 
+    def _sugestoes_lidas(self):
+        """GET /api/sugestoes (M7c, S4): o modo efetivo, o sha256 do arquivo validado e as sugestoes que a tela mostra
+        (desdobra.tela.funcoes.sugestoes_na_tela), lidos de novo a cada pedido. Leitura leve: nao pega a trava de
+        escrita nem monta a tela, e nunca grava. A pagina consulta a cada poucos segundos com o passo 2 aberto."""
+        try:
+            dados = self._conteudo['sugestoes']()
+        except Exception:  # noqa: BLE001 - na duvida, a tela nao mostra sugestao nenhuma
+            dados = {'modo': 'c', 'sha256': None, 'sugestoes': []}
+        return json.dumps(dados, ensure_ascii=False).encode('utf-8'), MIME_JSON
+
     def _escrever(self, chave, dados):
         """(codigo, dict ou None) da escrita aceita, ou None quando recusada (403 sem detalhe)."""
         if chave == 'familia_previa':
@@ -658,7 +671,8 @@ class ServidorTela:
         sinal = cronometro.conferir_sinal(dados, set(self.familias_da_tela))
         if sinal is None:
             return None
-        self.cronometro.sinal(*sinal)
+        # M7c, S4: o passo 2 aberto e a sugestao do Claude a vista, quando a pagina os manda
+        self.cronometro.sinal(*sinal, **cronometro.passo_do_sinal(dados))
         return 204, None  # numero-neutro: codigo HTTP
 
     def _confirmada_na_tela(self, familia):

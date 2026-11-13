@@ -20,6 +20,11 @@ envelope, e o sha256 do pacote-modelo.json gravado vai em ids.pacote_sha256 (o C
 Subcomando "desdobra sugestao importar --job <pasta>" (M7c, S3): tambem nao e ato do DA. Confere sugestoes/sugestoes.json
 pelo desdobra.sugestao.importar, com o teto da linha de comando, e devolve so contagens (aceitas, recusadas e
 recusa_<codigo>) e numeros.tempo_s; nunca nome, texto ou caminho.
+
+Subcomando "desdobra sugestao acerto --job <pasta> [--gabarito CAMINHO [--corpus PASTA]]" (M7c, S5): tambem nao e ato
+do DA e nunca e citado a ele (so para a Trezion e para os testes). Mede a sugestao que a tela mostra contra o briefing
+gravado ou, com --gabarito, contra um gabarito fora do repositorio (desdobra.sugestao.acerto), guarda
+medicoes/sugestao.json e devolve so contagens e numeros; nunca o caminho do gabarito nem nada dele alem dos numeros.
 """
 import hashlib
 import time
@@ -29,6 +34,17 @@ from desdobra.resultado import Codigo, Resultado
 
 COMANDO_PACOTE = 'sugestao pacote'
 COMANDO_IMPORTAR = 'sugestao importar'
+COMANDO_ACERTO = 'sugestao acerto'
+# o que o Claude faz com cada recusa do acerto (nunca cita o caminho nem nada do gabarito)
+O_QUE_FAZER_ACERTO = {
+    'sem_laudo': 'O job ainda não tem laudo. Rode "desdobra job proxima" e depois este comando.',
+    'sem_briefing': 'O job não tem briefing gravado. Sem --gabarito, a medida é contra o briefing salvo na tela.',
+    'gabarito_invalido': 'O gabarito não se lê ou não tem a forma da ficha (kvs com respostas de layer_id e '
+                         'funcao). Confira o arquivo passado em --gabarito.',
+    'kv_fora_do_gabarito': 'Nenhum KV do gabarito tem o sha256 do PSD deste job. Passe em --corpus a pasta dos PSD '
+                           'do gabarito, ou ponha o sha256 no KV do gabarito.',
+    'kv_repetido': 'Dois KVs do gabarito têm o sha256 do PSD deste job. Deixe só um.',
+}
 # o que o Claude faz com cada recusa do arquivo inteiro (o texto vai no envelope; nunca cita nome nem texto do job)
 O_QUE_FAZER_IMPORTAR = {
     'modo_c': 'O modo de dados do job é (c): não há sugestão. A tela segue sem sugestão; nada a fazer.',
@@ -54,6 +70,11 @@ def registrar(subparsers):
     im = sub.add_parser('importar', help='Confere o sugestoes.json do Claude e grava as sugestões validadas')
     im.add_argument('--job', required=True, help='Pasta do job')
     im.set_defaults(executar=_importar, nome_comando=COMANDO_IMPORTAR)
+    ac = sub.add_parser('acerto', help='Mede o acerto da sugestão de função (só para a Trezion e para os testes)')
+    ac.add_argument('--job', required=True, help='Pasta do job')
+    ac.add_argument('--gabarito', default=None, help='Gabarito fora do repositório (nunca gravado nem impresso)')
+    ac.add_argument('--corpus', default=None, help='Pasta dos PSD do gabarito, para achar o KV pelo sha256')
+    ac.set_defaults(executar=_acerto, nome_comando=COMANDO_ACERTO)
 
 
 def _pacote(args):
@@ -112,3 +133,77 @@ def _importar(args):
                                  'com o clique do DA.',
                      linhas_humanas=['Sugestões conferidas: %d aceitas, %d recusadas.' % (contagens['aceitas'],
                                                                                         contagens['recusadas'])])
+
+
+def _recusa_acerto(pasta, codigo, tempo):
+    return Resultado(comando=COMANDO_ACERTO, codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
+                     contagens={'recusa_%s' % codigo: 1}, numeros=tempo, o_que_fazer=O_QUE_FAZER_ACERTO[codigo],
+                     linhas_humanas=['Acerto não medido (%s).' % codigo])
+
+
+class _SemReferencia(Exception):
+    pass
+
+
+def _referencia_do_acerto(pasta, laudo, args):
+    """(referencia, {layer_id: funcao}, quadro, info); acerto.ErroGabarito ou _SemReferencia sem a referencia."""
+    from desdobra import contratos
+    from desdobra.briefing import modelo as mb
+    from desdobra.sugestao import acerto
+    try:
+        b = mb.ler(pasta)
+    except contratos.ErroContrato:
+        b = None
+    quadro = acerto.quadro_do_briefing(b)
+    if args.gabarito is not None:
+        ref, info = acerto.referencia_do_gabarito(acerto.ler_gabarito(args.gabarito), laudo, corpus=args.corpus)
+        return 'gabarito', ref, quadro, info
+    if b is None:
+        raise _SemReferencia('sem_briefing')
+    return 'briefing', acerto.referencia_do_briefing(laudo, b), quadro, {}
+
+
+def _acerto(args):
+    from desdobra import contratos
+    from desdobra.job import nucleo
+    from desdobra.sugestao import acerto
+    pasta = Path(args.job).resolve()
+    if not (pasta / nucleo.ARQUIVO_ESTADO).is_file():
+        return Resultado(comando=COMANDO_ACERTO, codigo=int(Codigo.USO), situacao='erro',
+                         o_que_fazer='Passe a pasta de um job do desdobra.', linhas_humanas=['A pasta não é um job.'])
+    inicio = time.monotonic()
+
+    def tempo():
+        return {'tempo_s': round(time.monotonic() - inicio, 3)}  # numero-neutro: milissegundos
+    try:
+        laudo = contratos.ler(pasta / 'laudo' / 'laudo.json', 'laudo/1')
+    except contratos.ErroContrato:
+        return _recusa_acerto(pasta, 'sem_laudo', tempo())
+    try:
+        referencia, ref, quadro, info = _referencia_do_acerto(pasta, laudo, args)
+    except acerto.ErroGabarito as e:
+        return _recusa_acerto(pasta, e.codigo, tempo())
+    except _SemReferencia as e:
+        return _recusa_acerto(pasta, str(e), tempo())
+    m = acerto.medir(pasta, laudo, ref, referencia=referencia, teto=getattr(args, 'teto_modo_dados', None),
+                     quadro=quadro, info=info)
+    acerto.gravar(pasta, m)
+    acerto.registrar(pasta, m)
+    contagens = {'sem_par': m['sem_par'], 'fora_do_laudo': m['fora_do_laudo']}
+    numeros = tempo()
+    if m['situacao'] == 'sem_sugestao':
+        contagens['sem_sugestao'] = 1
+        return Resultado(comando=COMANDO_ACERTO, situacao='ok', pasta_job=pasta, contagens=contagens,
+                         numeros=numeros, o_que_fazer='Sem sugestão conferida no modo de agora: nada a medir.',
+                         linhas_humanas=['Sem sugestão para medir.'])
+    for nome, chave in (('camada', 'por_camada'), ('decisao', 'por_decisao'), ('alternativa', 'alternativa')):
+        contagens['certas_' + nome] = m[chave]['certas']
+        contagens['total_' + nome] = m[chave]['total']
+        numeros['acerto_' + nome] = m[chave]['acerto']
+    contagens['com_sugestao'] = m['cobertura']['com_sugestao']
+    numeros['cobertura'] = m['cobertura']['cobertura']
+    return Resultado(comando=COMANDO_ACERTO, situacao='ok', pasta_job=pasta, contagens=contagens,
+                     ids={'sugestoes_sha256': m['sugestoes_ref']}, numeros=numeros,
+                     o_que_fazer='Acerto registrado. Nenhuma meta reprova: é só registro.',
+                     linhas_humanas=['Acerto por camada: %d de %d.' % (m['por_camada']['certas'],
+                                                                      m['por_camada']['total'])])

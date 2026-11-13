@@ -365,7 +365,10 @@ def test_confirmar_recusa_sem_terminal_e_no_envelope(job_pme, capsys):
     capsys.readouterr()
     assert cli.principal(['--envelope', 'spec', 'confirmar', '--job', str(job)]) == 3
     env = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert env['situacao'] == 'recusado' and 'terminal interativo' in env['o_que_fazer']
+    # M7c, revisao do K5: a recusa manda o DA a tela, sem terminal (decisoes-v1.md, 159)
+    from desdobra import humano
+    assert env['situacao'] == 'recusado' and env['o_que_fazer'] == humano.O_QUE_FAZER
+    assert 'terminal' not in env['o_que_fazer'] and 'terminal' not in ' '.join(env.get('linhas_humanas') or [])
     assert not (job / 'specs' / 'confirmacoes.json').exists()
 
 

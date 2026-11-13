@@ -65,7 +65,7 @@ Antes de começar, leia as três referências desta skill com a ferramenta Read:
    ```
 
    Depois de cada chamada, explique a fase pelo envelope, como diz `fluxo.md`, e chame de novo. Pare quando:
-   - a `situacao` for `concluido`: as cinco fases estão em dia. O texto final do motor cita atos do DA pelo terminal; não repasse esse texto e siga para o passo 8 (veja `fluxo.md`, "Fim das fases");
+   - a `situacao` for `concluido`: as cinco fases estão em dia. O texto final do motor é escrito para você; não repasse esse texto e siga para o passo 8 (veja `fluxo.md`, "Fim das fases");
    - a `situacao` for `portao` (`codigo` 10): explique ao DA o `o_que_fazer`, sem passar comando a ele (veja `regras-do-modelo.md`, "O `o_que_fazer` do motor"); em geral o que falta é um clique dele na tela, e você segue para o passo 8;
    - o `codigo` não for `0`: siga `fluxo.md` para esse código;
    - a `situacao` for `ok_com_bloqueio`: explique o bloqueio pelo `o_que_fazer` e pelas contagens. Se `contagens.fases_rodadas_agora` for `0`, não chame `job proxima` de novo esperando outro resultado. Se alguma fase rodou, pergunte ao DA se ele quer resolver agora (passo 7) ou seguir, e só chame de novo com a resposta dele.

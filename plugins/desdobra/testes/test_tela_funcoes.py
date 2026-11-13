@@ -470,3 +470,345 @@ def test_passo_2_e_design_system_no_chromium(job_palco):  # noqa: F811
             assert srv.contagem['csrf_recusado'] == 0 and srv.contagem['dado_recusado'] == 0
     finally:
         (job_palco / tr.ARQUIVO).unlink(missing_ok=True)
+
+
+# ------------------------------------------------------------------ M7c, S4: a sugestao do Claude na tela, sem gravar
+# decisoes-v1.md, 162 e 190 (Q4): a tela mostra a sugestao e a alternativa ao lado da funcao, com a fonte; so o clique
+# do DA em "Usar" poe a funcao no rascunho. A rota leve /api/sugestoes leva o sha256 do arquivo validado; quando ele
+# muda, a pagina avisa e espera o "Mostrar". No modo c, nada aparece.
+import hashlib  # noqa: E402
+
+import test_sugestao_importar as tsi  # noqa: E402
+from conftest import RAIZ_PLUGIN, escolher_modo_do_da  # noqa: E402
+from desdobra.sugestao import importar as si  # noqa: E402
+from desdobra.sugestao import pacote as sp  # noqa: E402
+
+SEM_SUGESTAO = {'modo': 'c', 'sha256': None, 'sugestoes': []}
+
+
+def _job_com_sugestoes(tmp_path, modo='a', itens=None):
+    job = tsi._job(tmp_path, modo=modo)
+    tsi._escrever(job, tsi._sugestoes(job, itens or tsi.VALIDAS))
+    assert si.importar(job)['gravou']
+    return job
+
+
+def _sha_validadas(job):
+    return hashlib.sha256(job.joinpath(*tsi.ARQ_VALIDADAS).read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize('modo', ['a', 'b'])
+def test_sugestoes_na_tela_trazem_so_ids_e_funcoes_do_arquivo_validado(tmp_path, modo):
+    job = _job_com_sugestoes(tmp_path, modo)
+    s = tf.sugestoes_na_tela(job)
+    assert set(s) == {'modo', 'sha256', 'sugestoes'}
+    assert s['modo'] == modo and s['sha256'] == _sha_validadas(job)
+    assert s['sugestoes'] == sorted(tsi.VALIDAS, key=lambda x: x['layer_id'])
+    texto = json.dumps(s, ensure_ascii=False)
+    assert tsi.OFERTA not in texto and tsi.NOME_GRUPO not in texto
+    # ler a sugestao nunca grava nada: nem rascunho, nem briefing
+    assert not (job / tr.ARQUIVO).exists() and not (job / mb.ARQUIVO).exists()
+
+
+def test_sem_sugestao_na_tela_quando_o_modo_cai_para_c(tmp_path):
+    job = _job_com_sugestoes(tmp_path)
+    # o DA trocou para o modo c e o arquivo validado ainda nao saiu: a tela ja deixa de mostrar
+    escolher_modo_do_da(job, 'c')
+    assert job.joinpath(*tsi.ARQ_VALIDADAS).is_file()
+    assert tf.sugestoes_na_tela(job) == SEM_SUGESTAO
+    # a agencia fechou o teto sem clique do DA
+    job2 = _job_com_sugestoes(tmp_path / 'outro')
+    assert tf.sugestoes_na_tela(job2, teto='c') == SEM_SUGESTAO
+    assert tf.sugestoes_na_tela(job2, teto='b')['sugestoes'] == []
+    # sem arquivo validado
+    job2.joinpath(*tsi.ARQ_VALIDADAS).unlink()
+    assert tf.sugestoes_na_tela(job2) == {'modo': 'a', 'sha256': None, 'sugestoes': []}
+
+
+def test_sugestao_de_outro_modo_de_outro_kv_ou_de_alvo_que_saiu_nao_aparece(tmp_path):
+    job = _job_com_sugestoes(tmp_path, 'a')
+    escolher_modo_do_da(job, 'b')  # o arquivo foi validado no modo a
+    assert tf.sugestoes_na_tela(job) == {'modo': 'b', 'sha256': None, 'sugestoes': []}
+    escolher_modo_do_da(job, 'a')
+    arq = job.joinpath(*tsi.ARQ_VALIDADAS)
+    dados = contratos.ler(arq, 'sugestoes/1')
+    contratos.gravar(arq, dict(dados, arquivo_sha256='cd' * 32), 'sugestoes/1')
+    assert tf.sugestoes_na_tela(job)['sugestoes'] == []
+    contratos.gravar(arq, dict(dados, job_id='f' * 32), 'sugestoes/1')
+    assert tf.sugestoes_na_tela(job)['sugestoes'] == []
+    # o alvo que o laudo nao tem mais sai; os outros ficam
+    contratos.gravar(arq, dict(dados, sugestoes=dados['sugestoes'] + [
+        {'layer_id': 999, 'funcao': 'cta', 'alternativa': 'selo'}]), 'sugestoes/1')
+    assert [x['layer_id'] for x in tf.sugestoes_na_tela(job)['sugestoes']] == [10, 12, 13]
+    arq.write_text('{"esquema": "sugestoes/1"', encoding='utf-8')
+    assert tf.sugestoes_na_tela(job)['sugestoes'] == []
+
+
+def test_sugestao_nunca_vira_valor_nem_pendencia_resolvida(tmp_path):
+    job = _job_com_sugestoes(tmp_path)
+    laudo = contratos.ler(job / 'laudo' / 'laudo.json', 'laudo/1')
+    antes = tf.pendencias(laudo, {})
+    assert tf.sugestoes_na_tela(job)['sugestoes']
+    assert tf.pendencias(laudo, {}) == antes and any(p['tipo'] == 'funcao' for p in antes)
+
+
+def test_rota_leve_das_sugestoes_le_o_sha_e_segue_a_importacao(tmp_path):
+    job = _job_com_sugestoes(tmp_path)
+    conteudo = dict(tts._conteudo(), sugestoes=lambda: tf.sugestoes_na_tela(job))
+    s = ts.ServidorTela(conteudo).iniciar()
+    try:
+        assert tts._pedir(s, '/api/sugestoes')[0] == 404  # sem o cookie
+        biscoito = tts._entrar(s)
+        codigo, cab, corpo = tts._pedir(s, '/api/sugestoes', cookie=biscoito)
+        assert codigo == 200 and cab['cache-control'] == ['no-store']
+        lido = json.loads(corpo)
+        assert lido['sha256'] == _sha_validadas(job) and len(lido['sugestoes']) == len(tsi.VALIDAS)
+        # o Claude escreveu de novo e o motor conferiu: o sha256 muda
+        tsi._escrever(job, tsi._sugestoes(job, tsi.VALIDAS[:1]))
+        assert si.importar(job)['gravou']
+        novo = json.loads(tts._pedir(s, '/api/sugestoes', cookie=biscoito)[2])
+        assert novo['sha256'] == _sha_validadas(job) != lido['sha256'] and len(novo['sugestoes']) == 1
+        assert tts._pedir(s, '/api/sugestoes', metodo='POST', cookie=biscoito)[0] == 404
+        assert s.contagem['sugestoes'] == 2  # numero-neutro: as duas leituras com o cookie
+    finally:
+        s.parar()
+    assert not (job / tr.ARQUIVO).exists()
+
+
+def test_montar_da_tela_leva_a_rota_das_sugestoes(job_palco):  # noqa: F811
+    from desdobra.tela import estado as te
+    c = te.montar(job_palco)
+    assert callable(c['sugestoes']) and c['sugestoes']() == SEM_SUGESTAO
+    with ts.ServidorTela(c) as s:
+        biscoito = tts._entrar(s)
+        assert json.loads(tts._pedir(s, '/api/sugestoes', cookie=biscoito)[2]) == SEM_SUGESTAO
+
+
+def test_texto_do_modo_a_declara_letra_desenhada_na_imagem_e_a_pagina_usa_o_mesmo():
+    from desdobra.tela import atos as ta
+    _nome, texto = ta.MODOS['a']
+    assert 'pixel' in texto and 'vetorial' in texto and 'imagem' in texto
+    js = (RAIZ_PLUGIN / 'tela' / 'tela.js').read_text(encoding='utf-8')
+    for nome, texto in ta.MODOS.values():
+        assert "['%s', '%s']" % (nome, texto) in js
+        assert not any(x in texto for x in ('—', '–'))
+    # a frase da decisao 190 (Q4), mostrada quando o modo a ou b esta gravado
+    assert tf.FRASE_PEDIR_SUGESTOES == 'Para ver sugestões de função, escreva ao Claude: quero sugestões'
+    assert tf.FRASE_PEDIR_SUGESTOES in js
+
+
+def test_ref_das_sugestoes_e_o_sha_do_arquivo_validado(tmp_path):
+    from desdobra.briefing import salvar as bs
+    job = _job_com_sugestoes(tmp_path)
+    assert bs.sugestoes_ref(job) == _sha_validadas(job)
+    escolher_modo_do_da(job, 'c')
+    assert bs.sugestoes_ref(job) is None
+
+
+from test_tela_salvar import job as job_salvar, modelo  # noqa: E402,F401 - o job sintetico do salvar
+
+
+def test_briefing_montado_leva_sugestoes_ref(job_salvar, modelo):  # noqa: F811
+    from desdobra.briefing import salvar as bs
+    from desdobra.tela import estado as te
+    job = job_salvar
+    conteudo = te.montar(job)
+    kw = dict(origem='fixture_de_teste', meio='medicao', por={'usuario': None, 'maquina': None},
+              quando='2026-11-13T10:00:00-03:00', modo=None)
+    assert bs.montar(job, conteudo, {'familias': {}}, **kw)['sugestoes_ref'] is None
+    escolher_modo_do_da(job, 'a')
+    sp.refazer_pacotes(job)
+    lid = next(iter(modelo['funcoes']))
+    tsi._escrever(job, tsi._sugestoes(job, [{'layer_id': lid, 'funcao': 'titulo', 'alternativa': 'cta'}]))
+    assert si.importar(job)['gravou']
+    b = bs.montar(job, conteudo, {'familias': {}}, **kw)
+    assert b['sugestoes_ref'] == _sha_validadas(job)
+    contratos.validar(b, mb.ESQUEMA)
+
+
+def _sugestao(lid, funcao, alternativa):
+    return {'layer_id': lid, 'funcao': funcao, 'alternativa': alternativa}
+
+
+def _rascunho_do_disco(job):
+    arq = job / tr.ARQUIVO
+    return contratos.ler(arq, tr.ESQUEMA) if arq.is_file() else None
+
+
+def test_sugestao_na_tela_no_chromium(job_palco, tmp_path):  # noqa: F811
+    """A pagina, com a rota das sugestoes trocada por uma lista sintetica (o modo de teste da tela deixa o job em c,
+    e a rota de verdade tem os testes de cima): a sugestao aparece sem nada marcado, a chegada de outra espera o
+    "Mostrar" sem mexer no rascunho, o "Usar" grava a funcao como qualquer escolha, o modo c tira tudo, a escolha do
+    modo a ou b mostra a frase do pedido, e o cronometro do passo 2 recebe os sinais com a marca da sugestao."""
+    import shutil
+
+    from playwright.sync_api import sync_playwright
+
+    import test_tela_palco as tp
+    from desdobra.chromium import navegador
+    from desdobra.tela import atos as ta
+    from desdobra.tela import cronometro as tc
+    from desdobra.tela import estado as te
+    job = tmp_path / 'job'
+    shutil.copytree(job_palco, job)
+    laudo = contratos.ler(job / 'laudo' / 'laudo.json', 'laudo/1')
+    ids = {c['nome']: c['identidade']['layer_id'] for c in laudo['camadas']}
+    pasta, filho = ids[tp.NOME_FORM], ids[tp.NOME_IMG]
+    c = te.montar(job)
+    vez = {'v': {'modo': 'a', 'sha256': '1' * 64, 'sugestoes': [_sugestao(pasta, 'titulo', 'texto_de_apoio')]}}
+    c['sugestoes'] = lambda: vez['v']
+    no_detalhe = '() => Array.from(document.querySelectorAll("#detalhe [data-usar]")).map(b => b.dataset.usar).join(",")'
+    navegador.apontar_playwright()
+    with ts.ServidorTela(c, pasta=job, modo_teste=True, atos=ta.atos_do_job(job, conteudo=c)) as srv, \
+            sync_playwright() as pw:
+        nav, pg = tp._pagina_da_tela(pw, srv, 1600, 900)  # numero-neutro: janela do teste
+        try:
+            _esperar(pg, '() => document.documentElement.dataset.sugestoes === "mostradas" ? "1" : ""')
+            _clicar(pg, '#passos [data-passo=funcoes]')
+            marca = '#arvore button[data-camada="%d"] .sugestao-arvore' % pasta
+            assert pg.evaluate('(s) => document.querySelector(s).textContent', marca) == 'Sugestão: título'
+            assert 'quero sugestões' not in pg.evaluate('() => document.getElementById("detalhe").innerText')
+            _clicar(pg, '#arvore button[data-camada="%d"]' % pasta)
+            texto = pg.evaluate('() => document.querySelector("#detalhe [data-sugestao]").innerText')
+            assert 'Sugestão do Claude, modo (a)' in texto and 'Título' in texto and 'Texto de apoio' in texto
+            assert not any(x in texto for x in ('—', '–')), texto
+            assert pg.evaluate(no_detalhe) == 'titulo,texto_de_apoio'
+            assert _pressionados(pg, '#passo-funcoes') == 0  # a sugestao nunca aparece como escolhida
+            assert not (_rascunho_do_disco(job) or {}).get('funcoes')
+            # chegam outras: a faixa avisa, e o que esta na tela e no rascunho nao muda ate o "Mostrar"
+            vez['v'] = {'modo': 'a', 'sha256': '2' * 64,
+                        'sugestoes': [_sugestao(pasta, 'cta', 'titulo'), _sugestao(filho, 'imagem', 'grafismo')]}
+            _esperar(pg, '() => document.documentElement.dataset.sugestoes === "chegaram" ? "1" : ""')
+            assert pg.evaluate('() => document.getElementById("sugestoes-chegaram").hidden') is False
+            assert 'Chegaram as sugestões' in pg.evaluate(
+                '() => document.getElementById("sugestoes-chegaram").innerText')
+            assert pg.evaluate(no_detalhe) == 'titulo,texto_de_apoio'
+            assert not (_rascunho_do_disco(job) or {}).get('funcoes')
+            _clicar(pg, '#mostrar-sugestoes')
+            assert pg.evaluate(no_detalhe) == 'cta,titulo'
+            assert pg.evaluate('() => document.getElementById("sugestoes-chegaram").hidden') is True
+            assert _pressionados(pg, '#passo-funcoes') == 0
+            # so o clique em "Usar" poe a funcao no rascunho, como qualquer escolha do DA
+            _clicar(pg, '#detalhe button[data-usar="cta"]')
+            r = _salvo(pg, job)
+            assert r['funcoes'] == {str(pasta): {'funcao': 'cta', 'observacao': None}}
+            assert r['origem'] == 'fixture_de_teste'
+            assert 'Em uso' in pg.evaluate('() => document.querySelector("#detalhe [data-sugestao]").innerText')
+            assert pg.evaluate('(s) => document.querySelector(s).hidden', marca) is True  # o DA ja escolheu
+            pg.wait_for_timeout(1200)  # numero-neutro: ms, um sinal por segundo
+            _clicar(pg, '#arvore button[data-camada="%d"]' % filho)
+            _esperar(pg, '() => document.documentElement.dataset.sinal === "enviado" ? "1" : ""')
+            # o modo caiu para c: a sugestao some na hora, sem "Mostrar", e o rascunho fica
+            vez['v'] = SEM_SUGESTAO
+            _esperar(pg, '() => document.documentElement.dataset.sugestoes === "nenhuma" ? "1" : ""')
+            assert pg.evaluate('() => document.querySelectorAll("[data-sugestao]").length') == 0
+            assert pg.evaluate('() => Array.from(document.querySelectorAll(".sugestao-arvore"))'
+                               '.filter(x => !x.hidden).length') == 0
+            assert _rascunho_do_disco(job)['funcoes'] == r['funcoes']
+            # a frase do pedido (decisao 190, Q4) aparece quando o modo a ou b fica gravado e vale
+            _clicar(pg, '#passos [data-passo=lido]')
+            assert 'quero sugestões' not in pg.evaluate('() => document.getElementById("lido-modo").innerText')
+            import test_tela_familia_estavel as tfe
+            # revisao do S4: a escolha gravada e a, mas o modo que vale continua c (teto da agencia, escolha de
+            # teste): a importacao recusaria, e a frase nao aparece
+            tfe._confirmar_na_pagina(pg, '#lido-modo button[data-modo=a]')
+            pg.wait_for_timeout(800)  # numero-neutro: ms, a leitura das sugestoes depois do ato
+            assert 'quero sugestões' not in pg.evaluate('() => document.getElementById("lido-modo").innerText')
+            # o modo b gravado e valendo: a frase aparece
+            vez['v'] = {'modo': 'b', 'sha256': None, 'sugestoes': []}
+            tfe._confirmar_na_pagina(pg, '#lido-modo button[data-modo=b]')
+            _esperar(pg, '() => document.getElementById("lido-modo").innerText.includes("quero sugestões") ? "1" : ""')
+            assert tf.FRASE_PEDIR_SUGESTOES in pg.evaluate('() => document.getElementById("lido-modo").innerText')
+        finally:
+            nav.close()
+    sessao = contratos.ler(job / tc.ARQUIVO, tc.ESQUEMA)['sessoes'][-1]
+    assert sessao['passo_2']['sugestao_na_tela'] is True and sessao['passo_2']['total_s'] >= 0
+
+
+def test_chegada_das_primeiras_sugestoes_tira_a_frase_do_pedido(job_palco, tmp_path):  # noqa: F811
+    """Revisao do S4, o fluxo da Q4: a tela abre sem sugestao e mostra a frase do pedido; as sugestoes chegam com o
+    passo 2 aberto e a faixa "Chegaram" espera o "Mostrar". Enquanto isso, a frase sai: as duas mensagens nao podem
+    pedir coisas contrarias ao DA."""
+    import shutil
+
+    from playwright.sync_api import sync_playwright
+
+    import test_tela_palco as tp
+    from desdobra.chromium import navegador
+    from desdobra.tela import atos as ta
+    from desdobra.tela import estado as te
+    job = tmp_path / 'job'
+    shutil.copytree(job_palco, job)
+    laudo = contratos.ler(job / 'laudo' / 'laudo.json', 'laudo/1')
+    pasta = {c['nome']: c['identidade']['layer_id'] for c in laudo['camadas']}[tp.NOME_FORM]
+    c = te.montar(job)
+    vez = {'v': {'modo': 'a', 'sha256': None, 'sugestoes': []}}
+    c['sugestoes'] = lambda: vez['v']
+    detalhe = '() => document.getElementById("detalhe").innerText'
+    navegador.apontar_playwright()
+    with ts.ServidorTela(c, pasta=job, modo_teste=True, atos=ta.atos_do_job(job, conteudo=c)) as srv, \
+            sync_playwright() as pw:
+        nav, pg = tp._pagina_da_tela(pw, srv, 1600, 900)  # numero-neutro: janela do teste
+        try:
+            _esperar(pg, '() => document.documentElement.dataset.sugestoes === "nenhuma" ? "1" : ""')
+            _clicar(pg, '#passos [data-passo=funcoes]')
+            assert tf.FRASE_PEDIR_SUGESTOES in pg.evaluate(detalhe)
+            vez['v'] = {'modo': 'a', 'sha256': '3' * 64, 'sugestoes': [_sugestao(pasta, 'titulo', 'cta')]}
+            _esperar(pg, '() => document.documentElement.dataset.sugestoes === "chegaram" ? "1" : ""')
+            assert 'Chegaram as sugestões' in pg.evaluate(
+                '() => document.getElementById("sugestoes-chegaram").innerText')
+            assert 'quero sugestões' not in pg.evaluate(detalhe)
+            _clicar(pg, '#mostrar-sugestoes')
+            assert 'quero sugestões' not in pg.evaluate(detalhe)
+            assert 'sugestão do Claude' in pg.evaluate(detalhe)
+            assert not (_rascunho_do_disco(job) or {}).get('funcoes')
+        finally:
+            nav.close()
+
+
+def test_rota_leve_nao_valida_o_laudo_a_cada_consulta(tmp_path, monkeypatch):
+    """Revisao do S4: o laudo nao muda com a tela aberta. A consulta a cada poucos segundos le o laudo uma vez e so
+    volta a ler quando o arquivo muda; o arquivo validado grande demais nao se le."""
+    import os
+    job = _job_com_sugestoes(tmp_path)
+    arq_laudo = job / 'laudo' / 'laudo.json'
+    leituras = []
+    ler = contratos.ler
+
+    def contar(caminho, *a, **k):
+        if os.path.basename(str(caminho)) == 'laudo.json':
+            leituras.append(1)
+        return ler(caminho, *a, **k)
+    monkeypatch.setattr(contratos, 'ler', contar)
+    primeira = tf.sugestoes_na_tela(job)
+    for _ in range(5):  # numero-neutro: consultas seguidas
+        assert tf.sugestoes_na_tela(job) == primeira
+    assert primeira['sugestoes'] and len(leituras) == 1
+    # o laudo mudou: le de novo
+    st = arq_laudo.stat()
+    os.utime(arq_laudo, ns=(st.st_atime_ns, st.st_mtime_ns + 10 ** 9))
+    assert tf.sugestoes_na_tela(job) == primeira and len(leituras) == 2
+    # o arquivo validado grande demais fica de fora, como na importacao
+    arq = job.joinpath(*tsi.ARQ_VALIDADAS)
+    arq.write_bytes(arq.read_bytes() + b' ' * (si.LIMITE_BYTES + 1))
+    assert tf.sugestoes_na_tela(job) == {'modo': 'a', 'sha256': None, 'sugestoes': []}
+
+
+def test_ref_das_sugestoes_segue_o_teto_da_tela(job_salvar, modelo):  # noqa: F811
+    """Revisao do S4: a tela aberta com o teto da agencia na linha de comando (b) nao mostra as sugestoes validadas
+    no modo a; o briefing tambem nao leva a referencia delas."""
+    from desdobra.briefing import salvar as bs
+    from desdobra.tela import estado as te
+    job = job_salvar
+    # as duas telas abrem antes (a rota das sugestoes le de novo a cada pedido)
+    com_b, sem_teto = te.montar(job, teto='b'), te.montar(job)
+    escolher_modo_do_da(job, 'a')
+    sp.refazer_pacotes(job)
+    lid = next(iter(modelo['funcoes']))
+    tsi._escrever(job, tsi._sugestoes(job, [{'layer_id': lid, 'funcao': 'titulo', 'alternativa': 'cta'}]))
+    assert si.importar(job)['gravou']
+    kw = dict(origem='fixture_de_teste', meio='medicao', por={'usuario': None, 'maquina': None},
+              quando='2026-11-13T10:00:00-03:00', modo=None)
+    assert com_b['sugestoes']()['sha256'] is None
+    assert bs.montar(job, com_b, {'familias': {}}, **kw)['sugestoes_ref'] is None
+    assert bs.montar(job, sem_teto, {'familias': {}}, **kw)['sugestoes_ref'] == _sha_validadas(job)

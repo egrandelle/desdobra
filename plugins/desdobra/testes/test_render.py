@@ -20,7 +20,7 @@ from PIL import Image
 
 import test_fontes_apoio as ap
 import test_render_apoio as rap
-from desdobra import arquivos, contratos, limites
+from desdobra import arquivos, contratos, humano, limites
 from desdobra.chromium import navegador, servidor
 from desdobra.fontes import conferencia
 from desdobra.job import nucleo
@@ -282,7 +282,7 @@ def test_render_recusa_sem_terminal_e_com_envelope(job_render, python):
         assert r.returncode == int(Codigo.RECUSADO)
         if extra:
             env = json.loads(r.stdout.decode('utf-8').strip().splitlines()[-1])
-            assert env['situacao'] == 'recusado' and 'terminal' in env['o_que_fazer']
+            assert env['situacao'] == 'recusado' and env['o_que_fazer'] == humano.O_QUE_FAZER  # M7c, K5: a tela
     assert (job / 'render' / 'origem' / 'master.png').stat().st_mtime_ns == antes
 
 

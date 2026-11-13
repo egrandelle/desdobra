@@ -17,7 +17,8 @@
       "type": "object",
       "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"},
       "additionalProperties": {"$ref": "#/$defs/total"}
-    }
+    },
+    "passo_2": {"description": "M7c, S4: a soma do passo 2 (Funcoes) sobre as sessoes que o mediram. So existe depois do primeiro clique no passo 2.", "$ref": "#/$defs/total_passo_2"}
   },
   "$defs": {
     "tempo": {"type": "number", "minimum": 0},
@@ -38,7 +39,34 @@
           "type": "object",
           "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"},
           "additionalProperties": {"$ref": "#/$defs/familia"}
-        }
+        },
+        "passo_2": {"$ref": "#/$defs/passo_2"}
+      }
+    },
+    "passo_2": {
+      "description": "M7c, S4: o passo 2 (Funcoes) nesta sessao, no molde da familia (decisoes-v1.md, 189): do primeiro clique ou tecla com o passo aberto ate o ultimo instante contado. O tempo ativo tira as pausas acima de pausa_max_s; ativo_com_sugestao_s e a parte dele com sugestao do Claude a vista; sugestao_na_tela diz se ela apareceu.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aberta_em", "ultima_atividade_em", "ativo_s", "total_s", "ativo_com_sugestao_s", "sugestao_na_tela"],
+      "properties": {
+        "aberta_em": {"type": "string"},
+        "ultima_atividade_em": {"type": "string"},
+        "ativo_s": {"$ref": "#/$defs/tempo"},
+        "total_s": {"$ref": "#/$defs/tempo"},
+        "ativo_com_sugestao_s": {"$ref": "#/$defs/tempo"},
+        "sugestao_na_tela": {"type": "boolean"}
+      }
+    },
+    "total_passo_2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessoes", "sessoes_com_sugestao", "ativo_s", "total_s", "ativo_com_sugestao_s"],
+      "properties": {
+        "sessoes": {"type": "integer", "minimum": 1},
+        "sessoes_com_sugestao": {"$ref": "#/$defs/contagem"},
+        "ativo_s": {"$ref": "#/$defs/tempo"},
+        "total_s": {"$ref": "#/$defs/tempo"},
+        "ativo_com_sugestao_s": {"$ref": "#/$defs/tempo"}
       }
     },
     "familia": {

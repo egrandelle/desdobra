@@ -38,26 +38,27 @@ O_QUE_FAZER_ABERTA = ('A tela de briefing abriu numa janela do navegador do desd
                       'job é escolhido pelo DA no passo 1 da tela; até lá, o job fica no modo c. Peça ao DA para '
                       'trabalhar nas abas e fechar a janela quando terminar; ao fechar, o desdobra apaga a pasta '
                       'temporária do navegador.')
+# o que o DA le quando a tela nao abre (M7c, K5): nada de comando de terminal; o DA pede ao Claude, que segue o job,
+# abre a tela de novo ou confere a instalacao pela skill doctor
+_SEGUIR_E_REABRIR = 'Peça ao Claude para seguir o job e abrir a tela de novo.'
+_DOCTOR = 'Peça ao Claude para conferir a instalação do desdobra (doctor)'
 O_QUE_FAZER_RECUSA = {
-    'nao_e_job': 'A pasta não é um job do desdobra. Confira a pasta ou crie o job com "desdobra job criar".',
+    'nao_e_job': 'A pasta não é um job do desdobra. Confira a pasta ou peça ao Claude para criar o job.',
     'job_ocupado': 'Outro comando do desdobra está usando este job. Espere ele terminar e abra a tela de novo.',
-    'sem_briefing': 'O job ainda não tem briefing para a tela mostrar. No M7a0 a tela mostra o briefing de teste '
-                    '("desdobra briefing importar --teste <arquivo> --job <pasta>").',
-    'briefing_rascunho': 'O briefing gravado é um rascunho, sem decisões. A tela do M7a0 mostra só um briefing '
-                         'completo, como o de teste.',
-    'briefing_desatualizado': 'O briefing é de outra versão do laudo, das specs, do design system ou das fontes. '
-                              'Importe o briefing de teste de novo.',
-    'briefing_com_problema': 'O briefing tem decisão pendente ou incompleta. Rode "desdobra briefing funcoes --job '
-                             '<pasta>" para ver as contagens.',
+    'sem_briefing': 'O job ainda não tem briefing para a tela mostrar. ' + _SEGUIR_E_REABRIR,
+    'briefing_rascunho': 'O briefing gravado é um rascunho, sem decisões, e a tela não o abre. ' + _SEGUIR_E_REABRIR,
+    'briefing_desatualizado': ('O briefing é de outra versão do laudo, das specs, do design system ou das fontes. '
+                               + _SEGUIR_E_REABRIR),
+    'briefing_com_problema': 'O briefing tem decisão pendente ou incompleta. ' + _SEGUIR_E_REABRIR,
     'briefing_invalido': 'O briefing não segue o contrato briefing/1.',
-    'fases_desatualizadas': 'Uma fase do job está desatualizada. Rode "desdobra job proxima <pasta> --todas".',
+    'fases_desatualizadas': 'Uma fase do job está desatualizada. ' + _SEGUIR_E_REABRIR,
     'entrada_alterada_fora_do_motor': 'Uma entrada congelada do job mudou fora do desdobra.',
-    'sem_chromium_com_janela': 'O navegador com janela do desdobra não está instalado. Rode o doctor do desdobra, '
-                               'que diz como pedir o aval do DA para o download.',
-    'chromium_nao_abriu': 'O navegador com janela não abriu. Rode o doctor do desdobra e tente de novo.',
-    'tela_nao_respondeu': 'A tela não respondeu a tempo e foi fechada. Rode o doctor do desdobra e tente de novo.',
-    'erro_interno': 'Erro interno do desdobra ao abrir a tela. Rode o doctor do desdobra e mande o doctor.json para a '
-                    'Trezion se voltar.',
+    'sem_chromium_com_janela': ('O navegador com janela do desdobra não está instalado. ' + _DOCTOR
+                                + ', que diz como pedir o seu aval para o download.'),
+    'chromium_nao_abriu': 'O navegador com janela não abriu. ' + _DOCTOR + ' e abrir a tela de novo.',
+    'tela_nao_respondeu': 'A tela não respondeu a tempo e foi fechada. ' + _DOCTOR + ' e abrir a tela de novo.',
+    'erro_interno': ('Erro interno do desdobra ao abrir a tela. ' + _DOCTOR + ' e mande o doctor.json para a Trezion '
+                     'se voltar.'),
     'uso': 'Erro interno do desdobra ao abrir a tela (argumentos do processo de fundo).',
 }
 CODIGO_DA_RECUSA = {'tela_nao_respondeu': Codigo.ORCAMENTO, 'erro_interno': Codigo.ERRO_INTERNO,

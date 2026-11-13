@@ -319,10 +319,14 @@ VERBO_DE_ENVIO = re.compile(r'(?<![\w-])(?:curl|wget|scp|sftp|ftp|rsync|rclone|g
                             re.IGNORECASE)
 # revisao do P1: qualquer comando do motor (python -m desdobra ...), sozinho, passa pela regra do job: e o motor que
 # decide o que sai do job (7.6). O interpretador tem nome de python ou e o do interpretador.json
-MOTOR_GERAL = re.compile(r'^\s*(?:&\s*)?(?P<py>"[^"]+"|\'[^\']+\'|[^\s"\']+)\s+-m\s+desdobra(?=\s|$)', re.IGNORECASE)
+# leva 4: aceita as opcoes do interpretador sem argumento antes de -m (a forma das skills e "PY" -I -B -m desdobra)
+OPCOES_DO_INTERPRETADOR = r'(?:\s+-[IBEsSuOPq]+)*'
+MOTOR_GERAL = re.compile(r'^\s*(?:&\s*)?(?P<py>"[^"]+"|\'[^\']+\'|[^\s"\']+)' + OPCOES_DO_INTERPRETADOR +
+                         r'\s+-m\s+desdobra(?=\s|$)', re.IGNORECASE)
 NOME_DE_PYTHON = re.compile(r'(?:pythonw?[\d.]*|py)(?:\.exe)?', re.IGNORECASE)
 # os comandos do motor que recebem PSD ou fonte no argumento: o motor le o arquivo no processo filho isolado (7.6)
-COMANDO_DO_MOTOR = re.compile(r'^\s*(?:&\s*)?(?P<py>"[^"]+"|\'[^\']+\'|[^\s"\']+)\s+-m\s+desdobra'
+COMANDO_DO_MOTOR = re.compile(r'^\s*(?:&\s*)?(?P<py>"[^"]+"|\'[^\']+\'|[^\s"\']+)' + OPCOES_DO_INTERPRETADOR +
+                              r'\s+-m\s+desdobra'
                               r'(?:\s+--?[\w-]+(?:[ =](?!job\b)[^\s|;&<>]+)?)*\s+job\s+'
                               r'(?:criar|trocar-entrada|remover-entrada)(?=\s|$)', re.IGNORECASE)
 NOME_INTERPRETADOR = 'interpretador.json'

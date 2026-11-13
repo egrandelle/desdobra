@@ -498,3 +498,120 @@ def test_pagina_manda_o_sinal_e_a_confirmacao_para_o_cronometro(job, modelo):
     assert f['edicoes'] == 2 and f['quebras'] == 1 and f['confirmada_em'] is not None
     assert 0 < f['ativo_s'] <= f['total_s']
     assert lido['familias'][gm]['sessoes'] == 1
+
+
+# ------------------------------------------------------------------ M7c, S4: o passo 2 cronometrado
+# No molde da nota 189: o cronometro do passo 2 ("Funcoes") comeca no primeiro clique ou tecla com o passo aberto; o
+# tempo ativo tira as pausas acima de tela.mestre_pausa_max_s; o total vai do primeiro ao ultimo clique no passo. A
+# sessao marca se havia sugestao do Claude na tela, e o tempo ativo com a sugestao a vista fica separado.
+def test_passo_2_grava_ativo_e_total_com_e_sem_sugestao(tmp_path, relogio):
+    c = _cronometro(tmp_path, relogio)
+    c.sinal(None, passo_2=True, sugestao=False)    # abre o passo 2
+    relogio.andar(10)
+    c.sinal(None, passo_2=True, sugestao=True)     # 10 s ativos, sem sugestao a vista
+    relogio.andar(20)
+    c.sinal(None, passo_2=True, sugestao=True)     # 20 s ativos, com a sugestao a vista
+    relogio.andar(100)
+    c.sinal(None, passo_2=True, sugestao=False)    # pausa acima de 60 s: nao conta
+    relogio.andar(5)
+    c.sinal('vertical-1')                          # saiu do passo 2: os 5 s ainda sao dele
+    relogio.andar(30)
+    c.sinal('vertical-1')                          # 30 s da familia, nada do passo 2
+    p2 = _lido(tmp_path)['sessoes'][-1]['passo_2']
+    assert p2['ativo_s'] == 35 and p2['total_s'] == 135 and p2['ativo_com_sugestao_s'] == 20
+    assert p2['sugestao_na_tela'] is True and p2['aberta_em'] != p2['ultima_atividade_em']
+    assert _da_sessao(tmp_path, 'vertical-1')['ativo_s'] == 30
+    total = _lido(tmp_path)['passo_2']
+    assert total == {'sessoes': 1, 'sessoes_com_sugestao': 1, 'ativo_s': 35, 'total_s': 135,
+                     'ativo_com_sugestao_s': 20}
+
+
+def test_passo_2_sem_sugestao_marca_que_nao_havia_e_volta_a_contar(tmp_path, relogio):
+    c = _cronometro(tmp_path, relogio)
+    c.sinal(None, passo_2=True)
+    relogio.andar(15)
+    c.sinal(None)                                  # foi ao passo 1: os 15 s sao do passo 2
+    relogio.andar(40)
+    c.sinal(None, passo_2=True)                    # os 40 s fora do passo nao contam
+    relogio.andar(5)
+    c.sinal(None, passo_2=True)
+    p2 = _lido(tmp_path)['sessoes'][-1]['passo_2']
+    assert p2['ativo_s'] == 20 and p2['total_s'] == 60 and p2['ativo_com_sugestao_s'] == 0
+    assert p2['sugestao_na_tela'] is False
+    assert _lido(tmp_path)['passo_2']['sessoes_com_sugestao'] == 0
+
+
+def test_janela_sem_o_passo_2_nao_grava_o_passo_2(tmp_path, relogio):
+    c = _cronometro(tmp_path, relogio)
+    c.sinal('a')
+    relogio.andar(3)
+    c.sinal('a')
+    lido = _lido(tmp_path)
+    assert 'passo_2' not in lido['sessoes'][-1] and 'passo_2' not in lido
+
+
+def test_passo_2_soma_as_sessoes_de_duas_janelas(tmp_path, relogio):
+    for _ in range(2):  # numero-neutro: duas janelas
+        c = _cronometro(tmp_path, relogio)
+        c.sinal(None, passo_2=True, sugestao=True)
+        relogio.andar(7)
+        c.sinal(None, passo_2=True, sugestao=True)
+        relogio.andar(100)
+    total = _lido(tmp_path)['passo_2']
+    assert total == {'sessoes': 2, 'sessoes_com_sugestao': 2, 'ativo_s': 14, 'total_s': 14,
+                     'ativo_com_sugestao_s': 14}
+
+
+def test_falha_ao_gravar_o_passo_2_nunca_chega_ao_da(tmp_path, relogio, monkeypatch):
+    c = _cronometro(tmp_path, relogio)
+
+    def falha(*a, **k):
+        raise OSError('disco cheio')
+    monkeypatch.setattr(tc.contratos, 'gravar', falha)
+    c.sinal(None, passo_2=True, sugestao=True)
+    relogio.andar(4)
+    c.sinal(None, passo_2=True, sugestao=True)
+    monkeypatch.undo()
+    relogio.andar(1)
+    c.sinal(None, passo_2=True)
+    assert _lido(tmp_path)['sessoes'][-1]['passo_2']['ativo_s'] == 5
+
+
+@pytest.mark.parametrize('extra', [
+    {'passo_2': True},                              # falta a marca da sugestao
+    {'sugestao': True},                             # falta o passo
+    {'passo_2': 1, 'sugestao': False},
+    {'passo_2': True, 'sugestao': 'sim'},
+    {'passo_2': True, 'sugestao': False, 'outro': 1},
+])
+def test_sinal_do_passo_2_fora_do_formato_e_recusado(extra):
+    dados = dict({'familia': None, 'edicoes': 0, 'quebras': 0, 'atraso_ms': 0}, **extra)
+    assert tc.conferir_sinal(dados, {'a'}) is None
+
+
+def test_sinal_do_passo_2_so_vale_fora_de_uma_familia():
+    dados = {'familia': 'a', 'edicoes': 0, 'quebras': 0, 'atraso_ms': 0, 'passo_2': True, 'sugestao': False}
+    assert tc.conferir_sinal(dados, {'a'}) is None
+    dados['familia'] = None
+    assert tc.conferir_sinal(dados, {'a'}) == (None, 0, 0, 0)
+    assert tc.passo_do_sinal(dados) == {'passo_2': True, 'sugestao': False}
+    assert tc.passo_do_sinal({'familia': None, 'edicoes': 0, 'quebras': 0, 'atraso_ms': 0}) == \
+        {'passo_2': False, 'sugestao': False}
+
+
+def test_servidor_leva_o_sinal_do_passo_2_ao_cronometro(job, modelo):
+    conteudo = te.montar(job)
+    r = Relogio()
+    s = ts.ServidorTela(conteudo, pasta=job, modo_teste=True, relogio=r).iniciar()
+    try:
+        biscoito = tts._entrar(s)
+        corpo = {'familia': None, 'edicoes': 0, 'quebras': 0, 'atraso_ms': 0, 'passo_2': True, 'sugestao': True}
+        assert tte._escrever(s, '/api/medicao', corpo, cookie=biscoito)[0] == 204
+        r.andar(9)
+        assert tte._escrever(s, '/api/medicao', dict(corpo, sugestao=False), cookie=biscoito)[0] == 204
+        assert tte._escrever(s, '/api/medicao', dict(corpo, familia=tsv._familia_de(conteudo, 'mesma')),
+                             cookie=biscoito)[0] == 403
+    finally:
+        s.parar()
+    p2 = _lido(job)['sessoes'][-1]['passo_2']
+    assert p2['ativo_s'] == 9 and p2['ativo_com_sugestao_s'] == 9 and p2['sugestao_na_tela'] is True

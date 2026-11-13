@@ -222,6 +222,77 @@ def decisoes_minimas(laudo, alvo, quadro=None):
     return escolhas
 
 
+FRASE_PEDIR_SUGESTOES = 'Para ver sugestões de função, escreva ao Claude: quero sugestões'
+
+
+def _sem_sugestao(modo):
+    return {'modo': modo, 'sha256': None, 'sugestoes': []}
+
+
+# revisao do S4: o laudo nao muda com a tela aberta, e a rota leve e consultada a cada poucos segundos. O que ela usa do
+# laudo (o sha256 do KV e os layer_id) fica guardado por arquivo e so e lido e validado de novo quando o arquivo muda
+# (data de modificacao ou tamanho).
+_LAUDO_DAS_SUGESTOES = {}
+_LAUDOS_GUARDADOS = 16  # numero-neutro: so limita a memoria do processo; uma tela usa um laudo
+
+
+def _laudo_das_sugestoes(pasta):
+    """(sha256 do KV, frozenset dos layer_id) do laudo do job, lidos e validados uma vez por versao do arquivo."""
+    arq = pasta / 'laudo' / 'laudo.json'
+    st = arq.stat()
+    chave = (st.st_mtime_ns, st.st_size)
+    guardado = _LAUDO_DAS_SUGESTOES.get(str(arq))
+    if guardado is not None and guardado[0] == chave:
+        return guardado[1], guardado[2]
+    laudo = contratos.ler(arq, 'laudo/1')
+    sha, ids = (laudo.get('origem') or {}).get('sha256'), frozenset(mb.camadas_do_laudo(laudo))
+    if len(_LAUDO_DAS_SUGESTOES) >= _LAUDOS_GUARDADOS:
+        _LAUDO_DAS_SUGESTOES.clear()
+    _LAUDO_DAS_SUGESTOES[str(arq)] = (chave, sha, ids)
+    return sha, ids
+
+
+def sugestoes_na_tela(pasta, teto=None):
+    """M7c, S4 (decisoes-v1.md, 162 e 190, Q4): o que a tela mostra ao lado de cada funcao, lido de
+    sugestoes/sugestoes-validadas.json (o arquivo que o motor gravou depois de conferir o do Claude;
+    desdobra.sugestao.importar). {'modo': o modo efetivo de agora, 'sha256': o do arquivo mostrado ou None,
+    'sugestoes': [{'layer_id', 'funcao', 'alternativa'}] pela ordem do layer_id}. Nada aparece quando o modo efetivo
+    (escolha do DA limitada pelo teto do job, o da linha de comando e o do processo) e c, quando o arquivo e de outro
+    modo, de outro job ou de outro KV, ou quando nao se le; o alvo que o laudo nao tem mais sai. So ids e o enum de
+    funcoes: nenhum nome nem texto. Le e nunca grava: a sugestao so vira valor com o clique do DA. O arquivo validado
+    acima de LIMITE_BYTES da importacao nao se le, e o laudo so e lido de novo quando muda (_laudo_das_sugestoes)."""
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from desdobra.sugestao import importar, pacote
+    pasta = Path(pasta)
+    try:
+        estado = contratos.ler(pasta / 'estado.json', 'estado/1')
+    except (contratos.ErroContrato, OSError, ValueError):
+        return _sem_sugestao('c')
+    modo = pacote.modo_do_job(pasta, estado, teto)
+    if modo not in ('a', 'b'):
+        return _sem_sugestao('c')
+    arq = pasta / importar.ARQUIVO_VALIDADAS
+    try:
+        if arq.is_symlink() or not arq.is_file() or arq.stat().st_size > importar.LIMITE_BYTES:
+            return _sem_sugestao(modo)
+        bruto = arq.read_bytes()
+        if len(bruto) > importar.LIMITE_BYTES:
+            return _sem_sugestao(modo)
+        dados = contratos.validar(json.loads(bruto.decode('utf-8')), importar.CONTRATO)
+        kv_sha256, ids = _laudo_das_sugestoes(pasta)
+    except (contratos.ErroContrato, OSError, ValueError, UnicodeDecodeError):
+        return _sem_sugestao(modo)
+    if dados.get('modo_dados') != modo or dados.get('job_id') != estado.get('job_id') or \
+            dados.get('arquivo_sha256') != kv_sha256:
+        return _sem_sugestao(modo)
+    itens = sorted(({'layer_id': x['layer_id'], 'funcao': x['funcao'], 'alternativa': x['alternativa']}
+                    for x in dados['sugestoes'] if x['layer_id'] in ids), key=lambda x: x['layer_id'])
+    return {'modo': modo, 'sha256': hashlib.sha256(bruto).hexdigest(), 'sugestoes': itens}
+
+
 def rascunho_de_escolhas(escolhas, observacao='observacao do teste'):
     """{layer_id: funcao} na forma do rascunho da tela (as chaves em texto; indeterminado com observacao)."""
     return {str(k): {'funcao': f, 'observacao': observacao if f == mb.FUNCAO_INDETERMINADO else None}

@@ -23,8 +23,10 @@ nome de arquivo, texto da folha) a pagina poe so por textContent.
 from pathlib import Path
 
 MODOS = {
+    # M7c, S4 (decisoes-v1.md, 190, Q7): o texto em pixel ou em forma vetorial o laudo nao ve, e o risco fica dito
     'a': ('Textos e miniaturas', 'O Claude recebe os nomes e os textos das camadas e miniaturas das imagens sem texto, '
-                                 'para sugerir as funções.'),
+                                 'para sugerir as funções. Uma letra desenhada em pixel ou em forma vetorial o '
+                                 'desdobra não enxerga, e ela pode ir na imagem.'),
     'b': ('Sem imagens', 'O Claude recebe os nomes e os textos das camadas, sem nenhuma imagem.'),
     'c': ('Sem conteúdo', 'Nada do conteúdo do arquivo vai ao Claude. Ele recebe só contagens e medidas.'),
 }

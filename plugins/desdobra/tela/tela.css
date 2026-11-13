@@ -306,6 +306,25 @@ main { flex: 1; min-height: 0; display: flex; }
 .marca-linha .modo-marca { margin-top: 0; }
 .marca-linha .modo-nome { overflow-wrap: anywhere; }
 .marca-sem { margin-bottom: 12px; }
+/* M7c, S4: o anel de foco da linha de escolha fica por dentro da borda. Por fora, a lista das marcas (que rola)
+   cortava o anel e sobrava so uma linha escura embaixo da marca escolhida */
+.modo:focus-visible { outline: 2px solid var(--foco); outline-offset: -2px; }
+
+/* M7c, S4 (decisao 190, Q4): a frase que o DA escreve ao Claude, com o pedido destacado como algo para digitar */
+.pedir-sugestoes { color: var(--suave); line-height: 1.5; max-width: 62ch; }
+.pedir-sugestoes .pedido {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--raio-p);
+  background: var(--superficie-2);
+  color: var(--tinta);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.modo-pedido { margin: 2px 0 12px; padding: 10px 12px; border-left: 2px solid var(--acento); background: var(--acento-fundo); border-radius: 0 var(--raio-p) var(--raio-p) 0; animation: surgir 0.25s var(--curva) both; }
+.passo-pedido { margin-top: 12px; font-size: 13px; }
 .marca-nova { display: grid; gap: 6px; padding-top: 12px; border-top: 1px dashed var(--linha); max-width: 62ch; }
 .marca-nova label { font-weight: 600; }
 .marca-nova-linha { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
@@ -551,6 +570,48 @@ main { flex: 1; min-height: 0; display: flex; }
 .campo .ajuda { font-size: 12px; }
 .erro-campo { color: var(--aviso); font-size: 12px; }
 .tirar { margin-top: 4px; }
+
+/* M7c, S4: a sugestao do Claude ao lado da funcao. Borda tracejada: e sugestao, nunca valor, ate o clique em Usar */
+.sugestao {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 10px 12px 12px;
+  border: 1px dashed var(--acento-linha);
+  border-radius: var(--raio);
+  background: var(--superficie-2);
+  animation: subir 0.25s var(--curva) both;
+}
+.sugestao-fonte { margin: 0 0 2px; }
+.sugestao-selo { color: var(--acento); font-size: 12px; font-weight: 600; letter-spacing: 0.01em; }
+.sugestao-linha { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
+.sugestao-linha + .sugestao-linha { border-top: 1px solid var(--linha); padding-top: 6px; }
+.sugestao-info { display: grid; gap: 0; min-width: 0; }
+.sugestao-rotulo { color: var(--mais-suave); font-size: 11px; }
+.sugestao-funcao { font-weight: 600; overflow-wrap: anywhere; }
+.alternativa .sugestao-funcao { font-weight: 500; }
+.sugestao .usar { flex: none; height: 28px; padding: 0 14px; font-size: 12px; }
+.sugestao .usar:active:not(:disabled) { transform: scale(0.97); }
+.sugestao-em-uso { flex: none; color: var(--acento); font-size: 12px; font-weight: 600; }
+.sugestao-nota { font-size: 12px; margin-top: 2px; }
+.sugestao-resumo { margin-top: 12px; }
+.arvore .sugestao-arvore { display: block; margin-top: 1px; color: var(--acento); font-size: 11px; }
+.arvore .sugestao-arvore::before { content: ""; display: inline-block; width: 8px; height: 0; margin-right: 5px; border-top: 1px dashed currentColor; vertical-align: 3px; }
+.arvore .sugestao-arvore[hidden] { display: none; }
+.arvore button[aria-current="true"] .sugestao-arvore { color: #f0d9ad; }
+/* a faixa de sugestoes novas: fica entre o topo da mesa e o KV, e espera o "Mostrar" */
+.chegaram {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--acento-fundo);
+  border-bottom: 1px solid var(--acento-linha);
+  animation: surgir 0.25s var(--curva) both;
+}
+.chegaram[hidden] { display: none; }
+.chegaram-texto { flex: 1; min-width: 0; color: var(--tinta); }
+.chegaram .botao { flex: none; height: 28px; padding: 0 14px; font-size: 12px; }
 
 /* camadas marcadas no KV e o ponto da ancora, no mundo do palco */
 .marca-peca {

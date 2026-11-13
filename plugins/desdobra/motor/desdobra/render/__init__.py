@@ -73,8 +73,8 @@ def perguntar(pergunta):
 def _recusa_terminal(comando, pasta, motivo):
     from desdobra import humano
     return Resultado(comando=comando, codigo=int(Codigo.RECUSADO), situacao='recusado',
-                     o_que_fazer=humano.O_QUE_FAZER, pasta_job=pasta, contagens={'recusa_%s' % motivo: 1},
-                     linhas_humanas=['%s só roda num terminal interativo, com a confirmação do DA.' % comando])
+                     o_que_fazer=humano.o_que_fazer(comando), pasta_job=pasta, contagens={'recusa_%s' % motivo: 1},
+                     linhas_humanas=[humano.linha_recusa(comando)])
 
 
 def _render(args):

@@ -1706,6 +1706,7 @@ def montar(pasta, teto=None, biblioteca=None):
 
     from desdobra import biblioteca as mod_biblioteca
     from desdobra.tela import edicao
+    from desdobra.tela import funcoes as funcoes_da_tela
     b, laudo = ctx['briefing'], ctx['laudo']
     base = pecas_base(laudo, asset_por_camada, face_de)
     conferencia = mod_biblioteca.conferir(biblioteca)
@@ -1817,7 +1818,10 @@ def montar(pasta, teto=None, biblioteca=None):
                              for gid, fids in familias.items()},
                 # a situacao da biblioteca (sem caminho) e a pasta, so no processo de fundo (M7c, M1 e M3)
                 'biblioteca': mod_biblioteca.para_tela(conferencia),
-                'pasta_biblioteca': conferencia.pasta if conferencia.usavel else None}
+                'pasta_biblioteca': conferencia.pasta if conferencia.usavel else None,
+                # M7c, S4: a rota leve /api/sugestoes le de novo, a cada pedido, o arquivo validado do modo de agora
+                # (com o teto desta tela), sem gravar nada (desdobra.tela.funcoes.sugestoes_na_tela)
+                'sugestoes': lambda: funcoes_da_tela.sugestoes_na_tela(pasta, teto)}
 
     def atualizador(feita, atual):
         def atualizar():

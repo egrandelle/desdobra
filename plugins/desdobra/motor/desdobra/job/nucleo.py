@@ -21,7 +21,7 @@ from pathlib import Path
 from desdobra import __version__, contratos
 from desdobra.arquivos import (PREFIXO_TEMPORARIO, eh_arquivo_de_fonte, eh_arquivo_do_sistema, gravar_bytes_atomico,
                                sha256_arquivo, sha256_caminho, tem_assinatura_psd, tornar_gravavel, tornar_somente_leitura)
-from desdobra.job.fases import ESTEIRA, FASES_M1, FIM, validar_esteira  # noqa: F401 - FASES_M1 para os testes
+from desdobra.job.fases import ESTEIRA, FASES_M1, FIM, SE_A_FASE_FALHA, validar_esteira  # noqa: F401 - FASES_M1 para os testes
 from desdobra.resultado import MODOS_DADOS, Codigo, Resultado, modo_permitido
 
 ESQUEMA_ESTADO = 'estado/1'
@@ -53,7 +53,7 @@ def conferir_job(pasta):
     """Erro de uso, com o mesmo o que fazer do job estado, quando a pasta nao e um job do desdobra."""
     if not caminho_estado(pasta).is_file():
         raise ErroJob('A pasta não tem estado.json: ela não é um job do desdobra.',
-                      o_que_fazer='Confira a pasta do job ou crie o job com "desdobra job criar".')
+                      o_que_fazer='Confira a pasta do job ou peça ao Claude para criar o job.')
 
 
 def ler_estado(pasta):
@@ -326,11 +326,11 @@ def calcular_proxima(estado, avaliacao, fases):
         reg = estado['fases'].get(f.id) or _registro_vazio()
         if reg['situacao'] == 'falhou':
             return {'tipo': 'falha', 'fase': f.id,
-                    'o_que_fazer': f.o_que_fazer or 'A fase %s falhou. Corrija e rode "desdobra job proxima".' % f.id}
+                    'o_que_fazer': f.o_que_fazer or 'A fase %s falhou. %s' % (f.id, SE_A_FASE_FALHA)}
         if f.tipo == 'portao':
             return {'tipo': 'portao', 'fase': f.id, 'o_que_fazer': f.o_que_fazer}
         return {'tipo': 'fase', 'fase': f.id,
-                'o_que_fazer': 'Rode "desdobra job proxima" para a fase %s (%s).' % (f.id, f.descricao)}
+                'o_que_fazer': 'A fase %s (%s) ainda não rodou. Peça ao Claude para seguir o job.' % (f.id, f.descricao)}
     pendentes = bloqueios_pendentes(estado, avaliacao, fases)
     if pendentes:
         fid, bloqueio = pendentes[0]
@@ -558,7 +558,8 @@ def _invalidar_entrega(pasta):
     from desdobra.entrega import aprovacao, validar
     erro = ErroJob('Um arquivo de entrega/ está aberto em outro programa: a entrega atual não pôde ser guardada em '
                    'entrega/anteriores/ e nada mudou no job.',
-                   o_que_fazer='Feche os arquivos de entrega/ (e o manifesto-licenca.json) e rode o comando de novo.')
+                   o_que_fazer='Feche os arquivos de entrega/ (e o manifesto-licenca.json) e peça ao Claude para tentar '
+                               'de novo.')
     try:
         validar.invalidar(pasta)
     except OSError:
@@ -615,9 +616,8 @@ def proxima(pasta, fases=ESTEIRA, todas=False, executor=_executar_comando, opcoe
         if problemas:
             registrar_evento(pasta, 'entrada_alterada_fora_do_motor', n=len(problemas))
             raise ErroJob('Uma entrada congelada do job mudou, sumiu ou apareceu fora do motor (%d arquivo(s)).' % len(problemas),
-                          o_que_fazer='Restaure a pasta entrada/ como estava ou troque a entrada com '
-                                      '"desdobra job trocar-entrada", que registra a troca e invalida só as fases '
-                                      'que dependem dela.')
+                          o_que_fazer='Restaure a pasta entrada/ como estava ou peça ao Claude para registrar a troca '
+                                      'da entrada (trocar-entrada), que invalida só as fases que dependem dela.')
         if opcoes_da_fase:
             invalidadas = _invalidar_por_opcoes(estado, fases, opcoes_da_fase)
             if invalidadas:
