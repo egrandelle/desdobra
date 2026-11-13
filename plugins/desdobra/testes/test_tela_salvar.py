@@ -1942,3 +1942,61 @@ def test_padrao_da_marca_no_chromium(job, modelo, marca_m4, capturas=None, telas
     regras = {r['funcao']: r['regra'] for r in b['regras_escala']}
     assert regras['titulo']['origem'] == {'tipo': 'padrao_marca', 'ref': 'marca:%s@v2#job:%s' % (id_, ttf.JOB_P1)}
     assert regras['logo_principal']['origem']['tipo'] == humano.ORIGEM_FIXTURE
+
+
+def test_padrao_da_marca_com_o_nome_do_job_no_chromium(job, modelo, tmp_path, capturas=None, telas=((1600, 900),)):
+    """Ajuste nome (resposta do Duda ao ponto 3, 13/11): o quadro do padrao diz "do job <nome>", com o nome que o
+    perfil guarda, e nao o id curto; o id fica so no title. O clique em "Usar o padrao" continua gravando o ref pelo
+    id."""
+    from playwright.sync_api import sync_playwright
+
+    import test_tela_funcoes as ttf
+    from desdobra.chromium import navegador
+    bib = tmp_path / 'biblioteca-nomes'
+    bib.mkdir()
+    id_ = ttf.perfil_m4(bib, nomes=True)
+    ttf.marca_do_job_m4(job, id_)
+    navegador.apontar_playwright()
+    conteudo = te.montar(job, biblioteca=str(bib))
+    padrao = '#resumo-design [data-chave="f%s"] .padrao-marca'
+    s = _servidor(job, conteudo)
+    try:
+        assert _gravar_rascunho(s, tts._entrar(s), _escolhas(conteudo), _rascunho_sem_design(modelo)) == 200
+    finally:
+        s.parar()
+    with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
+                         atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
+        largura, altura = telas[0]
+        nav = pw.chromium.launch(headless=True, args=list(navegador.ARGUMENTOS))
+        pg = nav.new_context(viewport={'width': largura, 'height': altura}, device_scale_factor=1).new_page()
+        try:
+            try:
+                pg.goto(srv.url_entrada, wait_until='commit')
+            except Exception:  # noqa: BLE001 - o 204 nao completa a navegacao
+                pass
+            pg.goto(srv.url_pagina, wait_until='load')
+            tp._esperar(pg, tp.JS_PRONTO)
+            pg.evaluate('() => document.querySelector("#passos [data-passo=design]").click()')
+            tp._esperar(pg, '() => document.querySelector(%s) ? "1" : ""' % json.dumps(padrao % 'titulo'))
+            for f, job_origem in (('titulo', ttf.JOB_P1), ('logo_principal', ttf.JOB_P2)):
+                fonte = pg.evaluate('(s) => document.querySelector(s).innerText', padrao % f)
+                assert 'Padrão da marca, versão 2, do job %s' % ttf.NOMES_M4[job_origem] in fonte, fonte
+                assert job_origem[:8] not in fonte and id_ not in fonte
+            for w, h in telas:
+                if capturas is not None:
+                    pg.set_viewport_size({'width': w, 'height': h})
+                    pg.wait_for_timeout(300)  # numero-neutro: a entrada do quadro termina
+                    pg.screenshot(path=str(capturas / ('nome-2-padrao-citado-%dx%d.png' % (w, h))))
+            pg.set_viewport_size({'width': largura, 'height': altura})
+            pg.evaluate('(s) => document.querySelector(s).click()', (padrao % 'titulo') + ' button[data-usar-padrao]')
+            tp._esperar(pg, '() => ["pendente", "salvando"].includes(document.documentElement.dataset.rascunho)'
+                            ' ? "" : "1"')
+            tp._esperar(pg, '() => document.documentElement.dataset.rascunho === "salvo" ? "1" : ""')
+            d = contratos.ler(job / tr.ARQUIVO, tr.ESQUEMA)['design']
+            ref = 'marca:%s@v2#job:%s' % (id_, ttf.JOB_P1)
+            assert d['titulo']['origem'] == {'regra': {'tipo': 'padrao_marca', 'ref': ref},
+                                             'ancora': {'tipo': 'padrao_marca', 'ref': ref}}
+            # o rascunho nao leva o nome do job
+            assert 'Campanha Sintetica' not in (job / tr.ARQUIVO).read_text(encoding='utf-8')
+        finally:
+            nav.close()

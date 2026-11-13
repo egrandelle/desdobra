@@ -14,19 +14,20 @@ from pathlib import Path
 from desdobra.resultado import Codigo, Resultado
 
 O_QUE_FAZER_OK = ('As derivações estão em derivacao/<formato>.json e os formatos devolvidos ao DA, com o motivo, em '
-                  'derivacao/devolucoes.json. O render de cada formato derivado é do DA, num terminal próprio: '
-                  '"desdobra render --job <pasta> --formato <id>".')
+                  'derivacao/devolucoes.json. O render de cada formato derivado é um clique do DA na tela do '
+                  'desdobra. Peça ao Claude para abrir a tela do job (/desdobra:continuar).')
 O_QUE_FAZER_ERRO = {
-    'sem_briefing': 'O job não tem briefing. O briefing confirmado sai da tela (M7) ou, para teste, de "desdobra '
-                    'briefing importar --teste <arquivo> --job <pasta>".',
+    'sem_briefing': 'O job não tem briefing. O briefing confirmado sai da tela, no "Salvar e seguir" do DA (nos testes, '
+                    'do briefing de teste importado).',
     'briefing_desatualizado': 'O briefing é de outra versão do laudo, das specs, do design system ou das fontes. '
                               'Confirme o briefing de novo (ou importe o de teste de novo).',
-    'briefing_com_problema': 'O briefing tem decisão pendente ou incompleta. Rode "desdobra briefing funcoes --job '
-                             '<pasta>" para ver as contagens e corrija o briefing.',
+    'briefing_com_problema': 'O briefing tem decisão pendente ou incompleta. As contagens das funções mostram o que '
+                             'falta; o DA corrige o briefing na tela.',
     'briefing_invalido': 'O briefing não segue o contrato briefing/1.',
-    'briefing_rascunho': 'O briefing gravado é um rascunho, sem as decisões do DA. O briefing confirmado sai da tela (M7) '
-                         'ou, para teste, de "desdobra briefing importar --teste".',
-    'fases_desatualizadas': 'Uma fase do job está desatualizada. Rode "desdobra job proxima <pasta> --todas".',
+    'briefing_rascunho': 'O briefing gravado é um rascunho, sem as decisões do DA. O briefing confirmado sai da tela, '
+                         'no "Salvar e seguir" do DA (nos testes, do briefing de teste importado).',
+    'fases_desatualizadas': 'Uma fase do job está desatualizada. Peça ao Claude para seguir o job '
+                            '(/desdobra:continuar).',
     'entrada_alterada_fora_do_motor': 'Uma entrada congelada do job mudou fora do motor.',
     'formato_desconhecido': 'O formato pedido não está no briefing.',
 }
@@ -45,7 +46,7 @@ def _derivar(args):
     pasta = Path(args.job).resolve()
     if not (pasta / 'estado.json').is_file():
         return Resultado(comando='derivar', codigo=int(Codigo.USO), situacao='erro', pasta_job=pasta,
-                         o_que_fazer='Rode o derivar numa pasta de job.', linhas_humanas=['A pasta não é um job.'])
+                         o_que_fazer='O derivar só funciona numa pasta de job.', linhas_humanas=['A pasta não é um job.'])
     try:
         with nucleo.Trava(pasta):
             r = nd.derivar(pasta, so=args.formato)

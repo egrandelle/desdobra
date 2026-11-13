@@ -102,7 +102,8 @@ O_QUE_FAZER_JANELA = ('O Chromium com janela da tela de briefing (o Chrome for T
                       'Claude Code. Se o problema voltar, veja o preparo.log na pasta de dados do plugin e mande o '
                       'doctor.json para a Trezion.')
 O_QUE_FAZER_PERFIS = ('Uma tela de briefing foi fechada à força e deixou a pasta temporária do navegador. O doctor '
-                      'apagou o que pôde. Se alguma ficou, feche as telas abertas e rode o doctor de novo; se ela '
+                      'apagou o que pôde. Se alguma ficou, feche as telas abertas e peça ao Claude para conferir a '
+                      'instalação de novo (/desdobra:doctor); se ela '
                       'continuar, mande o doctor.json para a Trezion.')
 
 

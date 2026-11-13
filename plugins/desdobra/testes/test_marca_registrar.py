@@ -477,7 +477,9 @@ def test_segundo_registro_vira_versao_nova_com_a_anterior_inteira_no_historico(j
     v = reg.na_tela(job, bib[0])
     assert (v['versao_atual'], v['versao_nova']) == (1, 2)
     mantida = next(r for r in v['regras'] if r['funcao'] == 'destaque_numerico')
-    assert mantida == {'funcao': 'destaque_numerico', 'regra': 'largura', 'job': JOB_ANTERIOR[:8], 'desta_campanha': False}
+    # o perfil de antes do ajuste do nome nao tem o nome do job: a tela cai no id curto (job_nome None)
+    assert mantida == {'funcao': 'destaque_numerico', 'regra': 'largura', 'job': JOB_ANTERIOR[:8], 'job_nome': None,
+                       'desta_campanha': False}
     assert reg.gravar(job, disparo=_disparo(tela), biblioteca=bib[0], impressao=v['impressao'])['versao'] == 2
     p = perfil.ler(bib[0], bib[1])
     assert p['versao'] == 2 and p['atual']['job_origem'] == _job_id(job)
@@ -697,6 +699,171 @@ def test_segundo_job_da_marca_mostra_o_padrao_registrado(job, bib, tela, tmp_pat
     assert copy.deepcopy(p) == p
 
 
+# ------------------------------------------------------------------ M7c, ajuste nome: o nome do job de origem
+# Resposta do Duda ao ponto 3 (13/11): a tela mostra o nome do job de origem, e nao o id curto. O nome do job e o da
+# pasta que o DA deu ao job na criacao (o estado.json so tem o id). O ref e a conferencia continuam pelo id.
+NOME_DO_JOB = 'Campanha Sintetica Verao'
+NOME_ANTERIOR = 'Campanha Sintetica Antiga'
+
+
+@pytest.fixture
+def job_nomeado(job, tmp_path):
+    """O job aprovado numa pasta com o nome que o DA deu ao job."""
+    destino = tmp_path / NOME_DO_JOB
+    shutil.move(str(job), str(destino))
+    return destino
+
+
+def _campanha_anterior(nome=NOME_ANTERIOR):
+    camp = {'job': JOB_ANTERIOR, 'data': '2026-11-01', 'formatos': [{'formato': 'f1', 'aprovacao_sha256': 'e' * 64}],
+            'confirmado_por': {'usuario': 'da', 'maquina': 'estacao'}, 'origem': 'da', 'meio': 'tela'}
+    if nome is not None:
+        camp['job_nome'] = nome
+    return camp
+
+
+def test_nome_do_job_e_o_nome_da_pasta(job_nomeado, tmp_path):
+    reg = _registrar()
+    assert reg.nome_do_job(job_nomeado) == NOME_DO_JOB
+    # a pasta com nome fora do contrato do perfil (aqui, com extensao de fonte) fica sem nome: a tela usa o id curto
+    estranho = tmp_path / 'Campanha.otf'
+    estranho.mkdir()
+    assert reg.nome_do_job(estranho) is None
+
+
+def test_a_janela_mostra_o_nome_do_job_deste_e_do_job_mantido(job_nomeado, bib):
+    from desdobra.marca import perfil
+    perfil.nova_versao(bib[0], bib[1], campanha=_campanha_anterior(), quando='2026-11-01T10:00:00-03:00',
+                       regras_escala=[{'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR,
+                                       'job_origem_nome': NOME_ANTERIOR}],
+                       ancoras=[], faces=[{'postscript': 'Antiga-Regular'}])
+    v = _registrar().na_tela(job_nomeado, bib[0])
+    assert v['pode'] is True, v
+    mantida = next(r for r in v['regras'] if r['funcao'] == 'destaque_numerico')
+    assert (mantida['job'], mantida['job_nome'], mantida['desta_campanha']) == (JOB_ANTERIOR[:8], NOME_ANTERIOR, False)
+    deste = [i for i in v['regras'] + v['ancoras'] if i['desta_campanha']]
+    assert deste and {i['job_nome'] for i in deste} == {NOME_DO_JOB}
+    # nada de caminho: so o nome da pasta
+    texto = json.dumps(v, ensure_ascii=False)
+    for proibido in (str(bib[0]), str(job_nomeado), bib[1], '\\\\', '/'):
+        assert proibido not in texto, proibido
+
+
+def test_mantida_sem_nome_cai_no_nome_da_campanha_do_job(job_nomeado, bib):
+    """A regra mantida gravada sem o nome (perfil de antes do ajuste) mostra o nome que uma campanha do mesmo job
+    registrou depois; sem nenhum, a tela cai no id curto."""
+    from desdobra.marca import perfil
+    perfil.nova_versao(bib[0], bib[1], campanha=_campanha_anterior(), quando='2026-11-01T10:00:00-03:00',
+                       regras_escala=[{'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR}],
+                       ancoras=[], faces=[])
+    v = _registrar().na_tela(job_nomeado, bib[0])
+    assert next(r for r in v['regras'] if r['funcao'] == 'destaque_numerico')['job_nome'] == NOME_ANTERIOR
+
+
+def test_registrar_grava_o_nome_do_job_ao_lado_do_id(job_nomeado, bib, tela):
+    from desdobra.marca import perfil
+    reg = _registrar()
+    perfil.nova_versao(bib[0], bib[1], campanha=_campanha_anterior(), quando='2026-11-01T10:00:00-03:00',
+                       regras_escala=[{'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR}],
+                       ancoras=[], faces=[])
+    v1 = perfil.ler(bib[0], bib[1])['atual']
+    v = reg.na_tela(job_nomeado, bib[0])
+    assert reg.gravar(job_nomeado, disparo=_disparo(tela), biblioteca=bib[0], impressao=v['impressao'])['versao'] == 2
+    p = perfil.ler(bib[0], bib[1])
+    atual = p['atual']
+    jid = _job_id(job_nomeado)
+    assert atual['campanha']['job'] == jid and atual['campanha']['job_nome'] == NOME_DO_JOB
+    for item in atual['regras_escala'] + atual['ancoras']:
+        if item['job_origem'] == jid:
+            assert item['job_origem_nome'] == NOME_DO_JOB, item
+    # a regra mantida, gravada sem nome, fica como estava (o nome dela sai da campanha do job, na leitura)
+    mantida = next(r for r in atual['regras_escala'] if r['funcao'] == 'destaque_numerico')
+    assert mantida == {'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR}
+    assert arquivos.para_json(p['historico'][0]) == arquivos.para_json(v1)
+    # o ref continua pelo id
+    from desdobra.tela import funcoes as tf
+    assert tf.FORMA_DO_REF.pattern.endswith('#job:([0-9a-f]{8,64})$')
+    # o nome do job nao vai ao log do job
+    log = (job_nomeado / 'log' / 'eventos.jsonl').read_text(encoding='utf-8')
+    assert NOME_DO_JOB not in log and 'Verao' not in log
+
+
+def test_perfil_antigo_sem_nome_continua_guardado(job_nomeado, bib, tela, monkeypatch):
+    """O job registrado antes do ajuste (perfil sem o nome) continua guardado: o nome que a tela tem agora nao vira
+    versao nova, e a janela ja mostra o nome."""
+    from desdobra.marca import perfil
+    reg = _registrar()
+    original = reg.nome_do_job
+    monkeypatch.setattr(reg, 'nome_do_job', lambda pasta: None)  # como antes do ajuste
+    imp = reg.na_tela(job_nomeado, bib[0])['impressao']
+    reg.gravar(job_nomeado, disparo=_disparo(tela), biblioteca=bib[0], impressao=imp)
+    atual = perfil.ler(bib[0], bib[1])['atual']
+    assert 'job_nome' not in atual['campanha']
+    assert all('job_origem_nome' not in i for i in atual['regras_escala'] + atual['ancoras'])
+    monkeypatch.setattr(reg, 'nome_do_job', original)
+    arq = bib[0] / 'marcas' / bib[1] / 'perfil-marca.json'
+    antes = arq.read_bytes()
+    v = reg.na_tela(job_nomeado, bib[0])
+    assert (v['pode'], v['guardado'], v['motivo']) == (False, True, 'ja_guardado'), v
+    assert {i['job_nome'] for i in v['regras'] + v['ancoras']} == {NOME_DO_JOB}
+    assert arq.read_bytes() == antes
+
+
+def test_job_renomeado_aparece_com_um_nome_so_na_janela(job_nomeado, bib):
+    """Revisao do ajuste nome: o job anterior registrou com a pasta 'Velha', a pasta foi renomeada e o mesmo job
+    registrou de novo como 'Nova', mantendo a regra decidida antes (que guarda 'Velha'). A janela mostra o job anterior
+    com um nome so, o da campanha mais recente dele."""
+    from desdobra.marca import perfil
+    velho, novo = 'Pasta Sintetica Velha', 'Pasta Sintetica Nova'
+    perfil.nova_versao(bib[0], bib[1], campanha=_campanha_anterior(velho), quando='2026-11-01T10:00:00-03:00',
+                       regras_escala=[{'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR,
+                                       'job_origem_nome': velho}], ancoras=[], faces=[])
+    camp = dict(_campanha_anterior(novo), formatos=[{'formato': 'f1', 'aprovacao_sha256': 'f' * 64}])
+    _, criou = perfil.nova_versao(
+        bib[0], bib[1], campanha=camp, quando='2026-11-02T10:00:00-03:00',
+        regras_escala=[{'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR,
+                        'job_origem_nome': velho}],
+        ancoras=[{'funcao': 'destaque_numerico', 'x': 'centro', 'y': 'topo', 'job_origem': JOB_ANTERIOR,
+                  'job_origem_nome': novo}], faces=[])
+    assert criou
+    v = _registrar().na_tela(job_nomeado, bib[0])
+    do_anterior = [i for i in v['regras'] + v['ancoras'] if i['job'] == JOB_ANTERIOR[:8]]
+    assert do_anterior and {i['job_nome'] for i in do_anterior} == {novo}, do_anterior
+
+
+def test_pasta_com_nome_que_nao_vira_utf8_cai_no_id_curto(job, tmp_path, bib):
+    """Revisao do ajuste nome: o NTFS aceita na pasta metade de um par UTF-16. O nome fica de fora (None), a janela
+    cai no id curto e o registro continua possivel, como antes do ajuste."""
+    destino = tmp_path / 'Campanha \ud800 Sintetica'
+    try:
+        shutil.move(str(job), str(destino))
+    except (OSError, UnicodeError):
+        pytest.skip('o sistema de arquivos desta maquina nao aceita o nome')
+    reg = _registrar()
+    assert reg.nome_do_job(destino) is None
+    v = reg.na_tela(destino, bib[0])
+    assert v['pode'] is True and v.get('motivo') != 'perfil_ilegivel', v
+    assert all(i['job_nome'] is None for i in v['regras'] + v['ancoras'] if i['desta_campanha'])
+
+
+def test_o_nome_do_job_do_perfil_nao_vai_ao_envelope_do_claude(job_nomeado, bib, tela, capsys):
+    """O envelope que vai ao Claude (o do job estado) nao leva o nome de job que o perfil guarda (o Claude so conhece a
+    pasta do job que ele mesmo passou ao motor)."""
+    from desdobra import cli
+    from desdobra.marca import perfil
+    perfil.nova_versao(bib[0], bib[1], campanha=_campanha_anterior(), quando='2026-11-01T10:00:00-03:00',
+                       regras_escala=[{'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR,
+                                       'job_origem_nome': NOME_ANTERIOR}], ancoras=[], faces=[])
+    reg = _registrar()
+    reg.gravar(job_nomeado, disparo=_disparo(tela), biblioteca=bib[0],
+               impressao=reg.na_tela(job_nomeado, bib[0])['impressao'])
+    capsys.readouterr()
+    cli.principal(['--envelope', 'job', 'estado', str(job_nomeado)])
+    saida = capsys.readouterr().out
+    assert json.loads(saida)['contagens']['marca_escolhida'] == 1
+    assert NOME_ANTERIOR not in saida and 'Antiga' not in saida
+
+
 # ------------------------------------------------------------------ a pagina no Chromium sem janela
 JS_FAIXA = '() => document.getElementById("registro-marca").hidden'
 JS_BOTAO = '() => document.getElementById("registro-guardar").hidden'
@@ -789,6 +956,40 @@ def test_registrar_no_chromium_com_a_janela_e_depois(job, bib, monkeypatch, capt
                 depois = pg.evaluate('() => document.getElementById("registro-marca").innerText')
                 assert 'Padrão guardado' in depois and 'versão 1' in depois
                 _fotos(pg, capturas, 'm5-4-guardado', telas)
+            finally:
+                nav.close()
+    finally:
+        s.parar()
+
+
+def test_janela_do_registro_mostra_o_nome_do_job_no_chromium(job_nomeado, bib, monkeypatch, capturas=None,
+                                                             telas=((1600, 900),)):
+    """Ajuste nome: a janela diz "do job <nome>, mantida" na regra que veio de outra campanha, com o nome que o perfil
+    guarda; o id curto so aparece quando o perfil nao tem o nome."""
+    from playwright.sync_api import sync_playwright
+
+    import test_tela_palco as tp
+    from desdobra.chromium import navegador
+    from desdobra.marca import perfil
+    perfil.nova_versao(bib[0], bib[1], campanha=_campanha_anterior(), quando='2026-11-01T10:00:00-03:00',
+                       regras_escala=[{'funcao': 'destaque_numerico', 'regra': 'largura', 'job_origem': JOB_ANTERIOR,
+                                       'job_origem_nome': NOME_ANTERIOR}],
+                       ancoras=[{'funcao': 'selo', 'x': 'direita', 'y': 'topo', 'job_origem': JOB_ANTERIOR}],
+                       faces=[])
+    monkeypatch.setattr(humano, 'ambiente_da_tela', lambda: (True, None))
+    navegador.apontar_playwright()
+    _conteudo, s = _servidor(job_nomeado, bib[0])
+    try:
+        with sync_playwright() as pw:
+            nav, pg = _abrir_formatos(pw, s, *telas[0])
+            try:
+                pg.evaluate('() => document.getElementById("registro-guardar").click()')
+                tp._esperar(pg, '() => document.getElementById("confirmacao").open ? "1" : ""')
+                janela = pg.evaluate('() => document.getElementById("confirmacao").innerText')
+                assert 'do job %s, mantida' % NOME_ANTERIOR in janela, janela
+                assert JOB_ANTERIOR[:8] not in janela
+                assert 'deste job' in janela
+                _fotos(pg, capturas, 'nome-1-janela', telas)
             finally:
                 nav.close()
     finally:

@@ -77,7 +77,7 @@ def sessao(pasta, *, disparo, saida=print):
     humano.conferir(disparo, 'linkado confirmar')
     pasta = Path(pasta).resolve()
     if not (pasta / 'estado.json').is_file():
-        raise ErroLinkado('Rode a confirmação numa pasta de job ("desdobra job criar").')
+        raise ErroLinkado('A confirmação só funciona numa pasta de job do desdobra.')
     _laudo, lista = pendentes(pasta)
     if not lista:
         raise ErroLinkado('O laudo não tem smart object linkado.')
@@ -88,8 +88,8 @@ def sessao(pasta, *, disparo, saida=print):
         saida('Camada %s: linkado gravado no PSD como %s (%s bytes, %s).' % (
             c['identidade']['layer_id'], reg.get('nome'), reg.get('tamanho'), reg.get('data')))
         if not cands:
-            saida('  Nenhum arquivo de entrada/campanha/ tem esse nome. Acrescente o arquivo com "desdobra job '
-                  'trocar-entrada <pasta> entrada/campanha/<arquivo> <arquivo>" e rode a confirmação de novo.')
+            saida('  Nenhum arquivo de entrada/campanha/ tem esse nome. Acrescente o arquivo em '
+                  'entrada/campanha/ do job e confirme de novo.')
             continue
         for k, cand in enumerate(cands, 1):
             saida('  %d) %s, %s bytes%s' % (k, cand['arquivo'], cand['bytes'],

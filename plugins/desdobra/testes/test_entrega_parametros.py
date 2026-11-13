@@ -127,13 +127,16 @@ def test_gancho_nega_o_comando_pelo_claude_e_a_escrita_do_arquivo():
         assert decidir('Bash', {'command': c}) == 'segue', c
 
 
-def test_sugestoes_dizem_o_comando_de_verdade():
+def test_sugestoes_dizem_que_a_decisao_e_do_da_sem_comando():
+    # M7c, ajuste terminal: o parametros-entrega ainda nao tem botao na tela (M8); as sugestoes dizem que a decisao e
+    # do DA e que o botao chega no proximo marco, sem comando de terminal (humano.O_QUE_FAZER_SEM_BOTAO)
     from desdobra.entrega import validar
     textos = [validar.SUGESTOES['condicao_nao_decidida'], validar.SUGESTOES['cor_de_achatamento_nao_definida'],
               validar.SUGESTOES['borda_sem_valor_confirmado'], portao.DESCRICOES['rotacao_sem_sentido_confirmado']]
     for t in textos:
-        assert 'desdobra parametros-entrega' in t and 'pelo terminal' not in t, t
-    # as opcoes citadas existem no comando
+        assert 'parametros-entrega' not in t and 'terminal' not in t and '--' not in t, t
+        assert 'DA' in t and 'próximo marco' in t, t
+    # as opcoes do comando (que fica para os testes e a Trezion) continuam existindo
     ajuda = cli.montar_analisador()._subparsers._group_actions[0].choices['parametros-entrega'].format_help()
     for opcao in ('--condicao', '--cor-de-achatamento', '--rotacao-sentido', '--limpar', '--borda-1px'):
         assert opcao in ajuda

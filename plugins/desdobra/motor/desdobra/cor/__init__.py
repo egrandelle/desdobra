@@ -220,8 +220,8 @@ class Conversor:
                 self.tratamento, self.motivo, self.origem_icc = TRATAMENTO_ILEGIVEL, str(e), None
         elif indisponivel:
             self.tratamento, self.origem_icc = TRATAMENTO_INDISPONIVEL, None
-            self.motivo = ('o documento tem perfil, mas o arquivo do perfil não está na leitura: rode a leitura de '
-                           'novo com esta versão do motor')
+            self.motivo = ('o documento tem perfil, mas o arquivo do perfil não está na leitura: a leitura precisa '
+                           'ser refeita com esta versão do motor')
         else:
             self.tratamento, self.origem_icc = TRATAMENTO_SEM_PERFIL, self.srgb
             self.perfil = {'nome': 'sRGB (documento sem perfil)', 'sha256': None, 'bytes': None}

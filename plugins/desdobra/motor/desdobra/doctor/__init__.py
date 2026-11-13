@@ -68,9 +68,9 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
             lista.append(_quebrou(ident, e))
     if not com_chromium:
         lista.append(v.Verificacao('fonte_no_chromium', 'Fonte no Chromium', situacao='pulado',
-                                   detalhe='Pulado com --sem-chromium.'))
+                                   detalhe='Pulado: o doctor rodou sem a conferência do Chromium.'))
         lista.append(v.Verificacao('autoteste_render', 'Autoteste do render', situacao='pulado',
-                                   detalhe='Pulado com --sem-chromium.'))
+                                   detalhe='Pulado: o doctor rodou sem a conferência do Chromium.'))
     elif any(x.id == 'chromium_fixado' and x.situacao != 'ok' for x in lista):
         lista.append(v.Verificacao('fonte_no_chromium', 'Fonte no Chromium', situacao='pulado',
                                    detalhe='Pulado: o Chromium fixado não está instalado.'))
@@ -97,7 +97,8 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
         except Exception as e:  # noqa: BLE001
             lista.append(_quebrou('isolador', e))
     else:
-        lista.append(v.Verificacao('isolador', 'Isolador', situacao='pulado', detalhe='Pulado com --sem-isolador.'))
+        lista.append(v.Verificacao('isolador', 'Isolador', situacao='pulado',
+                                   detalhe='Pulado: o doctor rodou sem a conferência do isolador.'))
     lista.append(v.verificar_teto(teto, dados))
     # M7c, M1: a biblioteca da agencia (opcional; sem caminho no relatorio nem no envelope)
     try:
@@ -110,7 +111,8 @@ def rodar_verificacoes(teto, dados, *, com_isolador=True, plat=None, com_chromiu
 def _quebrou(ident, e):
     return v.Verificacao(ident, 'Verificação %s' % ident, situacao='falha',
                          detalhe='A verificação parou com um erro interno (%s).' % type(e).__name__,
-                         o_que_fazer=('Peça ao Claude para conferir a instalação do desdobra (doctor) de novo. Se '
+                         o_que_fazer=('Peça ao Claude para conferir a instalação do desdobra (/desdobra:doctor) de '
+                                      'novo. Se '
                                       'esta verificação falhar outra vez, avise a Trezion com o nome dela.'))
 
 
@@ -161,7 +163,8 @@ def executar(args):
         contratos.gravar(pasta_saida / NOME_ARQUIVO, relatorio, 'doctor/1')
         linhas.append('Relatório gravado em %s.' % (pasta_saida / NOME_ARQUIVO))
     else:
-        linhas.append('Sem pasta de dados do plugin: o doctor.json só é gravado com --saida.')
+        linhas.append('Sem pasta de dados do plugin: o doctor.json só é gravado quando o pedido diz a '
+                      'pasta de saída.')
 
     numeros = {'tempo_s': round(time.monotonic() - inicio, 3)}
     for x in lista:

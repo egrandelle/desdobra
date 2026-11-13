@@ -33,8 +33,9 @@ MENSAGENS_RECUSA = {
     'plataforma': 'O isolamento do processo de leitura não está disponível neste sistema.',
     'bug': 'O processo de leitura da fonte terminou com erro interno.',
 }
-O_QUE_FAZER_RECUSA = ('Passe em --fontes só arquivos de fonte soltos, em OTF, TTF, TTC, WOFF ou WOFF2, sem variable '
-                      'font, Type 1 nem pacote, e crie o job de novo (ou troque com "desdobra job trocar-entrada").')
+O_QUE_FAZER_RECUSA = ('As fontes do job têm de ser arquivos de fonte soltos, em OTF, TTF, TTC, WOFF ou WOFF2, sem '
+                      'variable font, Type 1 nem pacote. Peça ao Claude para trocar a fonte do job pelo arquivo certo '
+                      '(/desdobra:continuar).')
 
 
 def validar_arquivo(caminho, pasta_trabalho, *, plat=None):
@@ -86,7 +87,8 @@ def _conferir(args):
     from desdobra.fontes import conferencia
     pasta = Path(args.job).resolve()
     if not (pasta / 'estado.json').is_file() or not (pasta / 'laudo' / 'laudo.json').is_file():
-        return _uso('fontes conferir', 'Rode a conferência numa pasta de job com laudo/laudo.json ("desdobra job proxima").')
+        return _uso('fontes conferir', 'A conferência só funciona numa pasta de job com laudo/laudo.json; a '
+                                         'leitura vem antes (/desdobra:continuar).')
     conf = conferencia.conferir(pasta, usar_chromium=not args.sem_chromium)
     r = conf['resumo']
     bloqueio = r['faces_bloqueantes'] or r['camadas_bloqueantes'] or r['arquivos_recusados']

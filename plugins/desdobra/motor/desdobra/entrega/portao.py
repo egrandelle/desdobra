@@ -38,12 +38,12 @@ DESCRICOES = {
     'formato_inexistente': 'O briefing não tem este formato.',
     'rotacao_nao_decidida': 'A rotação do formato não foi decidida no briefing (decisão 139): a entrega não supõe 0 grau.',
     'rotacao_sem_sentido_confirmado': 'O formato gira um quarto de volta e o sentido do giro não está confirmado pelo DA '
-                                      'em parametros/entrega.json (decisão 139): o DA grava com "desdobra '
-                                      'parametros-entrega --job <pasta> --formato <id> --rotacao-sentido horario" (ou '
-                                      'anti_horario), num terminal próprio.',
+                                      'em parametros/entrega.json (decisão 139). O sentido (horário ou anti-horário) é '
+                                      'decisão do DA, e o botão dela chega no próximo marco do desdobra.',
     'rotacao_sentido_divergente': 'O sentido do giro no briefing não é o que o DA confirmou em parametros/entrega.json.',
     'parametros_de_entrega_invalidos': 'parametros/entrega.json não segue o contrato parametros-entrega/1.',
-    'sem_master': 'O formato não tem render/<formato>/master.png, render.json e contrato.json: rode o render dele.',
+    'sem_master': 'O formato não tem render/<formato>/master.png, render.json e contrato.json: o render dele é '
+                  'um clique do DA na tela.',
     'render_json_invalido': 'O render.json do formato não segue o contrato render/1.',
     'render_de_outro_formato': 'O render.json da pasta é de outro formato (arquivo trocado).',
     'render_de_outro_job': 'O render.json é de outro job.',
@@ -51,14 +51,14 @@ DESCRICOES = {
     'contrato_diferente_do_render': 'O contrato.json não é o que o render usou (sha256 diferente do render.json).',
     'master_de_outro_kv': 'O master saiu de outro KV, e não do que está em entrada/ agora.',
     'master_de_outra_impressao': 'O master saiu de outra versão do que alimenta o formato (função, regra, âncora, '
-                                 'quebra, família, spec ou mestre da derivação dele). Rode a derivação e o render do '
-                                 'formato de novo.',
-    'contrato_desatualizado': 'O contrato montado de novo, com os arquivos de agora, não é o que o render usou: rode o '
-                              'render do formato de novo.',
+                                 'quebra, família, spec ou mestre da derivação dele). O "Salvar e seguir" do DA, na '
+                                 'tela, deriva de novo, e o render do formato é um clique dele.',
+    'contrato_desatualizado': 'O contrato montado de novo, com os arquivos de agora, não é o que o render usou: o DA '
+                              'renderiza o formato de novo, com um clique na tela.',
     'aceites_diferentes': 'As decisões que o contrato de agora pede ao DA não são as que ele aceitou no render.',
     'familia_sem_confirmacao': 'O formato não está numa família confirmada pelo DA na tela ("Confirmar família").',
     'proposta_sem_confirmacao': 'O formato sai de uma proposta do motor que o DA não confirmou na tela.',
-    'sem_aprovacao': 'O formato não tem aprovação do DA ("desdobra aprovar" num terminal interativo).',
+    'sem_aprovacao': 'O formato não tem aprovação do DA (um clique dele na tela do desdobra).',
     'aprovacao_invalida': 'briefing/aprovacao.json não segue o contrato aprovacao/2.',
     'aprovacao_antiga': 'A aprovação do formato é de uma versão anterior do desdobra, que olhava o briefing inteiro, e '
                         'caiu: aprove o formato de novo.',

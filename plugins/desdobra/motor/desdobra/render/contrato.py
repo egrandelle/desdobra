@@ -44,13 +44,15 @@ DESCRICOES_BLOQUEIO = {
                                      '(laudo, recusas). O render não compõe este documento.',
     'modo_de_cor_fora_da_v1': 'A v1 só compõe documentos RGB de 8 bits por canal.',
     'sem_estrutura': 'O laudo não tem a estrutura lida do documento.',
-    'fontes_nao_conferidas': 'A conferência de fontes não rodou para este laudo. Rode "desdobra job proxima".',
-    'conferencia_desatualizada': 'A conferência de fontes é de outro laudo. Rode "desdobra job proxima".',
+    'fontes_nao_conferidas': 'A conferência de fontes não rodou para este laudo. Peça ao Claude para seguir o job '
+                             '(/desdobra:continuar).',
+    'conferencia_desatualizada': 'A conferência de fontes é de outro laudo. Peça ao Claude para seguir o job '
+                                 '(/desdobra:continuar).',
     'fonte_bloqueante': 'A conferência de fontes tem bloqueio técnico numa camada de texto visível (arquivo '
                         'faltando, nome sem par, glifo faltando, fallback ou face não confirmada).',
     'arquivo_de_fonte_fora_do_job': 'Um arquivo de fonte da conferência não está mais em entrada/fontes/.',
-    'linkado_sem_confirmacao': 'Há smart object linkado visível sem o arquivo casado e confirmado pelo DA. Rode '
-                               '"desdobra linkado confirmar --job <pasta>" num terminal interativo.',
+    'linkado_sem_confirmacao': 'Há smart object linkado visível sem o arquivo casado e confirmado pelo DA. A '
+                               'confirmação do arquivo é um clique do DA na tela de briefing.',
     'linkado_confirmado_mudou': 'O arquivo confirmado para um linkado mudou ou saiu de entrada/campanha/.',
     'linkado_confirmado_no_modo_de_teste': 'O linkado foi confirmado no modo de teste da tela, ou antes de a '
                                            'confirmação gravar quem confirmou. Confirme o arquivo do linkado de novo '
@@ -58,14 +60,16 @@ DESCRICOES_BLOQUEIO = {
     'spec_confirmada_no_modo_de_teste': 'Um valor de spec foi confirmado no modo de teste da tela. Confirme o valor '
                                         'de novo na tela de briefing.',
     'largura_divergente': 'A conferência de fontes achou divergência de largura numa camada de texto. É decisão do DA, '
-                          'que confirma no terminal antes do render.',
+                          'que a aceita na confirmação do render, na tela.',
     'fases_desatualizadas': 'Uma fase de que o render depende (leitura, fontes, segunda passada do laudo ou design '
-                            'system) não está válida contra as entradas atuais. Rode "desdobra job proxima --todas".',
+                            'system) não está válida contra as entradas atuais. Peça ao Claude para seguir o job '
+                            '(/desdobra:continuar).',
     'entrada_alterada_fora_do_motor': 'Uma entrada congelada do job mudou, sumiu ou apareceu fora do motor.',
-    'laudo_de_outro_kv': 'O laudo não é do KV que está em entrada/. Rode "desdobra job proxima --todas".',
+    'laudo_de_outro_kv': 'O laudo não é do KV que está em entrada/. Peça ao Claude para seguir o job '
+                         '(/desdobra:continuar).',
     'trecho_sem_face': 'Uma camada de texto visível tem trecho com tinta sem face do job: o texto sairia sem esse trecho.',
-    'linkados_de_outro_laudo': 'Os linkados confirmados são de outro laudo ou de outro KV. Rode "desdobra linkado '
-                               'confirmar --job <pasta>" de novo, num terminal interativo.',
+    'linkados_de_outro_laudo': 'Os linkados confirmados são de outro laudo ou de outro KV. O DA confirma o arquivo '
+                               'de cada linkado de novo, com um clique na tela de briefing.',
     'linkado_formato_sem_suporte': 'O arquivo confirmado para um linkado não é PNG nem JPEG. O render da v1 só coloca '
                                    'linkado PNG ou JPEG; exporte a arte nesse formato e confirme de novo.',
     'efeito_sobre_texto_sem_aplicar': 'Há ajuste ou mesclagem diferente da normal acima de uma camada de texto. O render '

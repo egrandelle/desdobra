@@ -397,7 +397,9 @@ def test_envelope_da_recusa_inteira(tmp_path):
     codigo, env = _cli('--envelope', '--teto-modo-dados', 'a', 'sugestao', 'importar', '--job', str(job))
     assert codigo == 3 and env['situacao'] == 'recusado'
     assert env['contagens'] == {'aceitas': 0, 'recusadas': 0, 'recusa_pacote_velho': 1}
-    assert env['o_que_fazer'] and 'sugestao pacote' in env['o_que_fazer']
+    # M7c, ajuste terminal: o passo seguinte cita a skill, sem comando de terminal
+    assert env['o_que_fazer'] and '/desdobra:sugerir-funcoes' in env['o_que_fazer']
+    assert 'desdobra sugestao' not in env['o_que_fazer']
 
 
 def test_cli_com_teto_c_refaz_o_pacote_e_recusa(tmp_path):

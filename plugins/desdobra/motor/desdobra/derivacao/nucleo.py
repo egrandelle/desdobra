@@ -82,8 +82,9 @@ O_QUE_FAZER = {
     'bloco_com_regras_diferentes': 'Um bloco rígido tem membros com regras de escala diferentes e o briefing não dá a '
                                    'regra do bloco (decisão 100).',
     'quebra_sem_medida': 'Há quebra aprovada para a família deste formato, e a largura das linhas juntadas não foi '
-                         'medida (a medida roda no Chromium com a fonte do job). Rode o "desdobra derivar" de novo ou '
-                         'confira o doctor.',
+                         'medida (a medida roda no Chromium com a fonte do job). O "Salvar e seguir" do DA, na tela, '
+                         'deriva de novo; se a medida faltar outra vez, peça ao Claude para conferir a instalação do '
+                         'desdobra (/desdobra:doctor).',
     'erro_no_formato': 'A derivação deste formato parou com um erro do motor; os outros formatos seguiram. Mande o '
                        'derivacao/<formato>.json para a Trezion.',
 }

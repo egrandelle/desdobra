@@ -319,11 +319,13 @@ def ref_do_padrao(marca_id, versao, job):
 def padrao_da_marca(pasta, biblioteca):
     """M7c, M4 (arquitetura-v1.md, 5.3 e 5.7; decisoes-v1.md, 162 e 190, Q1 e Q3): o padrao da marca escolhida no passo
     1 (briefing/marca.json) para o Design system, lido da versao atual do perfil na biblioteca da agencia:
-    {'versao', 'funcoes': {funcao: {'regra': {'valor', 'job', 'ref', 'desde'} ou None, 'ancora': {'x', 'y', 'job',
-    'ref', 'desde'} ou None}}}, com o job de origem de cada regra e ancora (desde: _desde). None sem biblioteca, sem marca escolhida, em "Sem marca", com
-    a marca fora desta biblioteca, com o perfil que nao se le ou sem registro (versao 0). Le e nunca grava: o padrao e
-    sugestao citada, e so o clique do DA em "Usar o padrao" poe o valor no rascunho. So ids, o enum e a versao: o nome
-    da marca nunca entra."""
+    {'versao', 'funcoes': {funcao: {'regra': {'valor', 'job', 'job_nome', 'ref', 'desde'} ou None, 'ancora': {'x', 'y',
+    'job', 'job_nome', 'ref', 'desde'} ou None}}}, com o job de origem de cada regra e ancora (desde: _desde; job_nome:
+    o nome do job de origem que o perfil guarda, ou None no perfil gravado antes do ajuste nome). None sem biblioteca,
+    sem marca escolhida, em "Sem marca", com a marca fora desta biblioteca, com o perfil que nao se le ou sem registro
+    (versao 0). Le e nunca grava: o padrao e sugestao citada, e so o clique do DA em "Usar o padrao" poe o valor no
+    rascunho. Ids, o enum, a versao e o nome do job de origem (so para a pagina da tela): o nome da marca nunca entra,
+    e o ref continua pelo id."""
     from desdobra.marca import job as marca_job
     from desdobra.marca import perfil
     if biblioteca is None:
@@ -341,16 +343,27 @@ def padrao_da_marca(pasta, biblioteca):
     versao, id_ = dados['versao'], dados['id']
     # revisao do M4: as versoes da mais nova para a mais antiga (o historico guarda todas, nunca apagadas, Q3)
     versoes = [atual] + list(reversed(dados.get('historico') or []))
+    # ajuste nome: o nome do job de origem, o que o item guarda ou o que uma campanha do mesmo job registrou
+    nomes = perfil.nomes_dos_jobs(dados)
     funcoes = {}
     for r in atual['regras_escala']:
         funcoes.setdefault(r['funcao'], {'regra': None, 'ancora': None})['regra'] = {
-            'valor': r['regra'], 'job': r['job_origem'], 'ref': ref_do_padrao(id_, versao, r['job_origem']),
+            'valor': r['regra'], 'job': r['job_origem'], 'job_nome': _nome_do_job(r, nomes),
+            'ref': ref_do_padrao(id_, versao, r['job_origem']),
             'desde': _desde(versoes, 'regras_escala', r, ('regra', 'job_origem'))}
     for a in atual['ancoras']:
         funcoes.setdefault(a['funcao'], {'regra': None, 'ancora': None})['ancora'] = {
-            'x': a['x'], 'y': a['y'], 'job': a['job_origem'], 'ref': ref_do_padrao(id_, versao, a['job_origem']),
+            'x': a['x'], 'y': a['y'], 'job': a['job_origem'], 'job_nome': _nome_do_job(a, nomes),
+            'ref': ref_do_padrao(id_, versao, a['job_origem']),
             'desde': _desde(versoes, 'ancoras', a, ('x', 'y', 'job_origem'))}
     return {'versao': versao, 'funcoes': funcoes}
+
+
+def _nome_do_job(item, nomes):
+    """Ajuste nome do M7c: o nome do job de origem para a tela, ou None no perfil sem nome (a pagina cai no id curto).
+    Revisao do ajuste nome: vale o nome mais recente que o perfil tem para o job (perfil.nomes_dos_jobs), e o que o item
+    guarda so na falta dele; o job com a pasta renomeada aparece com um nome so."""
+    return nomes.get(item['job_origem']) or item.get('job_origem_nome')
 
 
 def _desde(versoes, lista, item, chaves):

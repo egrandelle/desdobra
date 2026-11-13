@@ -93,13 +93,15 @@ def _rodar(plat, cmd, orc, tempo, trabalho, entrada=b''):
 def _falha_filho(r, etapa):
     if r.situacao == 'recusado':
         return ErroRender('O isolador não executou o processo do render.', 'isolador_indisponivel',
-                          codigo=Codigo.NAO_DISPONIVEL, o_que_fazer='Rode "desdobra doctor".')
+                          codigo=Codigo.NAO_DISPONIVEL,
+                          o_que_fazer='Peça ao Claude para conferir a instalação do desdobra (/desdobra:doctor).')
     if r.situacao in ('memoria', 'tempo'):
         return ErroRender('O processo do render (%s) passou do teto de %s.' % (etapa, 'memória' if r.situacao == 'memoria'
                                                                               else 'tempo'),
                           '%s_%s' % (etapa, r.situacao), codigo=Codigo.ORCAMENTO,
-                          o_que_fazer='O teto do render ainda é um valor a calibrar. Feche outros programas e rode de '
-                                      'novo; se repetir, mande o render.json do job para a Trezion.',
+                          o_que_fazer='O teto do render ainda é um valor a calibrar. Feche outros programas e '
+                                      'renderize de novo pela tela; se repetir, mande o render.json do job para a '
+                                      'Trezion.',
                           medidas={'pico_bytes': r.pico_bytes})
     if r.codigo == CodigoFilho.AUDITORIA:
         return ErroRender('O processo do render tentou uma ação que o desdobra não permite e foi parado.',
@@ -253,7 +255,8 @@ def texto_no_chromium(contrato, servidos, prefixo, cache_control='no-store'):
             resposta = navegador.imprimir(srv.url_entrada, srv.url_pagina, perfil, familias, paginas, depois=depois)
     except navegador.ErroNavegador as e:
         raise ErroRender(str(e), 'chromium', codigo=Codigo.ERRO_INTERNO,
-                         o_que_fazer='Rode "desdobra doctor" para conferir o Chromium fixado.') from None
+                         o_que_fazer='Peça ao Claude para conferir a instalação do desdobra (/desdobra:doctor), que '
+                                     'confere o Chromium fixado.') from None
     except (ValueError, KeyError, IndexError, TypeError) as e:
         raise ErroRender('O layout do texto não fechou (%s).' % type(e).__name__, 'texto_layout',
                          codigo=Codigo.ERRO_INTERNO,
@@ -392,7 +395,7 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
     try:
         humano.conferir(disparo, 'render', consumir=True, alvo=formato)
     except humano.ErroHumano:
-        raise ErroRender('O render só parte de uma pessoa num terminal interativo.', 'disparo_sem_conferencia',
+        raise ErroRender('O render só parte de um ato do DA, um clique dele na tela.', 'disparo_sem_conferencia',
                          o_que_fazer=humano.O_QUE_FAZER) from None
 
     def etapa(nome):
@@ -433,7 +436,8 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
     tempos['chromium'] = round(time.perf_counter() - t2, 3)
     if cdp['diverge'] or cdp['sem_resposta'] or cdp['faces_nao_carregadas']:
         raise ErroRender('O CDP não confirmou a face do arquivo do job em todos os trechos.', 'face_cdp_nao_confere',
-                         o_que_fazer='Rode "desdobra fontes conferir --job <pasta>" e "desdobra doctor".',
+                         o_que_fazer='Peça ao Claude para seguir o job (/desdobra:continuar), que confere as fontes '
+                                     'de novo, e para conferir a instalação do desdobra (/desdobra:doctor).',
                          medidas={'cdp': cdp})
     if cache['copias_encontradas'] or cache['pdfs_encontrados']:
         raise ErroRender('A varredura achou cópia da fonte ou PDF no perfil do Chromium.', 'copia_no_perfil',
@@ -443,8 +447,9 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
     conferidas = {p['entrada'] for p in paginas if any(s['cdp'] for s in p['spans'])}
     if textos and (not cdp['trechos'] or any(e['id'] not in conferidas for e in textos)):
         raise ErroRender('Uma camada de texto visível ficou sem trecho conferido por CDP.', 'texto_sem_trecho_conferido',
-                         o_que_fazer='Rode "desdobra job proxima --todas" e "desdobra doctor"; se repetir, mande o '
-                                     'render.json para a Trezion.', medidas={'cdp': cdp})
+                         o_que_fazer='Peça ao Claude para seguir o job (/desdobra:continuar) e para conferir a '
+                                     'instalação do desdobra (/desdobra:doctor); se repetir, mande o render.json para '
+                                     'a Trezion.', medidas={'cdp': cdp})
 
     etapa('composicao')
     t3 = time.perf_counter()
@@ -475,7 +480,8 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
         if fora_da_caixa:
             raise ErroRender('A tinta de um texto passou da caixa que a derivação validou (ou foi cortada na página).',
                              'tinta_fora_da_caixa_validada', medidas={'textos': fora_da_caixa},
-                             o_que_fazer='Rode o "desdobra derivar" de novo; se continuar, mande o render.json para a Trezion.')
+                             o_que_fazer='O "Salvar e seguir" do DA, na tela, deriva de novo; se continuar, mande o '
+                                         'render.json para a Trezion.')
     etapa('gravacao')
     destino = pasta / 'render' / formato
 

@@ -88,7 +88,7 @@ def _proxima(args):
     erro = erro_no_teto(args.teto_memoria_bytes, args.tempo_max_s)
     if erro:
         return Resultado(comando='job proxima', codigo=int(Codigo.USO), situacao='erro', o_que_fazer=erro,
-                         linhas_humanas=['Valor inválido em --teto-memoria-bytes ou --tempo-max-s.'])
+                         linhas_humanas=['Valor inválido no teto de memória ou de tempo.'])
     opcoes = []
     for opcao, valor in (('--teto-memoria-bytes', args.teto_memoria_bytes), ('--tempo-max-s', args.tempo_max_s)):
         if valor is not None:

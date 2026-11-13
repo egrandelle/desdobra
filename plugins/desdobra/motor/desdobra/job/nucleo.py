@@ -460,7 +460,7 @@ def trocar_entrada(pasta, rel, novo, fases=ESTEIRA):
         if rel not in estado['entradas'] and not de_fonte and not rel.startswith(('entrada/campanha/', 'entrada/specs/')):
             raise ErroJob('Só dá para trocar uma entrada que já existe ou acrescentar em entrada/campanha, '
                           'entrada/specs ou entrada/fontes.',
-                          codigo=Codigo.USO, o_que_fazer='Confira o caminho com "desdobra job estado".')
+                          codigo=Codigo.USO, o_que_fazer='Confira o caminho pelas entradas do estado do job.')
         # no Windows (e no disco padrao do Mac) dois nomes que so diferem na caixa sao o mesmo arquivo: a mesma
         # conferencia casefold do job criar evita que o arquivo novo escreva por cima de outra entrada
         if any(r != rel and r.casefold() == rel.casefold() for r in estado['entradas']):
@@ -475,8 +475,7 @@ def trocar_entrada(pasta, rel, novo, fases=ESTEIRA):
         elif eh_arquivo_de_fonte(novo):
             raise ErroJob('O arquivo novo é um arquivo de fonte, ou um pacote com fonte dentro. Fonte só entra em '
                           'entrada/fontes/.',
-                          o_que_fazer='Troque a fonte com "desdobra job trocar-entrada <pasta> entrada/fontes/<arquivo> '
-                                      '<arquivo>".')
+                          o_que_fazer='Troque a fonte pelo caminho entrada/fontes/<nome do arquivo>.')
         if rel.startswith('entrada/kv') and (Path(rel).suffix.lower() != novo.suffix.lower() or not tem_assinatura_psd(novo)):
             raise ErroJob('O KV novo tem de ser do mesmo tipo do anterior (%s).' % Path(rel).suffix,
                           o_que_fazer='Salve o KV no mesmo formato ou crie um job novo.')

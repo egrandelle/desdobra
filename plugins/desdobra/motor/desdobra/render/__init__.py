@@ -89,7 +89,7 @@ def _render(args):
         return _recusa_terminal('render', pasta, str(e))
     if not (pasta / 'estado.json').is_file():
         return Resultado(comando='render', codigo=int(Codigo.USO), situacao='erro', pasta_job=pasta,
-                         o_que_fazer='Rode o render numa pasta de job ("desdobra job criar").',
+                         o_que_fazer='O render só funciona numa pasta de job do desdobra.',
                          linhas_humanas=['A pasta não é um job do desdobra.'])
     try:
         _contrato, bloqueios, confirmar = execucao.montar_contrato(pasta, args.formato)

@@ -45,11 +45,11 @@ PARAMETRO_DO_LIMITE = {'cor.intent_saida': 'intent', 'cor.compensacao_ponto_pret
                        'cor.saida_perfil_embutido': 'perfil_embutido_na_saida'}
 
 O_QUE_FAZER_OK = 'O design system está em ds/design-system.json e os limites do job em ds/limites.json.'
-O_QUE_FAZER_FONTES = (' As fontes não foram conferidas: as métricas do arquivo de fonte ficaram ausentes. Rode a '
-                      'conferência de fontes e depois "desdobra job proxima" de novo.')
+O_QUE_FAZER_FONTES = (' As fontes não foram conferidas: as métricas do arquivo de fonte ficaram ausentes. Peça ao '
+                      'Claude para seguir o job (/desdobra:continuar), que confere as fontes de novo.')
 O_QUE_FAZER_PERFIL = (' O documento tem perfil de cor, mas a leitura foi gravada sem o arquivo do perfil, e as cores '
-                      'não foram convertidas. Rode a leitura de novo com esta versão do motor (troque a entrada com '
-                      '"desdobra job trocar-entrada" ou apague laudo/ e rode "desdobra job proxima").')
+                      'não foram convertidas. A leitura precisa ser refeita com esta versão do motor: peça ao Claude '
+                      'para seguir o job (/desdobra:continuar) e, se o aviso voltar, avise a Trezion.')
 O_QUE_FAZER_SUJEITO = (' Em %d camada(s) o sujeito está fundido à foto: o DA marca a caixa do sujeito no briefing.')
 
 
@@ -115,7 +115,8 @@ def _icc(pasta_bruta, doc):
         return None, True
     if icc.get('sha256') and sha256_arquivo(caminho) != icc['sha256']:
         raise ErroDs('O perfil de cor gravado pela leitura não bate com o hash da estrutura.',
-                     o_que_fazer='Rode a leitura de novo: o arquivo do perfil em laudo/bruto mudou fora do motor.')
+                     o_que_fazer='O arquivo do perfil em laudo/bruto mudou fora do motor, e a leitura precisa ser '
+                                 'refeita. Peça ao Claude para seguir o job (/desdobra:continuar).')
     return caminho, False
 
 
@@ -315,7 +316,8 @@ def executar_montar(pasta):
     pasta = Path(pasta).resolve()
     caminho_laudo = pasta / ARQUIVO_LAUDO
     if not caminho_laudo.is_file():
-        raise ErroDs('O laudo do job ainda não existe.', o_que_fazer='Rode a leitura antes: "desdobra job proxima".')
+        raise ErroDs('O laudo do job ainda não existe.', o_que_fazer='A leitura vem antes. Peça ao Claude para '
+                                                                  'seguir o job (/desdobra:continuar).')
     laudo = contratos.ler(caminho_laudo, 'laudo/1')
     sha = laudo['origem']['sha256']
     pasta_laudo = caminho_laudo.parent
@@ -323,10 +325,12 @@ def executar_montar(pasta):
     estrutura = _ler_estrutura(caminho_estrutura.parent)
     if estrutura is None:
         raise ErroDs('A leitura do documento não deixou a estrutura bruta: o arquivo foi recusado na leitura.',
-                     o_que_fazer='Veja as recusas no laudo e troque o KV com "desdobra job trocar-entrada".')
+                     o_que_fazer='Veja as recusas no laudo e peça ao Claude para trocar o KV do job '
+                                 '(/desdobra:continuar).')
     if estrutura['origem']['sha256'] != sha:
         raise ErroDs('A estrutura bruta não é do mesmo arquivo do laudo.',
-                     o_que_fazer='Rode a leitura de novo: a pasta laudo/ foi mexida fora do motor.')
+                     o_que_fazer='A pasta laudo/ foi mexida fora do motor, e a leitura precisa ser refeita. Peça '
+                                 'ao Claude para seguir o job (/desdobra:continuar).')
     conferencia = ler_conferencia(pasta)
     dados_param = ler_parametros(pasta)
     parametros = parametros_do_job(dados_param)
@@ -342,7 +346,8 @@ def executar_montar(pasta):
 def _montar(args):
     pasta = Path(args.pasta_job).resolve() if args.pasta_job else None
     if pasta is None:
-        return Resultado(comando='ds montar', codigo=int(Codigo.USO), situacao='erro', o_que_fazer='Passe --job <pasta>.')
+        return Resultado(comando='ds montar', codigo=int(Codigo.USO), situacao='erro',
+                         o_que_fazer='Falta a pasta do job.')
     try:
         ds, lim = executar_montar(pasta)
     except ErroDs as e:
@@ -351,12 +356,13 @@ def _montar(args):
     except mod_cor.ErroAuditoriaCor as e:
         return Resultado(comando='ds montar', fase='ds', codigo=int(Codigo.AUDITORIA), situacao='recusado',
                          o_que_fazer='O processo da conversão de cor tentou uma ação que o desdobra não permite e foi '
-                                     'parado. Não rode a fase de novo e mande o código para o suporte.',
+                                     'parado. Não peça a fase de novo: mande o código para o suporte.',
                          pasta_job=pasta, linhas_humanas=[str(e)])
     except (contratos.ErroContrato, mod_cor.ErroCor) as e:
         return Resultado(comando='ds montar', fase='ds', codigo=int(Codigo.RECUSADO), situacao='recusado',
-                         o_que_fazer='Um arquivo do job não segue o contrato. Rode de novo a fase que grava esse '
-                                     'arquivo ("desdobra job proxima").', pasta_job=pasta, linhas_humanas=[str(e)])
+                         o_que_fazer='Um arquivo do job não segue o contrato. Peça ao Claude para seguir o job '
+                                     '(/desdobra:continuar), que refaz a fase que grava esse arquivo.',
+                         pasta_job=pasta, linhas_humanas=[str(e)])
     r = ds['resumo']
     codigos = {p['codigo'] for p in ds['pendencias']}
     o_que_fazer = O_QUE_FAZER_OK
@@ -394,7 +400,7 @@ def _parametros_cor(args):
     pasta = Path(args.pasta_job).resolve() if args.pasta_job else None
     if pasta is None:
         return Resultado(comando='ds parametros-cor', codigo=int(Codigo.USO), situacao='erro',
-                         o_que_fazer='Passe --job <pasta>.')
+                         o_que_fazer='Falta a pasta do job.')
     novos = {'intent': args.intent, 'compensacao_ponto_preto': _sim_nao(args.compensacao_ponto_preto),
              'perfil_embutido_na_saida': _sim_nao(args.perfil_embutido)}
     try:
@@ -420,8 +426,8 @@ def _parametros_cor(args):
     linhas = ['%s = %s (%s)' % (k, p[k]['valor'], 'do job' if p[k]['origem'] == 'job' else 'padrão do registro, a calibrar')
               for k in ('intent', 'compensacao_ponto_preto', 'perfil_embutido_na_saida')]
     return Resultado(comando='ds parametros-cor', situacao='ok', pasta_job=pasta,
-                     o_que_fazer='Parâmetros de cor do job gravados em parametros/cor.json. A fase ds roda de novo no '
-                                 'próximo "desdobra job proxima".',
+                     o_que_fazer='Parâmetros de cor do job gravados em parametros/cor.json. A fase ds roda de novo quando '
+                                 'o Claude seguir o job (/desdobra:continuar).',
                      contagens={'parametros_do_job': len(dados) - 1}, linhas_humanas=linhas)
 
 

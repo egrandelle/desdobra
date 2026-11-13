@@ -37,20 +37,21 @@ CODIGOS_FILHO_RECUSA = {3: Codigo.RECUSADO, 4: Codigo.ORCAMENTO, 5: Codigo.AUDIT
 O_QUE_FAZER = {
     Codigo.OK: None,
     Codigo.RECUSADO: 'O arquivo foi recusado na leitura. Veja o motivo em laudo/laudo.json (recusas). Salve o PSD de '
-                     'novo no Photoshop e troque a entrada com "desdobra job trocar-entrada".',
-    Codigo.ORCAMENTO: 'A leitura passou do orçamento de memória ou de tempo. Feche outros programas e rode de novo; '
-                      'se repetir, rode "desdobra doctor" e mande o código para o suporte.',
+                     'novo no Photoshop e peça ao Claude para trocar o KV do job (/desdobra:continuar).',
+    Codigo.ORCAMENTO: 'A leitura passou do orçamento de memória ou de tempo. Feche outros programas e peça ao '
+                      'Claude para seguir o job (/desdobra:continuar); se repetir, peça a ele para conferir a '
+                      'instalação (/desdobra:doctor) e mande o código para o suporte.',
     Codigo.AUDITORIA: 'O processo de leitura tentou uma ação que o desdobra não permite e foi parado. Não abra este '
                       'arquivo de novo e mande o código para o suporte.',
-    Codigo.ERRO_INTERNO: 'O leitor encontrou um erro interno. Rode "desdobra doctor" e mande o código para o suporte.',
+    Codigo.ERRO_INTERNO: ('O leitor encontrou um erro interno. Peça ao Claude para conferir a instalação do '
+                         'desdobra (/desdobra:doctor) e mande o código para o suporte.'),
     Codigo.NAO_DISPONIVEL: 'O isolamento do processo de leitura não está disponível neste sistema.',
 }
 O_QUE_FAZER_LIMITE = ('A leitura parou no teto de memória ou de tempo que o motor calcula, e esse teto ainda é um '
-                      'valor a calibrar. Por isso a parada fica para o DA decidir. Para tentar de novo com um '
-                      'teto maior, o DA confirma o valor e você roda "desdobra job proxima <pasta do job> '
-                      '--teto-memoria-bytes N" (memória) ou "desdobra job proxima <pasta do job> --tempo-max-s N" '
-                      '(tempo), que lê o arquivo de novo com esse teto. Fora do job, rode "desdobra ler" de novo com a '
-                      'mesma opção. O teto calculado e o que parou estão em laudo/laudo.json, recusas.')
+                      'valor a calibrar. Por isso a parada fica para o DA decidir: ele fecha outros programas e '
+                      'pede ao Claude para seguir o job (/desdobra:continuar); se a leitura parar de novo, ele avisa '
+                      'a Trezion, que decide se um teto maior serve. O teto calculado e o que parou estão em '
+                      'laudo/laudo.json, recusas.')
 O_QUE_FAZER_RECUSAS = ('A leitura terminou, mas parte do arquivo foi recusada (smart object, passada de pixels ou '
                        'composição). Veja as recusas no laudo e decida com o DA antes de seguir para o render.')
 O_QUE_FAZER_COMPOSICAO = ('A leitura terminou, mas a composição do documento passou do orçamento de memória ou de '
@@ -403,7 +404,7 @@ def _executar(args):
         campanha = pasta_job / 'entrada' / 'campanha'
     else:
         if not args.psd or not args.saida:
-            return _uso('Use "desdobra ler --job <pasta>" ou "desdobra ler <psd> --saida <pasta>".')
+            return _uso('Falta a pasta do job, ou o PSD com a pasta de saída do laudo.')
         psd = Path(args.psd).resolve()
         pasta_laudo = Path(args.saida).resolve()
     if not psd.is_file():
@@ -411,7 +412,7 @@ def _executar(args):
     if arquivos.eh_arquivo_de_fonte(psd):
         return Resultado(comando='ler', codigo=int(Codigo.RECUSADO), situacao='recusado',
                          o_que_fazer='O arquivo de entrada é uma fonte, e o ler só lê PSD ou PSB. As fontes entram no '
-                                     'job por --fontes (entrada/fontes/) e são conferidas pela fase fontes.')
+                                     'job em entrada/fontes/ e são conferidas pela fase fontes.')
     if not arquivos.tem_assinatura_psd(psd):
         return Resultado(comando='ler', codigo=int(Codigo.RECUSADO), situacao='recusado',
                          o_que_fazer='O arquivo de entrada não é PSD nem PSB.')

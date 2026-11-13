@@ -33,8 +33,15 @@ deste job, calculada sobre a versao de antes dela (revisao do M5). A impressao (
 volta no pedido: o que mudou entre a janela e o Confirmar e recusado (mudou_durante_a_confirmacao).
 
 O que vai a pagina (na_tela) e o nome da marca (dado do DA, posto so por textContent), as versoes, as funcoes do
-enum, os valores do enum, os 8 primeiros caracteres do id do job de origem e os nomes PostScript; nunca o caminho da
-biblioteca, o id da marca nem arquivo. O gancho do plugin nega ao Claude o codigo deste modulo (CODIGO_DA_MARCA) e a
+enum, os valores do enum, os 8 primeiros caracteres do id do job de origem com o nome dele, quando o perfil o tem, e os
+nomes PostScript; nunca o caminho da biblioteca, o id da marca nem arquivo.
+
+Ajuste nome do M7c (resposta do Duda ao ponto 3, 13/11): o nome do job e o nome da pasta do job (nome_do_job), que o
+DA deu na criacao. O registro grava o nome ao lado do id na campanha e em cada regra e ancora decidida agora (campos
+opcionais do perfil-marca/1); a regra mantida de outra campanha fica como estava, e a tela acha o nome dela nas
+campanhas do perfil (perfil.nomes_dos_jobs). O ref marca:<id>@v<N>#job:<id>, a origem e a comparacao entre versoes
+continuam pelo id. O nome vai so ao perfil, em marcas/**, que o gancho nega ao Claude, e a pagina da tela; nem o log
+do job nem o envelope o levam. O gancho do plugin nega ao Claude o codigo deste modulo (CODIGO_DA_MARCA) e a
 rota da tela.
 """
 import hashlib
@@ -105,27 +112,54 @@ def _registrados(anterior, historico=()):
     return jobs
 
 
-def conteudo(briefing, laudo, job_id, marca_id, anterior, historico=(), *, funcoes):
+def nome_do_job(pasta):
+    """O nome do job como o DA o ve: o nome da pasta do job, que o DA deu na criacao (a skill novo-job pede a pasta
+    nova do job; o estado/1 so tem o id). None quando o nome nao cabe no perfil (perfil.nome_de_job_serve): a tela cai
+    no id curto. Ajuste nome do M7c."""
+    from desdobra.marca import perfil
+    nome = Path(pasta).resolve().name
+    return nome if perfil.nome_de_job_serve(nome) else None
+
+
+def _nomes(anterior, historico, job_id, job_nome):
+    """{id do job: nome} dos jobs que o perfil ja nomeia (nas versoes ate a anterior) e o deste job."""
+    from desdobra.marca import perfil
+    nomes = perfil.nomes_dos_jobs({'historico': list(historico), 'atual': anterior})
+    if job_nome is not None:
+        nomes[job_id] = job_nome
+    return nomes
+
+
+def _com_nome(item, nomes):
+    nome = nomes.get(item['job_origem'])
+    return dict(item, job_origem_nome=nome) if nome else item
+
+
+def conteudo(briefing, laudo, job_id, marca_id, anterior, historico=(), *, funcoes, job_nome=None):
     """{'regras_escala', 'ancoras', 'faces'} da versao nova, como nova_versao recebe. anterior: a versao atual do
     perfil (None no perfil sem registro); historico: as versoes anteriores dela (os jobs registrados que o ref pode
     citar); funcoes: as funcoes que as pecas aprovadas aplicam (funcoes_aplicadas). A regra e a ancora de uma funcao
     que nenhuma peca aprovada aplica ficam fora: elas nao entram na impressao da aprovacao e podem mudar depois dela
-    sem derruba-la (revisao do M5). Funcao pura."""
+    sem derruba-la (revisao do M5). job_nome: o nome deste job (nome_do_job), ou None; a regra e a ancora decididas
+    agora levam ao lado do id o nome do job de origem (o deste ou o que o perfil ja guarda para o job do ref); a
+    mantida da versao anterior fica como estava (ajuste nome). Funcao pura."""
     validas = tuple(f for f in funcoes_do_perfil() if f in set(funcoes))
     registrados = _registrados(anterior, historico)
+    nomes = _nomes(anterior, historico, job_id, job_nome)
     regras, ancoras = {}, {}
     for r in briefing.get('regras_escala') or []:
         f = r.get('funcao')
         if f in validas and f not in regras:
             origem = _origem([r.get('regra')], job_id, marca_id, registrados)
             if origem is not None:
-                regras[f] = {'funcao': f, 'regra': r['regra']['valor'], 'job_origem': origem}
+                regras[f] = _com_nome({'funcao': f, 'regra': r['regra']['valor'], 'job_origem': origem}, nomes)
     for a in briefing.get('ancoras') or []:
         f = a.get('funcao')
         if f in validas and 'layer_id' not in a and f not in ancoras:
             origem = _origem([a.get('x'), a.get('y')], job_id, marca_id, registrados)
             if origem is not None:
-                ancoras[f] = {'funcao': f, 'x': a['x']['valor'], 'y': a['y']['valor'], 'job_origem': origem}
+                ancoras[f] = _com_nome({'funcao': f, 'x': a['x']['valor'], 'y': a['y']['valor'], 'job_origem': origem},
+                                       nomes)
     # a funcao que este job nao decidiu fica como estava no perfil, com o job de origem dela
     for item in (anterior or {}).get('regras_escala') or []:
         regras.setdefault(item['funcao'], dict(item))
@@ -186,7 +220,7 @@ def funcoes_aplicadas(pasta, formatos):
     return saida
 
 
-def _ja_guardado(dados, b, laudo, job_id, marca_id, formatos, funcoes):
+def _ja_guardado(dados, b, laudo, job_id, marca_id, formatos, funcoes, job_nome=None):
     """(versao, conteudo) da ultima versao do perfil registrada por este job quando o job nao mudou desde aquele
     registro (o mesmo conteudo, calculado sobre a versao de antes dela, e as mesmas aprovacoes); senao None. Vale
     tambem quando outro job registrou depois (revisao do M5): o job sem mudanca nao volta o padrao antigo por cima."""
@@ -196,7 +230,8 @@ def _ja_guardado(dados, b, laudo, job_id, marca_id, formatos, funcoes):
         if (versoes[i].get('campanha') or {}).get('job') != job_id:
             continue
         antes = versoes[i - 1] if i > 0 else None
-        c = conteudo(b, laudo, job_id, marca_id, antes, versoes[:max(i - 1, 0)], funcoes=funcoes)
+        c = conteudo(b, laudo, job_id, marca_id, antes, versoes[:max(i - 1, 0)], funcoes=funcoes, job_nome=job_nome)
+        # o nome do job nao conta (perfil._conteudo): o job registrado antes do ajuste nome continua guardado
         igual = perfil._conteudo(versoes[i]) == \
             perfil._conteudo(dict(c, job_origem=job_id, campanha={'formatos': formatos}))
         return (versoes[i]['versao'], c) if igual else None
@@ -249,19 +284,25 @@ def conferir(pasta, biblioteca):
         job_id = contratos.ler(pasta / 'estado.json', 'estado/1')['job_id']
     except (contratos.ErroContrato, OSError):
         return dict(nao, motivo='briefing_desatualizado')
-    c = conteudo(b, laudo, job_id, marca_id, dados['atual'], dados['historico'], funcoes=funcoes)
+    job_nome = nome_do_job(pasta)
+    c = conteudo(b, laudo, job_id, marca_id, dados['atual'], dados['historico'], funcoes=funcoes, job_nome=job_nome)
     saida = {'marca_id': marca_id, 'nome': dados['marca'], 'perfil': dados, 'conteudo': c, 'formatos': formatos,
-             'job_id': job_id, 'impressao': _impressao(c, formatos, dados['versao']), 'motivo': None,
-             'versao_guardada': None}
-    guardado = _ja_guardado(dados, b, laudo, job_id, marca_id, formatos, funcoes)
+             'job_id': job_id, 'job_nome': job_nome, 'impressao': _impressao(c, formatos, dados['versao']),
+             'motivo': None, 'versao_guardada': None}
+    guardado = _ja_guardado(dados, b, laudo, job_id, marca_id, formatos, funcoes, job_nome)
     if guardado is not None:
         return dict(saida, pode=False, guardado=True, motivo='ja_guardado', versao_guardada=guardado[0],
                     conteudo=guardado[1])
     return dict(saida, pode=True, guardado=False)
 
 
-def _linhas(itens, job_id, chaves):
+def _linhas(itens, job_id, chaves, nomes):
+    """As linhas da janela: o id curto do job de origem e, ao lado, o nome dele (o mais recente que o perfil tem
+    para o job, perfil.nomes_dos_jobs, e so na falta dele o que o item guarda), ou None no perfil sem nome: a pagina cai
+    no id curto (ajuste nome). Revisao do ajuste nome: o nome do perfil vem antes do nome do item, para o job com a pasta
+    renomeada aparecer com um nome so."""
     return [dict({k: i[k] for k in chaves}, funcao=i['funcao'], job=i['job_origem'][:CARACTERES_DO_JOB],
+                 job_nome=nomes.get(i['job_origem']) or i.get('job_origem_nome'),
                  desta_campanha=i['job_origem'] == job_id) for i in itens]
 
 
@@ -278,12 +319,16 @@ def na_tela(pasta, biblioteca):
     saida = {'pode': c['pode'], 'motivo': c['motivo'], 'guardado': c['guardado']}
     if not (c['pode'] or c['guardado']):
         return saida
+    from desdobra.marca import perfil
     versao = c['perfil']['versao']
     cont = c['conteudo']
+    nomes = perfil.nomes_dos_jobs(c['perfil'])
+    if c['job_nome'] is not None:
+        nomes[c['job_id']] = c['job_nome']
     saida.update({'nome': c['nome'], 'versao_atual': versao, 'versao_nova': versao + 1 if c['pode'] else None,
                   'versao_guardada': c['versao_guardada'],
-                  'regras': _linhas(cont['regras_escala'], c['job_id'], ('regra',)),
-                  'ancoras': _linhas(cont['ancoras'], c['job_id'], ('x', 'y')),
+                  'regras': _linhas(cont['regras_escala'], c['job_id'], ('regra',), nomes),
+                  'ancoras': _linhas(cont['ancoras'], c['job_id'], ('x', 'y'), nomes),
                   'faces': [f['postscript'] for f in cont['faces']], 'formatos': len(c['formatos']),
                   'impressao': c['impressao']})
     return saida
@@ -314,6 +359,8 @@ def gravar(pasta, *, disparo, biblioteca, impressao):
         campanha = {'job': c['job_id'], 'data': str(reg['quando'])[:10], 'formatos': c['formatos'],
                     'confirmado_por': {'usuario': _quem(reg['usuario']), 'maquina': _quem(reg['maquina'])},
                     'origem': humano.ORIGEM_DA, 'meio': humano.MEIO_TELA}
+        if c['job_nome'] is not None:
+            campanha[perfil.CAMPO_NOME] = c['job_nome']  # ajuste nome: ao lado do id, so para a tela
         try:
             novo, criou = perfil.nova_versao(biblioteca, c['marca_id'], campanha=campanha, quando=reg['quando'],
                                              versao_esperada=c['perfil']['versao'], **c['conteudo'])

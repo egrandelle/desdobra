@@ -230,15 +230,16 @@ def principal(argv=None):
             resultado = _executar(args)
     except _ErroArgumento:
         resultado = Resultado(comando='desdobra', codigo=int(Codigo.USO), situacao='erro',
-                              o_que_fazer='Os argumentos do comando estão errados. Rode o comando sem --envelope '
-                                          'para ver a ajuda.')
+                              o_que_fazer='Os argumentos do comando estão errados. Confira a chamada na skill que '
+                                          'a fez.')
     except SystemExit as e:
         codigo = e.code if isinstance(e.code, int) else int(Codigo.USO)
         resultado = Resultado(comando='desdobra', codigo=codigo, situacao='ok' if codigo == 0 else 'erro')
     except Exception as e:  # noqa: BLE001 - qualquer excecao vira envelope de erro, sem traceback
         resultado = Resultado(comando='desdobra', codigo=int(Codigo.ERRO_INTERNO), situacao='erro',
-                              o_que_fazer='Erro interno do motor (%s). Rode o mesmo comando sem --envelope para '
-                                          'ver o detalhe no terminal.' % type(e).__name__)
+                              o_que_fazer='Erro interno do motor (%s). Peça ao Claude para conferir a instalação '
+                                          'do desdobra (/desdobra:doctor); se o erro voltar, avise a Trezion.'
+                                          % type(e).__name__)
     modo = _modo_do_resultado(resultado, teto)
     imprimir_envelope(resultado, modo)
     return int(resultado.codigo)

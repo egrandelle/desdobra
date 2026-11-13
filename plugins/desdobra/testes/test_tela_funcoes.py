@@ -825,14 +825,26 @@ JOB_P1 = 'a1' * 16
 JOB_P2 = 'b2' * 16
 
 
-def _campanha_m4(job_id):
-    return {'job': job_id, 'data': '2026-11-12', 'formatos': [{'formato': 'f300x250', 'aprovacao_sha256': 'd4' * 32}],
+NOMES_M4 = {JOB_P1: 'Campanha Sintetica Um', JOB_P2: 'Campanha Sintetica Dois'}
+
+
+def _campanha_m4(job_id, nomes=False):
+    camp = {'job': job_id, 'data': '2026-11-12', 'formatos': [{'formato': 'f300x250', 'aprovacao_sha256': 'd4' * 32}],
             'confirmado_por': {'usuario': 'da', 'maquina': 'estacao'}, 'origem': 'da', 'meio': 'tela'}
+    if nomes:
+        camp['job_nome'] = NOMES_M4[job_id]
+    return camp
 
 
-def perfil_m4(bib, nome='Marca Sintetica M4', versoes=2, regra_titulo='raiz_area'):
+def _item_m4(item, nomes):
+    """O item do perfil com o nome do job de origem ao lado do id (ajuste nome), ou como antes."""
+    return dict(item, job_origem_nome=NOMES_M4[item['job_origem']]) if nomes else item
+
+
+def perfil_m4(bib, nome='Marca Sintetica M4', versoes=2, regra_titulo='raiz_area', nomes=False):
     """Um perfil sintetico: na versao 1 (job 1), titulo e estrutura; na 2 (job 2) o logo entra, e o titulo e a
-    estrutura mantem o job 1 de origem. Devolve o id."""
+    estrutura mantem o job 1 de origem. nomes: grava o nome de cada job ao lado do id (ajuste nome); sem ele, o
+    perfil fica como os gravados antes do ajuste. Devolve o id."""
     from desdobra.marca import perfil
     id_ = perfil.criar(bib, nome)['id']
     v1 = {'regras_escala': [{'funcao': 'titulo', 'regra': regra_titulo, 'job_origem': JOB_P1},
@@ -840,21 +852,26 @@ def perfil_m4(bib, nome='Marca Sintetica M4', versoes=2, regra_titulo='raiz_area
           'ancoras': [{'funcao': 'titulo', 'x': 'esquerda', 'y': 'topo', 'job_origem': JOB_P1},
                       {'funcao': 'estrutura', 'x': 'centro', 'y': 'meio', 'job_origem': JOB_P1}],
           'faces': [{'postscript': 'Sintetica-Bold'}]}
-    perfil.nova_versao(bib, id_, campanha=_campanha_m4(JOB_P1), quando='2026-11-12T10:00:00-03:00', **v1)
+    v1 = dict(v1, regras_escala=[_item_m4(i, nomes) for i in v1['regras_escala']],
+              ancoras=[_item_m4(i, nomes) for i in v1['ancoras']])
+    perfil.nova_versao(bib, id_, campanha=_campanha_m4(JOB_P1, nomes), quando='2026-11-12T10:00:00-03:00', **v1)
     if versoes >= 2:
-        registrar_m4(bib, id_, v1)
+        registrar_m4(bib, id_, v1, nomes=nomes)
     return id_
 
 
-def registrar_m4(bib, id_, v1, regra_titulo=None):
+def registrar_m4(bib, id_, v1, regra_titulo=None, nomes=False):
     """A versao seguinte do perfil (job 2): o logo entra; regra_titulo troca a regra do titulo (origem job 2)."""
     from desdobra.marca import perfil
     v2 = copy.deepcopy(v1)
-    v2['regras_escala'].append({'funcao': 'logo_principal', 'regra': 'raiz_area', 'job_origem': JOB_P2})
-    v2['ancoras'].append({'funcao': 'logo_principal', 'x': 'direita', 'y': 'base', 'job_origem': JOB_P2})
+    v2['regras_escala'].append(_item_m4({'funcao': 'logo_principal', 'regra': 'raiz_area', 'job_origem': JOB_P2},
+                                        nomes))
+    v2['ancoras'].append(_item_m4({'funcao': 'logo_principal', 'x': 'direita', 'y': 'base', 'job_origem': JOB_P2},
+                                  nomes))
     if regra_titulo:
-        v2['regras_escala'][0] = {'funcao': 'titulo', 'regra': regra_titulo, 'job_origem': JOB_P2}
-    return perfil.nova_versao(bib, id_, campanha=_campanha_m4(JOB_P2), quando='2026-11-13T10:00:00-03:00', **v2)[0]
+        v2['regras_escala'][0] = _item_m4({'funcao': 'titulo', 'regra': regra_titulo, 'job_origem': JOB_P2}, nomes)
+    return perfil.nova_versao(bib, id_, campanha=_campanha_m4(JOB_P2, nomes), quando='2026-11-13T10:00:00-03:00',
+                              **v2)[0]
 
 
 def marca_do_job_m4(job, marca_id):
@@ -882,16 +899,83 @@ def test_padrao_da_marca_cita_versao_e_job_de_cada_regra(job_funcoes, bib_m4):
     assert p['versao'] == 2 and set(p['funcoes']) == {'titulo', 'estrutura', 'logo_principal'}
     t = p['funcoes']['titulo']
     # desde: a primeira versao, na sequencia que chega a atual, com o mesmo valor e o mesmo job de origem
-    assert t['regra'] == {'valor': 'raiz_area', 'job': JOB_P1, 'ref': 'marca:%s@v2#job:%s' % (id_, JOB_P1),
-                          'desde': 1}
-    assert t['ancora'] == {'x': 'esquerda', 'y': 'topo', 'job': JOB_P1, 'ref': 'marca:%s@v2#job:%s' % (id_, JOB_P1),
-                           'desde': 1}
+    # o perfil gravado antes do ajuste do nome: job_nome None, e a tela cai no id curto
+    assert t['regra'] == {'valor': 'raiz_area', 'job': JOB_P1, 'job_nome': None,
+                          'ref': 'marca:%s@v2#job:%s' % (id_, JOB_P1), 'desde': 1}
+    assert t['ancora'] == {'x': 'esquerda', 'y': 'topo', 'job': JOB_P1, 'job_nome': None,
+                           'ref': 'marca:%s@v2#job:%s' % (id_, JOB_P1), 'desde': 1}
     assert p['funcoes']['logo_principal']['regra']['ref'] == 'marca:%s@v2#job:%s' % (id_, JOB_P2)
     assert tf.ref_do_padrao(id_, 2, JOB_P1) == t['regra']['ref']
     # so ids, o enum e a versao: o nome da marca nunca entra
     assert 'Marca Sintetica' not in json.dumps(p)
     # nada foi gravado no job
     assert not (job_funcoes / tr.ARQUIVO).exists()
+
+
+def test_padrao_da_marca_leva_o_nome_do_job_de_origem(job_funcoes, bib_m4):
+    """Ajuste nome (resposta do Duda ao ponto 3, 13/11): cada regra e ancora do padrao leva o nome do job de origem que
+    o perfil guarda ao lado do id; o ref continua pelo id."""
+    id_ = perfil_m4(bib_m4, nomes=True)
+    marca_do_job_m4(job_funcoes, id_)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    f = p['funcoes']
+    assert f['titulo']['regra']['job_nome'] == NOMES_M4[JOB_P1] and f['titulo']['ancora']['job_nome'] == NOMES_M4[JOB_P1]
+    assert f['logo_principal']['regra']['job_nome'] == NOMES_M4[JOB_P2]
+    assert f['titulo']['regra']['ref'] == 'marca:%s@v2#job:%s' % (id_, JOB_P1)
+    assert f['titulo']['regra']['desde'] == 1  # o nome nao muda a conta do desde
+    assert 'Marca Sintetica' not in json.dumps(p)  # o nome da marca continua fora
+
+
+def test_padrao_sem_nome_no_item_cai_no_nome_da_campanha_do_job(job_funcoes, bib_m4):
+    """A regra gravada sem o nome (perfil de antes do ajuste, mantida depois) leva o nome que uma campanha do mesmo job
+    registrou; sem nenhum, job_nome e None."""
+    from desdobra.marca import perfil
+    id_ = perfil_m4(bib_m4, versoes=1)  # job 1 sem nome
+    v1 = perfil.ler(bib_m4, id_)['atual']
+    v = {k: copy.deepcopy(v1[k]) for k in ('regras_escala', 'ancoras', 'faces')}
+    v['regras_escala'][1] = dict(v['regras_escala'][1], regra='contain')  # o job 1 de novo, agora com nome
+    perfil.nova_versao(bib_m4, id_, campanha=_campanha_m4(JOB_P1, nomes=True), quando='2026-11-14T10:00:00-03:00',
+                       **v)
+    marca_do_job_m4(job_funcoes, id_)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    assert p['funcoes']['titulo']['regra']['job_nome'] == NOMES_M4[JOB_P1]
+    id_sem = perfil_m4(bib_m4, nome='Marca Sintetica Sem Nome')
+    marca_do_job_m4(job_funcoes, id_sem)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    assert {x['job_nome'] for c in p['funcoes'].values() for x in c.values() if x} == {None}
+
+
+def test_job_renomeado_aparece_com_um_nome_so_no_padrao(job_funcoes, bib_m4):
+    """Revisao do ajuste nome: o job 1 registrou com a pasta 'Velha', a pasta foi renomeada e o job 1 registrou de
+    novo como 'Nova', mudando so a estrutura (o titulo, mantido, guarda 'Velha'). Depois o job 2 registrou mantendo
+    os dois. O padrao mostra o job 1 com um nome so, o da campanha mais recente dele."""
+    from desdobra.marca import perfil
+    velho, novo = 'Pasta Sintetica Velha', 'Pasta Sintetica Nova'
+    id_ = perfil.criar(bib_m4, 'Marca Sintetica M4')['id']
+    titulo_r = {'funcao': 'titulo', 'regra': 'raiz_area', 'job_origem': JOB_P1, 'job_origem_nome': velho}
+    titulo_a = {'funcao': 'titulo', 'x': 'esquerda', 'y': 'topo', 'job_origem': JOB_P1, 'job_origem_nome': velho}
+    v1 = {'regras_escala': [titulo_r, {'funcao': 'estrutura', 'regra': 'cover', 'job_origem': JOB_P1,
+                                       'job_origem_nome': velho}],
+          'ancoras': [titulo_a], 'faces': []}
+    perfil.nova_versao(bib_m4, id_, campanha=dict(_campanha_m4(JOB_P1), job_nome=velho),
+                       quando='2026-11-12T10:00:00-03:00', **v1)
+    v2 = {'regras_escala': [titulo_r, {'funcao': 'estrutura', 'regra': 'contain', 'job_origem': JOB_P1,
+                                       'job_origem_nome': novo}],
+          'ancoras': [titulo_a], 'faces': []}
+    perfil.nova_versao(bib_m4, id_, campanha=dict(_campanha_m4(JOB_P1), job_nome=novo),
+                       quando='2026-11-13T10:00:00-03:00', **v2)
+    v3 = copy.deepcopy(v2)
+    v3['regras_escala'].append(_item_m4({'funcao': 'logo_principal', 'regra': 'raiz_area', 'job_origem': JOB_P2},
+                                        True))
+    v3['regras_escala'].append(dict(titulo_r, funcao='destaque_numerico'))  # o ultimo item ainda guarda 'Velha'
+    perfil.nova_versao(bib_m4, id_, campanha=_campanha_m4(JOB_P2, nomes=True), quando='2026-11-14T10:00:00-03:00',
+                       **v3)
+    marca_do_job_m4(job_funcoes, id_)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    do_job_1 = {x['job_nome'] for c in p['funcoes'].values() for x in c.values() if x and x['job'] == JOB_P1}
+    assert do_job_1 == {novo}, p['funcoes']
+    assert p['funcoes']['logo_principal']['regra']['job_nome'] == NOMES_M4[JOB_P2]
+    assert p['funcoes']['titulo']['regra']['ref'] == 'marca:%s@v3#job:%s' % (id_, JOB_P1)  # o ref continua pelo id
 
 
 def test_sem_marca_sem_biblioteca_ou_perfil_sem_registro_nada_aparece(job_funcoes, bib_m4):

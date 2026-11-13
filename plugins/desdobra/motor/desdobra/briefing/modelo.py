@@ -502,11 +502,11 @@ def importar_teste(pasta, arquivo):
         try:
             velho = contratos.ler(atual, ESQUEMA)
         except contratos.ErroContrato:
-            raise ErroBriefing('O briefing gravado no job não segue o contrato briefing/1. O importar --teste não grava '
+            raise ErroBriefing('O briefing gravado no job não segue o contrato briefing/1. O importar de teste não grava '
                                'por cima dele: confira o arquivo briefing/briefing-confirmado.json.',
                                codigo='recusado') from None
         if velho['cabecalho']['origem'] == ORIGEM_DA:
-            raise ErroBriefing('O job já tem briefing confirmado pelo DA. O importar --teste nunca grava por cima dele.',
+            raise ErroBriefing('O job já tem briefing confirmado pelo DA. O importar de teste nunca grava por cima dele.',
                                codigo='recusado')
     gravar_com_historico(pasta, dados)
     return dados

@@ -29,9 +29,9 @@ from pathlib import Path
 from desdobra.resultado import Codigo, Resultado
 
 O_QUE_FAZER_IMPORTADO = ('O briefing de teste está em briefing/briefing-confirmado.json, com a origem fixture_de_teste. '
-                         'Rode "desdobra derivar --job <pasta>". O entregar recusa job com briefing de teste.')
-O_QUE_FAZER_SEM_TESTE = ('Sem --teste, o importar não grava: o briefing confirmado pelo DA sai da tela ("Salvar e '
-                         'seguir"). Para teste, use --teste.')
+                         'A derivação lê este briefing, e o entregar recusa job com briefing de teste.')
+O_QUE_FAZER_SEM_TESTE = ('O importar só grava o briefing marcado como de teste. O briefing confirmado pelo DA sai da '
+                         'tela ("Salvar e seguir").')
 PERGUNTA_CONFIRMAR = 'Gravar o briefing confirmado com as famílias confirmadas na tela? Digite sim para gravar: '
 O_QUE_FAZER_CONFIRMADO = ('O briefing confirmado está em briefing/briefing-confirmado.json, a versão anterior em '
                           'briefing/historico/ e a derivação em derivacao/.')

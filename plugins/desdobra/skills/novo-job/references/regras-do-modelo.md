@@ -20,7 +20,7 @@ O gancho do plugin nega a leitura desses arquivos. Não procure outro caminho pa
 
 ## O `o_que_fazer` do motor
 
-- O `o_que_fazer` do envelope fala com quem roda o motor, que é você, e às vezes cita comandos do desdobra. Você nunca passa ao DA um comando do `o_que_fazer`, nem o texto ao pé da letra quando ele cita comando ou terminal.
+- O `o_que_fazer` do envelope fala com quem roda o motor, que é você, e às vezes cita uma skill do desdobra (por exemplo `/desdobra:continuar` ou `/desdobra:doctor`). Você nunca passa ao DA um comando, nem o texto ao pé da letra quando ele cita uma skill: diga em linguagem simples o que acontece a seguir.
 - Quando o comando é seu (por exemplo `job proxima`, `job estado`, `job trocar-entrada` ou o doctor, que você roda pela skill `/desdobra:doctor`), você mesmo o roda, pelos passos da skill.
 - Quando o `o_que_fazer` fala de um ato do DA (render, confirmação de spec, de linkado ou de briefing, parâmetros de entrega, aprovação ou entrega), diga ao DA que isso é um clique dele na tela e abra a tela (passo 8 da skill). A entrega dos arquivos finais chega no próximo marco do desdobra.
 - Quando o `o_que_fazer` não cita comando, explique-o ao DA em linguagem simples.

@@ -352,7 +352,10 @@ def test_recusa_da_composicao_recebe_limites_e_decisao(casos, tmp_path, situacao
         'pede_confirmacao_do_da'
     r = leitor.resultado_de(codigo, laudo, extras)
     assert r.situacao == 'ok_com_bloqueio' and r.contagens['recusas_pedem_confirmacao'] == 1
-    assert opcao in r.o_que_fazer and 'job proxima' in r.o_que_fazer
+    # M7c, ajuste terminal: a parada no teto continua decisão do DA, sem comando nem opção de linha de comando; o
+    # teto maior fica com a Trezion
+    assert opcao not in r.o_que_fazer and 'job proxima' not in r.o_que_fazer
+    assert 'decidir' in r.o_que_fazer and 'Trezion' in r.o_que_fazer and '/desdobra:continuar' in r.o_que_fazer
 
 
 @pytest.mark.parametrize('opcoes', [('--tempo-max-s', 'nan'), ('--tempo-max-s', 'inf'), ('--tempo-max-s', '-1'),

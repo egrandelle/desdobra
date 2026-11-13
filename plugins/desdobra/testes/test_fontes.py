@@ -509,7 +509,8 @@ def test_bloqueio_de_fonte_aparece_no_job_estado_e_em_todo_job_proxima(tmp_path,
     assert env['contagens']['camadas_bloqueantes'] >= 1
     env = _envelope(['job', 'proxima', job], capsys)
     assert env['situacao'] == 'ok_com_bloqueio' and env['contagens']['fases_rodadas_agora'] == 0
-    assert 'trocar-entrada' in env['o_que_fazer']
+    # M7c, ajuste terminal: a troca da fonte é pedida ao Claude pela skill, sem comando de terminal
+    assert '/desdobra:continuar' in env['o_que_fazer'] and 'trocar-entrada' not in env['o_que_fazer']
     # o DA traz o arquivo que faltava: o job conclui (a fonte sem licenca declarada nao bloqueia, decisoes-v1.md, n. 19)
     sumida = ap.gravar(tmp_path / 'nova', 'sumida.ttf', ap.fonte(ps='Sumida-Bold', familia='Sumida'))
     nucleo.trocar_entrada(job, 'entrada/fontes/sumida.ttf', sumida)
@@ -603,7 +604,7 @@ def test_casar_com_dois_arquivos_conta_os_candidatos():
     f1 = {'id': 'f01', 'nomes_ps': ['Dup-Bold'], 'id_unico': [], 'familia': 'Dup', 'estilo': 'Bold'}
     f2 = dict(f1, id='f02')
     assert casamento.casar('Dup-Bold', [f1, f2])[2] == 2
-    assert conferencia.DESCRICOES['mais_de_um_arquivo'].count('remover-entrada') == 1
+    assert conferencia.DESCRICOES['mais_de_um_arquivo'].count('/desdobra:continuar') == 1
 
 
 def _pedir(porta, linha, cabecalhos):

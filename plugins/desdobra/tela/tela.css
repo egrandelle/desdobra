@@ -594,11 +594,11 @@ main { flex: 1; min-height: 0; display: flex; }
   animation: subir 0.25s var(--curva) both;
 }
 .sugestao-fonte { margin: 0 0 2px; }
-.sugestao-selo { color: var(--acento); font-size: 12px; font-weight: 600; letter-spacing: 0.01em; }
+.sugestao-selo { color: var(--acento); font-size: 12px; font-weight: 600; letter-spacing: 0.01em; overflow-wrap: anywhere; }
 .sugestao-linha { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
 .sugestao-linha + .sugestao-linha { border-top: 1px solid var(--linha); padding-top: 6px; }
 .sugestao-info { display: grid; gap: 0; min-width: 0; }
-.sugestao-rotulo { color: var(--mais-suave); font-size: 11px; }
+.sugestao-rotulo { color: var(--mais-suave); font-size: 11px; overflow-wrap: anywhere; }
 .sugestao-funcao { font-weight: 600; overflow-wrap: anywhere; }
 .alternativa .sugestao-funcao { font-weight: 500; }
 .sugestao .usar { flex: none; height: 28px; padding: 0 14px; font-size: 12px; }
@@ -1622,7 +1622,8 @@ img.peca { user-select: none; pointer-events: none; }
 }
 .registro-funcao { font-weight: 600; overflow-wrap: anywhere; }
 .registro-valor { color: var(--tinta); overflow-wrap: anywhere; }
-.registro-origem { color: var(--mais-suave); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* ajuste nome: o nome do job de origem pode ser longo; quebra dentro da coluna, sem alargar a linha */
+.registro-origem { color: var(--mais-suave); font-size: 12px; font-variant-numeric: tabular-nums; max-width: 24ch; overflow-wrap: anywhere; text-align: right; }
 .registro-faces .chip { font-variant-numeric: normal; overflow-wrap: anywhere; }
 .registro-fora { font-size: 12px; padding-top: 2px; }
 @media (max-width: 1280px) {

@@ -1772,6 +1772,9 @@
     return (p.funcoes || {})[v.funcao] || null;
   }
   function jobCurto(j) { return String(j || '').slice(0, 8); }
+  /* ajuste nome do M7c (resposta do Duda ao ponto 3): o job de origem pelo nome que o DA deu a pasta do job, gravado
+     no perfil ao lado do id; o perfil de antes do ajuste nao tem o nome, e a tela cai no id curto */
+  function nomeDoJob(i) { return (i && i.job_nome) || jobCurto(i && i.job); }
   /* revisao do M4: o ref do clique vale com a mesma marca e o mesmo job de origem, numa versao entre a primeira com o
      valor de hoje (desde) e a atual, como no motor (desdobra.tela.funcoes._ref_vale): a versao nova que nao muda a
      funcao nao derruba o clique de antes */
@@ -1828,13 +1831,14 @@
     const x = padraoDe(v);
     if (!x) return null;
     const p = padraoDaMarca();
-    const jobs = [x.regra, x.ancora].filter(Boolean).map(function (i) { return i.job; });
+    const itens = [x.regra, x.ancora].filter(Boolean);
+    const jobs = itens.map(function (i) { return i.job; });
     const umJob = jobs.every(function (j) { return j === jobs[0]; });
     const box = el('section', null, 'sugestao padrao-marca');
     box.tabIndex = -1;
     box.setAttribute('aria-label', 'Padrão da marca');
     const topo = el('p', null, 'sugestao-fonte');
-    const selo = el('span', 'Padrão da marca, versão ' + p.versao + (umJob ? ', do job ' + jobCurto(jobs[0]) : ''),
+    const selo = el('span', 'Padrão da marca, versão ' + p.versao + (umJob ? ', do job ' + nomeDoJob(itens[0]) : ''),
       'sugestao-selo');
     if (umJob) selo.title = 'Job de origem ' + jobs[0];
     topo.appendChild(selo);
@@ -1844,7 +1848,7 @@
       const i = x[par[0]];
       if (!i) return;
       const linha = el('div', null, 'padrao-linha' + (usaOPadrao(d, x, par[0]) ? ' em-uso' : ''));
-      linha.appendChild(el('span', par[1] + (umJob ? '' : ', do job ' + jobCurto(i.job)), 'sugestao-rotulo'));
+      linha.appendChild(el('span', par[1] + (umJob ? '' : ', do job ' + nomeDoJob(i)), 'sugestao-rotulo'));
       linha.appendChild(el('span', par[0] === 'regra' ? maiuscula(nomeRegra(i.valor)) :
         (ANCORA_Y[i.y] || i.y) + ' ' + (ANCORA_X[i.x] || i.x), 'sugestao-funcao'));
       linhas.appendChild(linha);
@@ -4053,7 +4057,8 @@
     const li = el('li', null, 'registro-linha');
     li.appendChild(el('span', maiuscula(nomeFuncao(i.funcao)), 'registro-funcao'));
     li.appendChild(el('span', valor, 'registro-valor'));
-    const origem = el('span', i.desta_campanha ? 'deste job' : 'do job ' + i.job + ', mantida', 'registro-origem');
+    const origem = el('span', i.desta_campanha ? 'deste job' : 'do job ' + nomeDoJob(i) + ', mantida',
+      'registro-origem');
     if (!i.desta_campanha) origem.title = 'Este job não decidiu esta função. Ela fica como estava no padrão.';
     li.appendChild(origem);
     li.setAttribute('aria-label', nome + ' de ' + nomeFuncao(i.funcao) + ': ' + valor + ', ' + origem.textContent);

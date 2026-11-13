@@ -38,8 +38,8 @@ _HEX = re.compile(r'^[0-9a-f]{8,64}$')
 _COMANDO = re.compile(r'^[a-z][a-z -]*$')
 _FASE = re.compile(r'^[a-z][a-z0-9-]*$')
 _MINIATURA = re.compile(r'^sugestoes/miniaturas/(?P<arquivo>[^/\\]+)\.png$')
-O_QUE_FAZER_RETIDO = ('A orientação deste passo foi retida pelo detector de segredos. Rode o mesmo comando sem '
-                      '--envelope para ver o aviso no terminal.')
+O_QUE_FAZER_RETIDO = ('A orientação deste passo foi retida pelo detector de segredos, que guarda o aviso fora do '
+                      'envelope. Siga pelas contagens; se o passo travar, avise a Trezion.')
 
 
 # ------------------------------------------------------------------ campos fixos

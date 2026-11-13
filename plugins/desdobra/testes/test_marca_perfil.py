@@ -678,3 +678,168 @@ def test_motivo_da_marca_manda_o_da_a_tela_sem_terminal(g):
     texto = g.MOTIVO_MARCA
     assert 'tela do desdobra' in texto and 'terminal' not in texto.lower()
     assert '\u2014' not in texto and '\u2013' not in texto
+
+
+# ------------------------------------------------------------------ M7c, ajuste nome: o nome do job no perfil
+# Resposta do Duda ao ponto 3 (13/11): o padrao da marca mostra o nome do job de origem, e nao o id curto. O nome e o
+# da pasta do job (o DA da o nome na criacao); o perfil guarda o nome ao lado do id, como campo opcional do
+# perfil-marca/1 (o perfil antigo, sem nome, continua valido). O ref e a conferencia continuam pelo id.
+NOME_1 = 'Campanha Sintetica Verao'
+NOME_2 = 'Campanha Sintetica Inverno'
+
+
+def _com_nomes(conteudo, nome):
+    c = copy.deepcopy(conteudo)
+    for campo in ('regras_escala', 'ancoras'):
+        for item in c[campo]:
+            item['job_origem_nome'] = nome
+    return c
+
+
+def _campanha_com_nome(job, nome, **kw):
+    return dict(_campanha(job, **kw), job_nome=nome)
+
+
+def test_perfil_antigo_sem_nome_do_job_continua_valido():
+    p = _perfil()
+    dados = _perfil_valido()
+    p.validar(dados)
+    assert p.ESQUEMA == 'perfil-marca/1'  # o campo novo e opcional: o esquema nao muda de versao
+
+
+def test_nome_do_job_e_opcional_na_campanha_e_em_cada_regra_e_ancora():
+    p = _perfil()
+    dados = _perfil_valido()
+    dados['atual'].update(_com_nomes(_conteudo(JOB_1), NOME_1))
+    dados['atual']['campanha']['job_nome'] = NOME_1
+    dados['atual']['cores'] = [{'srgb': '#12ab34', 'job_origem': JOB_1, 'job_origem_nome': NOME_1}]
+    p.validar(dados)
+    # acento, numero, hifen e espaco sao nomes comuns de pasta
+    dados['atual']['campanha']['job_nome'] = 'Campanha Sint\u00e9tica 2027 - fase 2'
+    p.validar(dados)
+
+
+RECUSAS_DO_NOME = {
+    'vazio': '',
+    'com barra': 'Campanha/Sintetica',
+    'com barra invertida': 'Campanha\\Sintetica',
+    'com controle': 'Campanha\x07Sintetica',
+    'arquivo de fonte': 'Sintetica.otf',
+    'arquivo de fonte no meio': 'Sintetica.ttf v2',
+    'longo demais': 'x' * 121,
+    'bytes de fonte em base64': 'T1RUTwAAAAAAAAAAAAAAAAAA',
+    'nao e texto': 7,
+    # revisao do ajuste nome: o NTFS aceita na pasta metade de um par UTF-16, que nao vira UTF-8
+    'metade de par solta': 'Campanha \ud800 Sintetica',
+}
+
+
+@pytest.mark.parametrize('caso', sorted(RECUSAS_DO_NOME))
+@pytest.mark.parametrize('onde', ['campanha', 'regra', 'ancora'])
+def test_nome_do_job_fora_do_contrato_e_recusado(caso, onde):
+    p = _perfil()
+    dados = _perfil_valido()
+    nome = RECUSAS_DO_NOME[caso]
+    if onde == 'campanha':
+        dados['atual']['campanha']['job_nome'] = nome
+    elif onde == 'regra':
+        dados['atual']['regras_escala'][0]['job_origem_nome'] = nome
+    else:
+        dados['atual']['ancoras'][0]['job_origem_nome'] = nome
+    with pytest.raises((ErroContrato, p.ErroPerfil)):
+        p.validar(dados)
+
+
+def test_nome_de_job_serve():
+    p = _perfil()
+    assert p.nome_de_job_serve(NOME_1) and p.nome_de_job_serve('Campanha Sint\u00e9tica 2027')
+    for nome in RECUSAS_DO_NOME.values():
+        assert not p.nome_de_job_serve(nome), nome
+    assert not p.nome_de_job_serve(None)
+
+
+def test_nova_versao_guarda_o_nome_e_o_historico_fica_intocado(bib):
+    p = _perfil()
+    id_ = p.criar(bib, 'Marca Sintetica')['id']
+    d1, _ = p.nova_versao(bib, id_, campanha=_campanha_com_nome(JOB_1, NOME_1), quando='2026-11-12T10:00:00-03:00',
+                          **_com_nomes(_conteudo(JOB_1), NOME_1))
+    assert d1['atual']['campanha']['job_nome'] == NOME_1
+    assert {i['job_origem_nome'] for i in d1['atual']['regras_escala'] + d1['atual']['ancoras']} == {NOME_1}
+    v1 = para_json(d1['atual'])
+    c2 = _com_nomes(_conteudo(JOB_2, regra_titulo='largura'), NOME_2)
+    d2, criou = p.nova_versao(bib, id_, campanha=_campanha_com_nome(JOB_2, NOME_2), **c2)
+    assert criou and para_json(d2['historico'][0]) == v1  # o nome do job 1 fica no historico, igual byte a byte
+    assert p.ler(bib, id_) == d2
+
+
+def test_so_o_nome_do_job_trocado_nao_cria_versao(bib):
+    """A pasta do job renomeada nao muda o padrao: o mesmo job, com o mesmo conteudo e as mesmas aprovacoes, nao cria
+    versao, com nome ou sem nome (o perfil antigo registrado sem o nome continua guardado)."""
+    p = _perfil()
+    id_ = p.criar(bib, 'Marca Sintetica')['id']
+    _registrar(p, bib, id_, JOB_1)  # sem nome, como os perfis de antes do ajuste
+    arquivo = bib / 'marcas' / id_ / 'perfil-marca.json'
+    antes = arquivo.read_bytes()
+    dados, criou = p.nova_versao(bib, id_, campanha=_campanha_com_nome(JOB_1, NOME_1),
+                                 quando='2026-11-12T10:00:00-03:00', **_com_nomes(_conteudo(JOB_1), NOME_1))
+    assert not criou and dados['versao'] == 1 and arquivo.read_bytes() == antes
+
+
+def test_nomes_dos_jobs_de_todas_as_versoes(bib):
+    p = _perfil()
+    id_ = p.criar(bib, 'Marca Sintetica')['id']
+    _registrar(p, bib, id_, JOB_1)  # sem nome
+    assert p.nomes_dos_jobs(p.ler(bib, id_)) == {}
+    c2 = _com_nomes(_conteudo(JOB_2, regra_titulo='largura'), NOME_2)
+    p.nova_versao(bib, id_, campanha=_campanha_com_nome(JOB_2, NOME_2), **c2)
+    assert p.nomes_dos_jobs(p.ler(bib, id_)) == {JOB_2: NOME_2}
+    # o job 1 registrado de novo com o nome: o nome dele passa a valer, e o do job 2 continua
+    c3 = _com_nomes(_conteudo(JOB_1, regra_titulo='altura'), NOME_1)
+    p.nova_versao(bib, id_, campanha=_campanha_com_nome(JOB_1, NOME_1), **c3)
+    assert p.nomes_dos_jobs(p.ler(bib, id_)) == {JOB_1: NOME_1, JOB_2: NOME_2}
+    assert p.nomes_dos_jobs(None) == {}
+
+
+def test_nomes_dos_jobs_vale_o_da_campanha_mais_recente_e_nao_o_da_regra_mantida():
+    """Revisao do ajuste nome: a regra mantida guarda o nome que o job tinha quando ela foi decidida. Depois que a pasta
+    foi renomeada e o job registrou de novo, vale o nome da campanha mais recente do job, mesmo que uma versao mais
+    nova (de outro job) ainda carregue a regra mantida com o nome velho."""
+    p = _perfil()
+    velho, novo = 'Pasta Sintetica Velha', 'Pasta Sintetica Nova'
+    v2 = {'campanha': {'job': JOB_1, 'job_nome': novo},
+          'regras_escala': [{'funcao': 'titulo', 'job_origem': JOB_1, 'job_origem_nome': velho},
+                            {'funcao': 'cta', 'job_origem': JOB_1, 'job_origem_nome': novo}]}
+    v3 = {'campanha': {'job': JOB_2, 'job_nome': NOME_2},
+          'regras_escala': [{'funcao': 'cta', 'job_origem': JOB_1, 'job_origem_nome': novo},
+                            {'funcao': 'titulo', 'job_origem': JOB_1, 'job_origem_nome': velho}]}
+    v1 = {'campanha': {'job': JOB_1, 'job_nome': velho},
+          'regras_escala': [{'funcao': 'titulo', 'job_origem': JOB_1, 'job_origem_nome': velho}]}
+    assert p.nomes_dos_jobs({'historico': [v1, v2], 'atual': v3}) == {JOB_1: novo, JOB_2: NOME_2}
+    # sem campanha com nome, o nome que a regra guarda ainda serve (o mais recente)
+    so_regra = {'campanha': {'job': JOB_2}, 'regras_escala': [{'funcao': 'cta', 'job_origem': JOB_1,
+                                                               'job_origem_nome': velho}]}
+    assert p.nomes_dos_jobs({'historico': [], 'atual': so_regra}) == {JOB_1: velho}
+
+
+def test_nome_que_nao_vira_utf8_e_recusado_pelo_perfil_sem_quebrar_a_gravacao(bib):
+    """Revisao do ajuste nome: o nome com metade de par UTF-16 sai como ErroPerfil (que o registrar trata), e nao como
+    UnicodeEncodeError na gravacao; o arquivo fica como estava."""
+    p = _perfil()
+    id_ = p.criar(bib, 'Marca Sintetica')['id']
+    arquivo = bib / 'marcas' / id_ / 'perfil-marca.json'
+    antes = arquivo.read_bytes()
+    with pytest.raises(p.ErroPerfil):
+        p.nova_versao(bib, id_, campanha=_campanha_com_nome(JOB_1, 'Campanha \ud800 Sintetica'),
+                      **_com_nomes(_conteudo(JOB_1), NOME_1))
+    assert arquivo.read_bytes() == antes
+
+
+@pytest.mark.parametrize('ferramenta', ['Read', 'Grep', 'Glob'])
+def test_gancho_continua_negando_ao_claude_a_leitura_do_perfil_com_o_nome_do_job(g, tmp_path, ferramenta):
+    """O nome do job fica so no perfil, em marcas/**, que o gancho nega ao Claude em toda ferramenta de leitura."""
+    alvo = (tmp_path / 'biblioteca' / 'marcas' / ID / 'perfil-marca.json').as_posix()
+    entrada = {'Read': {'file_path': alvo}, 'Grep': {'pattern': 'job_nome', 'path': alvo},
+               'Glob': {'pattern': '**/*.json', 'path': (tmp_path / 'biblioteca' / 'marcas').as_posix()}}[ferramenta]
+    assert _decidir(g, ferramenta, entrada, tmp_path)[0] == 'deny'
+    for comando in ('cat %s' % alvo, 'grep job_nome %s' % alvo):
+        assert _decidir(g, 'Bash', {'command': comando}, tmp_path)[0] == 'deny', comando

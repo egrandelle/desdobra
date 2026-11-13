@@ -260,7 +260,7 @@ def verificar_highs():
     else:
         v.situacao = 'falha'
         v.detalhe = v.detalhe or 'O HiGHS não resolveu o programa de teste.'
-        v.o_que_fazer = ('Sem o HiGHS, o "desdobra derivar" não resolve o layout. Apague a cópia requirements.lock da '
+        v.o_que_fazer = ('Sem o HiGHS, a derivação não resolve o layout. Apague a cópia requirements.lock da '
                          'pasta de dados do plugin e abra uma sessão nova, para o gancho recriar o ambiente.')
     return v
 
@@ -334,8 +334,8 @@ def verificar_isolador(plat=None):
     elif r.situacao != 'ok' or r.codigo != 0:
         dentro.situacao = 'falha'
         dentro.detalhe += ' Motivo: %s' % (r.motivo or 'o filho de teste não terminou como esperado')
-        dentro.o_que_fazer = ('O isolador não rodou um processo simples. Rode o doctor de novo; se repetir, mande o '
-                              'doctor.json para a Trezion.')
+        dentro.o_que_fazer = ('O isolador não rodou um processo simples. Peça ao Claude para conferir a '
+                              'instalação de novo (/desdobra:doctor); se repetir, mande o doctor.json para a Trezion.')
 
     estouro = Verificacao('isolador_estouro_do_teto', 'Isolador: filho que estoura o teto', limite=citacao)
     if r.situacao == 'recusado':
@@ -374,7 +374,7 @@ def verificar_teto(teto, dados):
         v.situacao = 'falha' if dados is not None else 'aviso'
         v.detalhe = 'O teto do modo de dados não chegou ao motor.'
         v.o_que_fazer = ('Configure o teto do modo de dados do plugin em /plugin, na opção Configure do desdobra, e '
-                         'rode o doctor de novo.')
+                         'peça ao Claude para conferir a instalação de novo (/desdobra:doctor).')
         return v
     descricao = {'a': 'metadados, textos e miniaturas de camadas sem texto',
                  'b': 'metadados e textos, sem imagens', 'c': 'só contagens, estados e números do motor'}

@@ -30,6 +30,10 @@ confere que o arquivo nao mudou desde a leitura, e nova_versao le e grava sob um
 do outro sem erro (revisao da correcao B).
 
 Este modulo nao confere a biblioteca (desdobra.biblioteca.conferir): quem chama passa a pasta que ja serve.
+
+Ajuste nome do M7c: a campanha (job_nome) e cada regra, ancora e cor (job_origem_nome) podem levar o nome do job ao
+lado do id, so para a tela; campos opcionais, o perfil sem nome continua valido, e a comparacao entre versoes ignora o
+nome (_sem_nomes). nomes_dos_jobs junta os nomes de todas as versoes, para a regra mantida sem nome.
 """
 import base64
 import binascii
@@ -63,6 +67,14 @@ _ID = re.compile(r'^[0-9a-f]{32}$')
 _NOME_DE_ARQUIVO = re.compile(r'^[\w.-]+$')
 # o que compara duas versoes para dizer se o registro mudou algo (quando e quem confirmou nao contam)
 _CAMPOS_DO_CONTEUDO = ('job_origem', 'regras_escala', 'ancoras', 'faces', 'cores')
+# ajuste nome do M7c (resposta do Duda ao ponto 3, 13/11): o nome do job, ao lado do id, na campanha (CAMPO_NOME) e em
+# cada regra, ancora e cor (CAMPO_NOME_DA_ORIGEM). Campos opcionais do perfil-marca/1: o perfil gravado antes, sem
+# nome, continua valido. O nome so serve para a tela mostrar o job de origem; o ref, a origem e a comparacao entre
+# versoes continuam pelo id (o nome de pasta trocado nao vira versao nova).
+CAMPO_NOME = 'job_nome'
+CAMPO_NOME_DA_ORIGEM = 'job_origem_nome'
+NOME_MAXIMO = 120  # numero-neutro: o mesmo teto do nome da marca no esquema perfil-marca/1
+_NOME_DE_JOB = re.compile(r'^[^/\\\x00-\x1f]{1,%d}$' % NOME_MAXIMO)
 # revisao do M2: os textos livres do perfil nao levam arquivo nem bytes de fonte (_conferir_textos)
 _CHAVES_DE_PADRAO_FIXO = ('esquema', 'id', 'job', 'job_origem', 'aprovacao_sha256', 'srgb')
 _EXTENSAO_DE_FONTE = re.compile(r'\.(?:%s)(?![A-Za-z0-9_-])' % '|'.join(re.escape(e[1:]) for e in EXTENSOES_FONTE),
@@ -198,16 +210,65 @@ def _conferir_textos(valor, chave=None):
         for v in valor:
             _conferir_textos(v, chave)
     elif isinstance(valor, str) and chave not in _CHAVES_DE_PADRAO_FIXO:
+        if not _vira_utf8(valor):
+            raise ErroPerfil('O perfil da marca só guarda texto que vira UTF-8 (campo %s).' % chave)
         if _EXTENSAO_DE_FONTE.search(valor):
             raise ErroPerfil('O perfil da marca não guarda arquivo de fonte (campo %s).' % chave)
         if any(assinatura_de_fonte(b[:BYTES_ASSINATURA]) for b in _decodificados(valor.strip())):
             raise ErroPerfil('O perfil da marca não guarda bytes de fonte (campo %s).' % chave)
 
 
+def _vira_utf8(texto):
+    """Revisao do ajuste nome: o NTFS aceita no nome da pasta metade de um par UTF-16, que o Python le como texto
+    mas que nao vira UTF-8; o perfil e a impressao do registro sao gravados em UTF-8."""
+    try:
+        texto.encode('utf-8')
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def validar(dados):
     contratos.validar(dados, ESQUEMA)
     _conferir_textos(dados)
     return _conferir_consistencia(dados)
+
+
+def nome_de_job_serve(nome):
+    """O nome do job cabe no perfil: texto de 1 a 120 caracteres, sem barra, sem controle, sem extensao de arquivo de
+    fonte e sem bytes de fonte codificados (as mesmas regras do nome da marca)."""
+    if not isinstance(nome, str) or not _vira_utf8(nome) or not _NOME_DE_JOB.match(nome) or             _EXTENSAO_DE_FONTE.search(nome):
+        return False
+    return not any(assinatura_de_fonte(b[:BYTES_ASSINATURA]) for b in _decodificados(nome.strip()))
+
+
+def nomes_dos_jobs(dados):
+    """{id do job: nome} de todas as versoes do perfil: um nome so por job, o da campanha mais recente do job que tem
+    nome. O nome que a regra, a ancora ou a cor guarda so vale para o job sem campanha com nome (o mais recente). Revisao
+    do ajuste nome: a regra mantida guarda o nome que o job tinha quando ela foi decidida, e a pasta renomeada depois nao
+    pode fazer o mesmo job aparecer com dois nomes na tela. O perfil sem nenhum nome da {}."""
+    if not dados:
+        return {}
+    versoes = list(dados.get('historico') or []) + ([dados['atual']] if dados.get('atual') else [])
+    dos_itens, das_campanhas = {}, {}
+    for v in versoes:
+        for campo in ('regras_escala', 'ancoras', 'cores'):
+            for item in v.get(campo) or ():
+                if item.get(CAMPO_NOME_DA_ORIGEM):
+                    dos_itens[item['job_origem']] = item[CAMPO_NOME_DA_ORIGEM]
+        camp = v.get('campanha') or {}
+        if camp.get(CAMPO_NOME):
+            das_campanhas[camp['job']] = camp[CAMPO_NOME]
+    return {**dos_itens, **das_campanhas}
+
+
+def _sem_nomes(valor):
+    """A copia sem os nomes de job: a comparacao entre versoes e so pelo id (o nome de pasta trocado nao muda nada)."""
+    if isinstance(valor, list):
+        return [_sem_nomes(v) for v in valor]
+    if isinstance(valor, dict):
+        return {k: _sem_nomes(v) for k, v in valor.items() if k not in (CAMPO_NOME, CAMPO_NOME_DA_ORIGEM)}
+    return valor
 
 
 def _ler_bytes(biblioteca, id_):
@@ -322,7 +383,7 @@ def criar(biblioteca, nome, *, quando=None):
 
 
 def _conteudo(versao):
-    return {k: versao.get(k) for k in _CAMPOS_DO_CONTEUDO} | {
+    return {k: _sem_nomes(versao.get(k)) for k in _CAMPOS_DO_CONTEUDO} | {
         'aprovacoes': sorted((f['formato'], f['aprovacao_sha256']) for f in versao['campanha']['formatos'])}
 
 

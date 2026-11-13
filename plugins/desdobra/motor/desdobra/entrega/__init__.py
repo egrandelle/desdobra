@@ -44,8 +44,11 @@ from desdobra.resultado import Codigo, Resultado
 
 O_QUE_FAZER_RECUSA = ('A entrega foi recusada. Veja o código de cada formato; com o briefing de teste, a entrega fica '
                       'recusada até o briefing ser confirmado pelo DA.')
-O_QUE_FAZER_APROVAR_RECUSA = ('A aprovação foi recusada e nada foi gravado. Veja o código de cada formato, corrija e rode '
-                              'o "desdobra aprovar" de novo.')
+O_QUE_FAZER_APROVAR_RECUSA = ('A aprovação foi recusada e nada foi gravado. Veja o código de cada formato e corrija. A '
+                              'aprovação é um clique do DA na tela do desdobra: peça ao Claude para abrir a tela do job '
+                              '(/desdobra:continuar).')
+# o que vale quando o job muda entre a pergunta e a gravacao (so no console interativo; o envelope recusa antes)
+O_QUE_FAZER_MUDOU = 'O job mudou durante a confirmação. Nada foi gravado: confirme de novo, com o job de agora.'
 
 
 def registrar(subparsers):
@@ -92,7 +95,7 @@ def _recusa_terminal(comando, pasta, motivo):
 
 def _sem_job(comando, pasta):
     return Resultado(comando=comando, codigo=int(Codigo.USO), situacao='erro', pasta_job=pasta,
-                     o_que_fazer='Rode o comando numa pasta de job ("desdobra job criar").',
+                     o_que_fazer='O comando só funciona numa pasta de job do desdobra.',
                      linhas_humanas=['A pasta não é um job do desdobra.'])
 
 
@@ -158,8 +161,7 @@ def _aprovar(args):
             regs = nucleo_aprovar.confirmar(pasta, formatos, nucleo_aprovar.vista(conf), disparo)
     except nucleo_aprovar.ErroAprovar as e:
         return Resultado(comando='aprovar', codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
-                         o_que_fazer='O job mudou durante a confirmação. Nada foi gravado: rode o "desdobra '
-                                     'aprovar" de novo.', contagens={'recusa_mudou_durante_a_confirmacao': len(e.mudaram)},
+                         o_que_fazer=O_QUE_FAZER_MUDOU, contagens={'recusa_mudou_durante_a_confirmacao': len(e.mudaram)},
                          linhas_humanas=['O job mudou durante a confirmação: %s.' % ', '.join(e.mudaram)])
     except nucleo.ErroJob as e:
         return _erro_job('aprovar', pasta, e)
@@ -229,8 +231,7 @@ def _entregar(args):
                 mudou = sorted(fid for fid in set(antes) | set(agora) if antes.get(fid) != agora.get(fid))
             if mudou:
                 return Resultado(comando='entregar', codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
-                                 o_que_fazer='O job mudou durante a confirmação. Nada foi gravado: rode o "desdobra '
-                                             'entregar" de novo.', contagens={'recusa_mudou_durante_a_confirmacao': len(mudou)},
+                                 o_que_fazer=O_QUE_FAZER_MUDOU, contagens={'recusa_mudou_durante_a_confirmacao': len(mudou)},
                                  linhas_humanas=['O job mudou durante a confirmação: %s.' % ', '.join(mudou)])
             job_id, _kv = portao.kv_atual(pasta)
             rel, anterior = validar.gravar(pasta, novos, job_id, disparo=disparo)
@@ -247,8 +248,8 @@ def _entregar(args):
         return Resultado(comando='entregar', codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
                          contagens={'recusa_entrega_em_uso': 1},
                          o_que_fazer='Um arquivo de entrega/ está aberto em outro programa. Feche os arquivos de entrega/ '
-                                     '(e o manifesto-licenca.json) e rode o "desdobra entregar" de novo; a entrega '
-                                     'anterior ficou como estava.',
+                                     '(e o manifesto-licenca.json) e confirme a entrega de novo; a entrega anterior '
+                                     'ficou como estava.',
                          linhas_humanas=['A entrega não foi trocada: %s.' % type(e).__name__])
     nucleo.registrar_evento(pasta, 'entrega_gravada', **rel['contagens'])
     regras = {}
@@ -267,8 +268,7 @@ def _entregar(args):
                      contagens=dict(regras, formatos=len(rel['arquivos']), avisos=resumo['avisou'],
                                     so_registro=resumo['so_registro'], **rel['contagens']),
                      o_que_fazer='Os arquivos para o veículo estão em entrega/aprovados. Os de entrega/reprovados têm a '
-                                 'regra e a sugestão em entrega/relatorio-entrega.json. Confira a pasta com "desdobra '
-                                 'conferir-entrega".', linhas_humanas=linhas)
+                                 'regra e a sugestão em entrega/relatorio-entrega.json.', linhas_humanas=linhas)
 
 
 def _pedido_de_parametros(args):
@@ -288,7 +288,7 @@ def _pedido_de_parametros(args):
 def _recusa_parametros(pasta, e):
     return Resultado(comando='parametros-entrega', codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
                      contagens={'recusa_%s' % e.codigo: 1}, linhas_humanas=[str(e)],
-                     o_que_fazer='Nada foi gravado em parametros/entrega.json. Corrija o pedido e rode o comando de novo.')
+                     o_que_fazer='Nada foi gravado em parametros/entrega.json. Corrija o pedido e confirme de novo.')
 
 
 def _texto_do_valor(valor):
@@ -314,8 +314,8 @@ def _parametros_entrega(args):
     valores, limpar = _pedido_de_parametros(args)
     if not valores and not limpar:
         return Resultado(comando='parametros-entrega', codigo=int(Codigo.USO), situacao='erro', pasta_job=pasta,
-                         o_que_fazer='Diga ao menos um campo: --rotacao-sentido, --condicao, --cor-de-achatamento, '
-                                     '--borda-1px ou --limpar.', linhas_humanas=['Nenhuma mudança pedida.'])
+                         o_que_fazer='Diga ao menos um campo: o sentido do giro, a condição, a cor de achatamento, a '
+                                     'borda de 1 px ou um campo a limpar.', linhas_humanas=['Nenhuma mudança pedida.'])
     if set(valores) & set(limpar):
         return Resultado(comando='parametros-entrega', codigo=int(Codigo.USO), situacao='erro', pasta_job=pasta,
                          o_que_fazer='Um campo não pode ser gravado e limpo no mesmo comando.',
@@ -347,7 +347,7 @@ def _parametros_entrega(args):
                 return Resultado(comando='parametros-entrega', codigo=int(Codigo.RECUSADO), situacao='recusado',
                                  pasta_job=pasta, contagens={'recusa_mudou_durante_a_confirmacao': 1},
                                  o_que_fazer='parametros/entrega.json mudou durante a confirmação. Nada foi gravado: '
-                                             'rode o "desdobra parametros-entrega" de novo.',
+                                             'confirme de novo, com o arquivo de agora.',
                                  linhas_humanas=['O arquivo mudou durante a confirmação.'])
             parametros.gravar(pasta, args.formato, valores, limpar, disparo=disparo)
     except nucleo.ErroJob as e:
@@ -359,8 +359,9 @@ def _parametros_entrega(args):
                      contagens={'campos_mudados': len(mudancas)},
                      o_que_fazer='Os parâmetros estão em parametros/entrega.json. Quando a mudança muda o arquivo '
                                  'final (o giro e a borda sempre; a cor de achatamento só num master com transparência; '
-                                 'a condição só quando troca o teto de peso que vale), a aprovação do formato cai: '
-                                 'rode o "desdobra aprovar" e o "desdobra entregar" de novo.',
+                                 'a condição só quando troca o teto de peso que vale), a aprovação do formato cai: o '
+                                 'DA aprova de novo com um clique na tela do desdobra, e a entrega dos arquivos '
+                                 'finais chega no próximo marco do desdobra.',
                      linhas_humanas=['%d campo(s) gravado(s) no formato %s.' % (len(mudancas), args.formato)])
 
 
@@ -389,5 +390,6 @@ def _conferir_entrega(args):
         linhas.append('  manifesto-licenca.json: %s' % s['manifesto'])
     return Resultado(comando='conferir-entrega', codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
                      contagens=cont, linhas_humanas=linhas,
-                     o_que_fazer='entrega/ mudou depois da entrega ou não foi gravada pelo motor. Peça ao DA para rodar '
-                                 'o "desdobra entregar" de novo, num terminal próprio.')
+                     o_que_fazer='entrega/ mudou depois da entrega ou não foi gravada pelo motor, e a entrega precisa '
+                                 'ser feita de novo pelo DA. A entrega dos arquivos finais chega no próximo marco do '
+                                 'desdobra; por enquanto, o job termina na aprovação de cada formato, na tela.')

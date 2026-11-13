@@ -36,17 +36,19 @@ from desdobra.derivacao import nucleo as nd
 from desdobra.render import contrato as mc
 
 DESCRICOES = {
-    'formato_sem_derivacao': 'O formato não tem derivacao/<formato>.json. Rode "desdobra derivar --job <pasta>".',
+    'formato_sem_derivacao': 'O formato não tem derivacao/<formato>.json. O "Salvar e seguir" do DA, na tela, '
+                             'deriva os formatos.',
     'formato_devolvido': 'A derivação devolveu este formato ao DA (veja derivacao/devolucoes.json): não há layout '
                          'para renderizar.',
     'texto_editado_fora_da_fonte': 'O texto editado na tela tem caractere que a fonte do job não tem, e o render não '
                                    'desenha o texto sem ele. Troque o caractere na tela ou envie a fonte que o tenha.',
     'derivacao_desatualizada': 'A derivação gravada não é a que o briefing, as specs, os parâmetros e os limites de agora '
-                               'dão (arquivo mexido ou entrada mudada). Rode "desdobra derivar" de novo.',
+                               'dão (arquivo mexido ou entrada mudada). O "Salvar e seguir" do DA, na tela, deriva de '
+                               'novo.',
     'briefing_desatualizado': 'O briefing é de outra versão do laudo, das specs, do design system ou das fontes.',
     'elemento_partido_no_render': 'Um efeito de um elemento (ajuste, mesclagem ou camada clipada) ficaria num pedaço de '
-                                  'pilha separado do que ele pega. A derivação devia ter devolvido o formato: rode o '
-                                  '"desdobra derivar" de novo e mande o caso para a Trezion.',
+                                  'pilha separado do que ele pega. A derivação devia ter devolvido o formato: o "Salvar '
+                                  'e seguir" do DA, na tela, deriva de novo; mande o caso para a Trezion.',
     'mesclagem_sem_o_fundo_de_outro_elemento': 'Há camada com mesclagem diferente da normal. No formato derivado, cada '
                                                'elemento é composto sozinho: a mesclagem não pega os elementos de '
                                                'baixo. É decisão do DA aceitar.',

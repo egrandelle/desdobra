@@ -94,7 +94,7 @@ Esta skill ajuda o DA quando o motor não reconheceu sozinho onde está cada inf
    - `contagens.propostas_ignoradas_modo_c`: maior que `0` quer dizer que o modo do job caiu para c. Pare e diga ao DA que a ajuda com a folha precisa do modo a ou b, escolhido por ele na tela;
    - `contagens.valores_rascunho`, `contagens.divergencias`, `contagens.recortes` e `contagens.com_alerta`: quantos valores esperam o DA, em quantos campos duas partes da folha dizem valores diferentes, quantas páginas não têm texto e quantos valores pedem atenção (vírgula decimal, unidade estranha, rótulo longe do valor).
 
-   Se o `codigo` for `20` com a `fase` `specs` e `contagens.codigo_da_fase` igual a `3`, o arquivo de propostas não seguiu o contrato. Nesse caso, não explique o `o_que_fazer` ao DA, porque ele fala de terminal: releia as regras do passo 7, escreva o arquivo de novo e rode o `job proxima` uma vez mais. Se a falha continuar, escreva o arquivo só com as propostas que já existiam nele antes do passo 7 ou, se não havia arquivo, com a lista vazia (`"propostas": []`), e rode o `job proxima` de novo. Se a fase `specs` ainda falhar, diga ao DA, sem passar comando a ele, que a leitura da folha travou, que isso é um caso para avisar a Trezion, e pare.
+   Se o `codigo` for `20` com a `fase` `specs` e `contagens.codigo_da_fase` igual a `3`, o arquivo de propostas não seguiu o contrato. Nesse caso, não explique o `o_que_fazer` ao DA, porque o erro está no arquivo que você escreveu: releia as regras do passo 7, escreva o arquivo de novo e rode o `job proxima` uma vez mais. Se a falha continuar, escreva o arquivo só com as propostas que já existiam nele antes do passo 7 ou, se não havia arquivo, com a lista vazia (`"propostas": []`), e rode o `job proxima` de novo. Se a fase `specs` ainda falhar, diga ao DA, sem passar comando a ele, que a leitura da folha travou, que isso é um caso para avisar a Trezion, e pare.
 
 9. **Abrir a tela.** Abra a tela com timeout de 600000 ms:
 
@@ -106,7 +106,7 @@ Esta skill ajuda o DA quando o motor não reconheceu sozinho onde está cada inf
    - quantos trechos você ligou aos campos e quantos o motor aplicou;
    - que todo valor tirado da folha continua em rascunho até ele confirmar, com cliques na tela, em "Valores de spec", no passo 1, ao lado do trecho da folha;
    - que, onde duas partes da folha dizem valores diferentes, quem escolhe a leitura é ele, e você não recomenda nenhuma;
-   - que, nas páginas sem texto, ele digita o valor ao lado da imagem da página, na tela.
+   - que os valores das páginas sem texto ainda não têm botão na tela: por enquanto, ele traz a mesma folha com texto (PDF com camada de texto, HTML salvo, CSV ou texto do e-mail) para você acrescentar ao job.
 
 10. **Fim.** Diga ao DA:
     - os trechos da folha que você leu ficam na transcrição local desta conversa, em texto puro, até ele apagar. Ao fechar o job, ele limpa as transcrições desta conversa no app do Claude;

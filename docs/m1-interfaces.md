@@ -1509,3 +1509,88 @@ Documentação e versão do M7c, pelo plano do M7c (E3).
 - Este documento ganhou a "M7c: visão geral (versão 0.9.0)", antes das seções do M7c: contratos novos, fluxo da sugestão, perfil de marca e biblioteca, regras de leitura e escrita do job pelo Claude e as skills.
 - Teste novo `testes/test_versao.py` (5): o motor lê a versão do manifesto; os contratos do M7c existem e a versão é 0.9.0 ou posterior; a primeira entrada do CHANGELOG é a versão do manifesto, sem entrada repetida; o CHANGELOG sem travessão nem meia-risca; as bibliotecas de specs na versão do manifesto. Vermelho antes da troca (1 de 5: `(0, 8, 0) >= (0, 9, 0)`), verde depois (5 de 5).
 - O texto proposto ao Duda para a seção 9.8, as decisões novas, a troca da proposta da pergunta 8 da 10.2 e os pontos abertos dos passos do M7c ficou fora do repositório, sem gravar em `decisoes-v1.md` nem em `arquitetura-v1.md`, até o aval dele.
+
+## M7c, ajuste nome
+
+Resposta do Duda ao ponto 3 (13/11): o padrão da marca mostra o nome do job de origem, e não os 8 primeiros caracteres do id. Entra antes da rodada.
+
+- O nome do job é o nome da pasta do job. A skill `novo-job` pede ao DA "a pasta nova do job", e é esse o nome que ele dá ao job; o `estado/1` guarda só o `job_id` (32 hexadecimais ao acaso) e não tem campo de nome. `registrar.nome_do_job(pasta)` devolve o nome da pasta resolvida, ou None quando ele não cabe no perfil (`perfil.nome_de_job_serve`: de 1 a 120 caracteres, sem barra, sem controle, sem extensão de arquivo de fonte e sem bytes de fonte codificados, as regras do nome da marca).
+- Esquema `perfil-marca/1`, sem versão nova: `$defs.nome_job` e os campos opcionais `campanha.job_nome` e `job_origem_nome` em cada regra, âncora e cor. O perfil gravado antes, sem nome, continua válido, e nenhuma migração é necessária.
+- `perfil`: `CAMPO_NOME`, `CAMPO_NOME_DA_ORIGEM`, `nome_de_job_serve` e `nomes_dos_jobs(dados)` (`{id: nome}` de todas as versões; vale o mais recente de cada job). A comparação entre versões (`_conteudo`) ignora os nomes: a pasta renomeada não cria versão, e o job registrado antes do ajuste continua "guardado". O histórico fica como estava, byte a byte.
+- `registrar`: `conteudo(..., job_nome=None)` põe o nome ao lado do id na regra e na âncora decididas agora (o deste job, ou o que o perfil já guarda para o job do `ref`); a mantida da versão anterior fica como estava. O `gravar` grava `campanha.job_nome`. Na janela, cada linha leva `job_nome` (o do item ou o das campanhas do perfil), ou None.
+- `funcoes.padrao_da_marca`: cada regra e âncora ganha `job_nome`, pela mesma conta. `desde`, `_ref_vale` e o gravador não mudaram.
+- Página: `nomeDoJob(i)` mostra o nome e cai no id curto quando ele é None, no quadro "Padrão da marca, versão N, do job X" e na linha "do job X, mantida" da janela. O id inteiro continua no `title` do quadro. `tela.css`: o selo e o rótulo quebram o nome longo; a origem da janela quebra em até 24 caracteres por linha, sem alargar a linha.
+- Fica pelo id: o `ref` `marca:<id>@v<N>#job:<id>` e a validação dele, a origem de cada regra e a comparação de versões.
+- Claude: o nome vai só ao perfil (`marcas/**`, negado pelo gancho em toda ferramenta de leitura, conferido de novo com Read, Grep, Glob e Bash) e à página da tela. Nem o log do job, nem o rascunho, nem o briefing, nem o envelope do `job estado` o levam.
+
+Testes (vermelho antes, verde depois, no mesmo conjunto: 18 falhas e 309 passando; depois, 327 de 327): `test_marca_perfil.py` (+36: campos opcionais, perfil antigo válido, 27 recusas do nome, `nome_de_job_serve`, histórico intocado, nome trocado sem versão nova, `nomes_dos_jobs`, gancho em 3 ferramentas), `test_marca_registrar.py` (+7: nome da pasta, janela com o nome deste job e do mantido, mantida sem nome pelo nome da campanha, gravação ao lado do id, perfil antigo continua guardado, envelope sem o nome, janela no Chromium; e o `job_nome` None no teste da regra mantida), `test_tela_funcoes.py` (+2, e o `job_nome` None no teste do padrão), `test_tela_salvar.py` (+1, quadro do Design system no Chromium com o nome e o `ref` pelo id) e `e2e/test_marca_tres_jobs.py` (nome na versão 1, no padrão citado do job 2, na janela e na versão 2 do job 3, e fora do log).
+
+Riscos que ficam: o nome é o da pasta no momento do registro, e a pasta renomeada depois só aparece no próximo registro do mesmo job; dois jobs com a mesma pasta em lugares diferentes aparecem com o mesmo nome (o `title` do quadro mostra o id); o nome da pasta pode trazer o nome do cliente, e ele fica na biblioteca da agência, fora do repositório e negada ao Claude; o perfil escrito à mão pode pôr qualquer nome que o esquema aceite (risco do M2).
+
+## M7c, ajuste nome, revisão
+
+A revisão do ajuste nome achou dois defeitos, os dois confirmados pelas provas do revisor e corrigidos com teste antes (vermelho) e depois (verde).
+
+1. **O mesmo job aparecia com dois nomes na tela.** O job registrou com a pasta "Velha", a pasta foi renomeada e o mesmo job registrou de novo como "Nova", decidindo só uma função. A regra mantida guardava "Velha" e a decidida agora "Nova", e a tela dava preferência ao nome do item. Correção:
+   - `perfil.nomes_dos_jobs` dá um nome só por job: o da campanha mais recente do job que tem nome. O nome que a regra, a âncora ou a cor guarda só vale para o job sem campanha com nome.
+   - `funcoes._nome_do_job` e `registrar._linhas` usam primeiro esse nome do perfil e só na falta dele o do item. No registro, `_linhas` já põe o nome atual deste job por cima.
+   - O perfil gravado continua como estava: a regra mantida não é regravada, o histórico fica intocado e a comparação entre versões continua sem os nomes.
+2. **A pasta com nome que não vira UTF-8 impedia o registro.** O NTFS aceita no nome da pasta metade de um par UTF-16. `nome_de_job_serve` aceitava esse nome, e a impressão do registro e a gravação do perfil quebravam com `UnicodeEncodeError` (a tela escondia o botão como `perfil_ilegivel`). Correção:
+   - `perfil._vira_utf8`: `nome_de_job_serve` recusa o nome que não vira UTF-8, e `nome_do_job` devolve None. A tela cai no id curto e o registro continua possível, como antes do ajuste.
+   - `perfil._conferir_textos` recusa com `ErroPerfil` todo texto do perfil que não vira UTF-8, e assim a gravação nunca chega ao `UnicodeEncodeError`.
+
+Testes novos: `test_marca_perfil.py` (+5: a recusa "metade de par solta" nos 3 lugares do nome, `nomes_dos_jobs` com a campanha mais recente, e a gravação que sai como `ErroPerfil` sem mexer no arquivo; e `test_nome_de_job_serve` com o caso novo), `test_marca_registrar.py` (+2: o job renomeado com um nome só na janela, e a pasta com nome que não vira UTF-8 caindo no id curto com o registro possível) e `test_tela_funcoes.py` (+1: o job renomeado com um nome só no padrão, com o `ref` pelo id). Vermelho: 9 falhas. Verde: os 5 arquivos do ajuste (com `e2e/test_marca_tres_jobs.py` e `test_tela_salvar.py`) com 394 de 394, e os testes de guarda com 244 de 244.
+
+Fica igual: o `ref` `marca:<id>@v<N>#job:<id>` e a validação dele, o esquema `perfil-marca/1` e o caminho do nome (só o perfil, em `marcas/**`, e a página da tela).
+
+## M7c, ajuste terminal
+
+Resposta do Duda ao ponto 8 (13/11): os textos do motor que ainda citavam comando de terminal são trocados antes da rodada. Fecha o risco declarado no fim da "M7c, K5". O DA nunca roda comando (decisoes-v1.md, nº159), e nenhum texto que o motor pode pôr num envelope (o `o_que_fazer`, as linhas humanas, a mensagem de erro, o FIM, a recusa e a verificação do doctor) manda alguém rodar comando de terminal.
+
+Regras dos textos novos:
+- ato do DA que tem botão na tela (render, aprovar, valor de spec, linkado, família, "Salvar e seguir", que deriva): é um clique do DA na tela, e o Claude abre a tela (`/desdobra:continuar`), no estilo de `humano.O_QUE_FAZER`;
+- ato do DA ainda sem botão (`entregar`, `parametros-entrega`: condição do teto, cor de achatamento, sentido do giro, borda): é decisão do DA, e o botão chega no próximo marco, no estilo de `humano.O_QUE_FAZER_SEM_BOTAO`;
+- passo do Claude: cita a skill (`/desdobra:continuar`, `/desdobra:doctor`, `/desdobra:sugerir-funcoes`) ou "Peça ao Claude", nunca a linha de comando;
+- erro de uso: explica o argumento errado sem comando. Ficam com o nome da opção só os erros de uso de comandos que o DA nunca vê (`job criar`, pela skill `novo-job`; `regressao` e `sugestao acerto`, da Trezion e dos testes), listados com o motivo em `USO_PELO_NOME_DA_OPCAO`;
+- comando de terminal fica só no `--help` do argparse, nas docstrings, nos comentários, nos docs e nos testes; as perguntas do console interativo (`humano.ler`, `perguntar`, a sessão do `spec confirmar`) também ficam, porque nunca vão a envelope.
+
+O que mudou, por módulo (128 trechos na varredura nova, contra os 61 da K5, que usava um padrão mais estreito):
+- `cli.py`: erro de argumento ("Confira a chamada na skill que a fez") e erro interno (doctor e, se voltar, a Trezion), sem "sem --envelope" nem terminal;
+- `briefing`: importar de teste (sem `--teste` nem `derivar`), e as recusas do `modelo` ("importar de teste");
+- `derivacao`: o fim da derivação (render é clique na tela), `sem_briefing`, `briefing_rascunho`, `briefing_com_problema`, `fases_desatualizadas`, a pasta que não é job e `quebra_sem_medida` ("Salvar e seguir" deriva de novo; doctor);
+- `doctor`: as verificações puladas e o `doctor.json` sem pasta de dados (sem nome de opção), `_quebrou` com `/desdobra:doctor`, perfis da tela, HiGHS, isolador e teto;
+- `ds`, `cor`: leitura a refazer, laudo ausente ou mexido, KV recusado, contrato, auditoria, parâmetros de cor e "Falta a pasta do job";
+- `entrega`: recusa do aprovar, `_sem_job`, o job mudado na confirmação (`O_QUE_FAZER_MUDOU`, novo), o arquivo aberto, o fim da entrega (sem `conferir-entrega`), os parâmetros e o `conferir-entrega` recusado; `portao.DESCRICOES` (giro, master, impressão, contrato, aprovação), `validar.SUGESTOES` e `SUGESTAO_PADRAO`, `codificar` e `parametros`;
+- `fontes`: recusa de fonte, conferência fora do job, `O_QUE_FAZER_OK`, `O_QUE_FAZER_BLOQUEIO` e `mais_de_um_arquivo` (o Claude troca ou tira a fonte pela `/desdobra:continuar`);
+- `job`: `trocar_entrada` (estado do job, caminho da fonte) e o teto inválido do `job proxima`;
+- `leitor`: recusa, orçamento, erro interno, uso do `ler` e `O_QUE_FAZER_LIMITE`: a parada no teto continua decisão do DA, que pede ao Claude para seguir o job e, se parar de novo, avisa a Trezion, que decide se um teto maior serve (o texto não ensina mais a opção do teto);
+- `render`: `contrato.DESCRICOES` (fontes, linkado, largura, fases, laudo), `derivado.DESCRICOES`, `execucao` (isolador, teto, Chromium, CDP, texto sem trecho, tinta fora da caixa, e a mensagem do Disparo sem conferência: "O render só parte de um ato do DA, um clique dele na tela."), `linkados` e o render fora de um job;
+- `specs`: sem folhas, `O_QUE_FAZER_PENDENTE` (os valores são cliques do DA na tela), `O_QUE_FAZER_OK`, as recusas de uso, o contrato e a validação ("nas linhas do resultado");
+- `sugestao`: `sem_laudo`, `sem_sugestoes`, `sem_pacote`, `pacote_velho`, pacotes que não refizeram, nenhuma aceita (`/desdobra:sugerir-funcoes`), e `envelope.O_QUE_FAZER_RETIDO`.
+
+Nenhuma recusa ficou mais fraca: só o texto mudou, e os códigos, as situações e as contagens são os mesmos. As skills `continuar`, `novo-job` (e `references/regras-do-modelo.md`) dizem que o `o_que_fazer` às vezes cita uma skill do desdobra, e a `continuar` segue o passo 6 ou o doctor pelo que ele pede; a `ler-spec` deixou de dizer que o `o_que_fazer` da fase `specs` fala de terminal.
+
+Teste (`testes/test_humano_textos_da.py`, seção nova): a varredura lê, pelo `ast`, toda constante de texto de todo módulo de `motor/desdobra` e falha em subcomando do motor, comando entre aspas, subcomando entre aspas, `python -m`, opção de linha de comando, "no terminal" (e "num terminal", "terminal próprio", "terminal interativo", "abra um terminal"), "rode", "rodar", "digite", "linha de comando", "Prompt de Comando", PowerShell e `<pasta>`. Fica fora o que nunca vai a envelope: docstring, `--help` e nome de opção do argparse, nome de opção sozinho (argv de processo filho), palavra solta de enum (`'terminal'`, `'digitar'`), argumento de `ler`, `perguntar`, `saida` e `input` e constante `PERGUNTA*` (console interativo) e o bloco `if __name__ == '__main__'` (script de desenvolvimento). O autoteste confere 16 textos ruins, 7 bons e um módulo sintético. O envelope de cada comando do motor, numa pasta que não é job e com o console recusado, passa pelo mesmo padrão (menos `doctor`, `regressao` e `job criar`, com o motivo), e também o do erro de argumento e o do erro interno.
+
+Vermelho antes da troca: 37 falhas no arquivo (29 módulos com 128 trechos, 7 envelopes e o envelope do erro de argumento). Verde depois: 203 passando e 3 pulados no arquivo; nos conjuntos pedidos, 0 falha depois de ajustar 5 testes que esperavam o texto velho (`test_fontes.py`, 2; `test_sugestao_importar.py`, 1; `test_leitor_isolado.py`, 1, parametrizado em 2; `test_entrega_parametros.py`, `test_sugestoes_dizem_que_a_decisao_e_do_da_sem_comando`).
+
+Riscos que ficam: um texto montado em tempo de execução a partir de pedaços que sozinhos passam (por exemplo um nome de comando vindo de variável) escapa da varredura do código; o envelope de comando com job de verdade só é conferido pelos testes de cada módulo; os textos do console interativo continuam citando a resposta a digitar, porque só quem já está num console próprio os lê; a nova tentativa da leitura com teto maior deixou de ter instrução no texto e passa pela Trezion.
+
+## M7c, ajuste terminal-2
+
+Revisão dos textos do ajuste terminal, dois defeitos confirmados pelas provas do revisor.
+
+Defeito 1 (médio): o `o_que_fazer` de `spec importar` com valores pendentes dizia que informar os valores das páginas sem texto era clique do DA na tela, e a própria tela (`tela/estado.py`, `faltam`) diz que esses valores ainda não têm botão. Agora:
+- `specs.O_QUE_FAZER_PENDENTE` fala só do que a tela tem: confirmar os valores e escolher a leitura onde as fontes divergem são cliques do DA na tela;
+- `specs.O_QUE_FAZER_RECORTES` (novo) entra só quando o rascunho tem recorte, no `spec importar` e no `spec confirmar`, no estilo de `humano.O_QUE_FAZER_SEM_BOTAO`: os valores da página sem texto ainda não têm botão na tela, e por enquanto o DA traz a mesma folha com texto (PDF com camada de texto, HTML salvo, CSV ou texto do e-mail) e pede ao Claude para acrescentá-la ao job (`/desdobra:continuar`);
+- a skill `ler-spec` (passo 9) e `novo-job/references/fluxo.md` (`contagens.recortes`) deixaram de dizer que o DA digita esses valores na tela.
+
+Defeito 2 (baixo): a varredura do ajuste terminal tinha pontos cegos. Agora `testes/test_humano_textos_da.py` também pega:
+- o subcomando solto, sem o prefixo `desdobra` e sem aspas: os nomes de mais de uma palavra ou com hífen saem do próprio analisador do motor (`job proxima`, `spec importar`, `conferir-entrega`, `parametros-entrega`); o texto que é só o nome do comando (o campo `comando`, o argumento de `humano.exigir`) e o nome de contrato (`parametros-entrega/1`) ficam fora;
+- `py -m` e `python3.12 -m`, o motor entre aspas simples, o `cmd`, "execute" e "chame o comando" (ou motor, desdobra, script, programa); "chame a Trezion" continua bom;
+- o texto montado por `+`, `%` ou f-string: a varredura dobra a montagem com as constantes de texto do módulo, e o pedaço que só se sabe em tempo de execução vira um espaço;
+- o envelope inteiro (`o_que_fazer`, `linhas_humanas`, erro e o que mais vier), e não só o `o_que_fazer`, no teste de cada comando numa pasta que não é job e nos envelopes do erro de argumento e do erro interno; ficam fora os campos que não são prosa (`comando`, `fase`, `situacao`, `pasta_job`).
+
+O autoteste ganhou os 6 textos dos pontos cegos e mais um, 2 textos bons e três montagens sintéticas. Nenhum texto do motor caiu nos padrões novos, e nenhuma recusa mudou.
+
+Risco que fica: um texto montado de variável que só se sabe em tempo de execução, como um nome de comando lido de outro arquivo, ainda escapa da varredura do código; o envelope de comando num job de verdade continua conferido só pelos testes de cada módulo.

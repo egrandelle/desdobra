@@ -52,7 +52,7 @@ DESCRICOES = {
     'condicao_fora_da_folha':'A folha confirmada do formato não tem teto para esta condição.',
     'cor_invalida': 'A cor de achatamento tem de ser #rrggbb (seis dígitos hexadecimais).',
     'parametros_de_entrega_invalidos': 'parametros/entrega.json não segue o contrato parametros-entrega/1: renomeie o '
-                                       'arquivo, rode o comando de novo para cada formato e apague o antigo.',
+                                       'arquivo, grave de novo os parâmetros de cada formato e apague o antigo.',
 }
 
 

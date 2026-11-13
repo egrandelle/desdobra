@@ -47,7 +47,7 @@ from desdobra import arquivos, contratos, limites
 
 DESCRICOES = {
     'formato_inexistente': 'O briefing não tem este formato.',
-    'sem_master': 'O formato não tem render/<formato>/master.png: rode o render dele.',
+    'sem_master': 'O formato não tem render/<formato>/master.png: o render dele é um clique do DA na tela.',
     'master_ilegivel': 'O master.png do formato não abre como PNG.',
     'master_em_modo_inesperado': 'O master.png não é RGB nem RGBA de 8 bits.',
     'master_com_dimensao_errada': 'O master.png não tem a dimensão da composição do formato.',

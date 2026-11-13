@@ -52,7 +52,8 @@ DESCRICOES = {
     'casada_por_id_unico': 'Par achado pelo id único (name ID 3), não pelo name ID 6.',
     'casada_por_familia_estilo': 'Par achado pela família e estilo, não pelo name ID 6.',
     'mais_de_um_arquivo': 'Mais de um arquivo de entrada/fontes/ casa com este nome PostScript, e o motor não escolhe '
-                          'qual vale. Decisão do DA: tirar o arquivo que não vale com "desdobra job remover-entrada".',
+                          'qual vale. Decisão do DA: ele escolhe o arquivo que não vale, e o Claude o tira do job '
+                          '(/desdobra:continuar).',
     'cdp_sem_resposta': 'O Chromium não disse por CDP qual face desenhou o trecho: sem essa resposta, a face usada fica '
                         'sem prova.',
     'face_com_bloqueio': 'A face do arquivo está bloqueante ou com aviso (carregamento, conferência no Chromium ou peso).',
@@ -68,13 +69,14 @@ DESCRICOES = {
     'largura_nao_medida_escala': 'Escala horizontal ou vertical do trecho diferente de 100%: a largura não é comparada.',
     'largura_nao_medida_warp': 'Texto com warp: a largura não é comparada.',
 }
-O_QUE_FAZER_OK = 'As fontes do job conferem com os arquivos de entrada/fontes/. Rode "desdobra job proxima" para seguir.'
+O_QUE_FAZER_OK = ('As fontes do job conferem com os arquivos de entrada/fontes/. Peça ao Claude para seguir o job '
+                  '(/desdobra:continuar).')
 O_QUE_FAZER_BLOQUEIO = ('A conferência de fontes achou bloqueios: veja fontes/conferencia.json. Para fonte faltando '
-                        'ou sem par, traga o arquivo (OTF, TTF, TTC, WOFF ou WOFF2) e acrescente com "desdobra job '
-                        'trocar-entrada <pasta> entrada/fontes/<arquivo> <arquivo>". Quando dois arquivos têm o mesmo '
-                        'nome PostScript, tire o que não vale com "desdobra job remover-entrada <pasta> '
-                        'entrada/fontes/<arquivo>". Divergência de largura fica para o DA decidir. O bloqueio fica no '
-                        'estado do job até a conferência rodar de novo sem ele.')
+                        'ou sem par, o DA traz o arquivo (OTF, TTF, TTC, WOFF ou WOFF2) e pede ao Claude para '
+                        'acrescentá-lo ao job (/desdobra:continuar). Quando dois arquivos têm o mesmo nome PostScript, '
+                        'o DA escolhe o que não vale, e o Claude o tira do job (/desdobra:continuar). Divergência de '
+                        'largura fica para o DA decidir. O bloqueio fica no estado do job até uma conferência nova '
+                        'sem ele.')
 
 
 def agora():

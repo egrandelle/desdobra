@@ -131,31 +131,31 @@ DESCRICOES = {
                                 'não distingue): o arquivo sai com o id do formato.',
 }
 SUGESTOES = {
-    'formato_sem_spec_confirmada': 'Confirme a folha do formato ("desdobra spec confirmar") e rode o aprovar e o '
-                                   'entregar de novo.',
-    'peso_sem_valor_confirmado': 'Confirme o peso do formato na folha ("desdobra spec confirmar") e rode o aprovar e o '
-                                 'entregar de novo.',
+    'formato_sem_spec_confirmada': 'O DA confirma a folha do formato na tela do desdobra e aprova o formato '
+                                   'de novo.',
+    'peso_sem_valor_confirmado': 'O DA confirma o peso do formato na folha, na tela do desdobra, e aprova o '
+                                 'formato de novo.',
     'teto_da_condicao_sem_valor': 'Confirme o teto da condição na folha ou escolha outra condição.',
     'acima_do_teto_estrito': 'Simplifique a arte do formato (menos ruído e degradê) ou confirme com o veículo um teto '
                              'maior; as medidas dizem a qualidade e os bytes de cada tentativa.',
     'condicao_nao_decidida': 'Escolha a condição do teto do formato (hospedado ou por tag) em parametros/entrega.json, '
-                             'num terminal próprio ("desdobra parametros-entrega --job <pasta> --formato <id> '
-                             '--condicao hospedado"), e rode o aprovar e o entregar de novo.',
-    'cor_de_achatamento_nao_definida': 'Defina a cor de achatamento do formato em parametros/entrega.json, num terminal '
-                                       'próprio ("desdobra parametros-entrega --job <pasta> --formato <id> '
-                                       '--cor-de-achatamento #ffffff").',
-    'borda_ausente': 'Rode o aprovar e o entregar de novo: o arquivo final desenha a borda declarada.',
-    'parametros_diferentes_das_decisoes': 'Rode o aprovar e o entregar de novo, com as decisões de agora.',
-    'conversao_cor_diferente_do_job': 'Rode o render do formato de novo com os parâmetros de cor do job.',
+                             'que é decisão do DA; o botão dela chega no próximo marco do desdobra.',
+    'cor_de_achatamento_nao_definida': 'A cor de achatamento do formato, em parametros/entrega.json, é decisão '
+                                       'do DA; o botão dela chega no próximo marco do desdobra.',
+    'borda_ausente': 'O DA aprova o formato de novo na tela: o arquivo final desenha a borda declarada.',
+    'parametros_diferentes_das_decisoes': 'O DA aprova o formato de novo na tela, com as decisões de agora.',
+    'conversao_cor_diferente_do_job': 'O DA renderiza o formato de novo na tela, com os parâmetros de cor do '
+                                      'job.',
     'job_pede_perfil_embutido': 'Tire o perfil embutido dos parâmetros de cor do job (decisão 140).',
-    'fora_da_area_segura': 'Ajuste o briefing do formato para tirar texto e logo da área segura e rode a derivação e o '
-                           'render de novo.',
-    'fora_da_area_util': 'Ajuste o briefing do formato para trazer texto e logo para a área útil e rode a derivação e o '
-                         'render de novo.',
-    'dentro_da_faixa': 'Ajuste o briefing do formato para tirar texto e logo da faixa e rode a derivação e o render de '
-                       'novo.',
+    'fora_da_area_segura': 'O DA ajusta o briefing do formato na tela para tirar texto e logo da área segura (o '
+                           '"Salvar e seguir" deriva de novo) e renderiza o formato de novo.',
+    'fora_da_area_util': 'O DA ajusta o briefing do formato na tela para trazer texto e logo para a área útil (o '
+                         '"Salvar e seguir" deriva de novo) e renderiza o formato de novo.',
+    'dentro_da_faixa': 'O DA ajusta o briefing do formato na tela para tirar texto e logo da faixa (o "Salvar e '
+                       'seguir" deriva de novo) e renderiza o formato de novo.',
 }
-SUGESTAO_PADRAO = 'Rode o render, o aprovar e o entregar do formato de novo; se repetir, é bug do motor.'
+SUGESTAO_PADRAO = ('O DA renderiza e aprova o formato de novo, com cliques na tela do desdobra; se repetir, é bug '
+                   'do motor.')
 # recusas do encoder que sao decisao ou folha que faltam no formato (nao arquivo velho ou trocado): na entrega, o formato
 # vai para reprovados com a regra e a sugestao, sem arquivo, e os outros formatos seguem (bloco de parametros do M6:
 # "master com transparencia vai para reprovados ate o DA definir a cor de achatamento"). No aprovar, recusam.
@@ -163,11 +163,12 @@ RECUSAS_ROTEADAS = ('cor_de_achatamento_nao_definida', 'teto_da_condicao_sem_val
                     'borda_com_valor_desconhecido', 'formato_sem_spec_confirmada', 'sem_tipos_aceitos_confirmados',
                     'sem_tipo_com_encoder')
 SUGESTOES.update({
-    'borda_sem_valor_confirmado': 'Confirme o valor da borda na folha ("desdobra spec confirmar") ou tire a declaração '
-                                  'da borda do formato em parametros/entrega.json ("desdobra parametros-entrega --job '
-                                  '<pasta> --formato <id> --limpar borda-1px").',
+    'borda_sem_valor_confirmado': 'O DA confirma o valor da borda na folha, na tela do desdobra, ou tira a '
+                                  'declaração da borda do formato em parametros/entrega.json (o botão dessa decisão '
+                                  'chega no próximo marco do desdobra).',
     'borda_com_valor_desconhecido': 'Confira o valor da borda na folha: a v1 desenha a borda preta de espessura inteira.',
-    'sem_tipos_aceitos_confirmados': 'Confirme os tipos de arquivo aceitos na folha ("desdobra spec confirmar").',
+    'sem_tipos_aceitos_confirmados': 'O DA confirma os tipos de arquivo aceitos na folha, na tela do '
+                                     'desdobra.',
     'sem_tipo_com_encoder': 'A folha só aceita tipos que a v1 não entrega: confirme com o veículo JPEG ou PNG.',
 })
 FONTE_ENCODER = {'tipo': 'decisao', 'arquivo': 'decisoes-v1.md',

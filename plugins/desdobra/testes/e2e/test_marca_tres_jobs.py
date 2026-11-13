@@ -234,6 +234,9 @@ def test_roteiro_da_marca_com_tres_jobs(tmp_path, ambiente):
     assert itens_v1 and all(i['job_origem'] == j1 for i in v1['regras_escala'] + v1['ancoras'])
     funcoes_v1 = sorted({f for _t, f, _v in itens_v1})
     assert FUNCAO_A_MAO in funcoes_v1 and FUNCAO_MUDADA in funcoes_v1
+    # ajuste nome: o nome do job (o da pasta que o DA deu) fica ao lado do id, na campanha e em cada regra e ancora
+    assert v1['campanha']['job_nome'] == job1.name
+    assert {i['job_origem_nome'] for i in v1['regras_escala'] + v1['ancoras']} == {job1.name}
     bytes_v1 = arquivos.para_json(v1)
 
     # ---------------------------------------------------------------- job 2: o padrao citado, 0 campo preenchido
@@ -251,6 +254,10 @@ def test_roteiro_da_marca_com_tres_jobs(tmp_path, ambiente):
         citadas += int(mostrado == valor and cit['ref'] == ref_j1 and cit['job'] == j1)
     medicao['citadas'] = (citadas, len(itens_v1))
     assert citadas == len(itens_v1)  # meta: 100%
+    # ajuste nome: o padrao citado no job 2 leva o nome do job 1, e o ref continua pelo id
+    nomes_citados = {x['job_nome'] for c in padrao2['funcoes'].values() for x in c.values() if x}
+    medicao['padrao_com_o_nome_do_job'] = nomes_citados == {job1.name}
+    assert nomes_citados == {job1.name}
     # nada preenchido antes do clique: a tela nao grava rascunho, e o Design system pede cada funcao do perfil
     assert not (job2 / tr.ARQUIVO).exists()
     sem_clique = {'funcoes': _funcoes_do_rascunho(contratos.ler(job2 / mb.ARQUIVO, 'briefing/1'))}
@@ -295,6 +302,9 @@ def test_roteiro_da_marca_com_tres_jobs(tmp_path, ambiente):
     desta = {('regra', r['funcao']) for r in janela['regras'] if r['desta_campanha']} | \
         {('ancora', a['funcao']) for a in janela['ancoras'] if a['desta_campanha']}
     assert desta == {('regra', FUNCAO_MUDADA)}
+    # a janela diz "deste job" na regra mudada e o nome do job 1 nas outras (que vieram do padrao)
+    assert {i['job_nome'] for i in janela['regras'] + janela['ancoras'] if not i['desta_campanha']} == {job1.name}
+    assert {i['job_nome'] for i in janela['regras'] + janela['ancoras'] if i['desta_campanha']} == {job3.name}
 
     # ---------------------------------------------------------------- caso negativo: aprovacao do modo de teste
     copia = tmp_path / 'job-3-aprovado-no-teste'
@@ -341,6 +351,11 @@ def test_roteiro_da_marca_com_tres_jobs(tmp_path, ambiente):
     assert all(j == j1 for k, j in origem_v2.items() if k != ('regra', FUNCAO_MUDADA))
     assert set(origem_v2) == {(t, f) for t, f, _v in itens_v1}
     assert len(p2['historico']) == 1
+    # ajuste nome: na versao 2, cada regra e ancora leva o nome do job de origem dela, e a campanha o do job 3
+    assert v2['campanha']['job_nome'] == job3.name
+    nomes_v2 = {('regra', r['funcao']): r['job_origem_nome'] for r in v2['regras_escala']}
+    nomes_v2.update({('ancora', a['funcao']): a['job_origem_nome'] for a in v2['ancoras']})
+    assert nomes_v2 == {k: (job3.name if j == j3 else job1.name) for k, j in origem_v2.items()}
     historico_igual = arquivos.para_json(p2['historico'][0]) == bytes_v1
     medicao['job3'] = {'versao': p2['versao'], 'origem_da_regra_mudada': 'job 3' if origem_v2[('regra', FUNCAO_MUDADA)]
                        == j3 else 'outro', 'versao_1_igual_no_historico': historico_igual}
@@ -370,6 +385,10 @@ def test_roteiro_da_marca_com_tres_jobs(tmp_path, ambiente):
     formas = {str(fontes), json.dumps(str(fontes))[1:-1], fontes.as_posix(), fontes.name}
     assert [f for f in formas if f in texto] == []
     assert 'inventada' not in texto and rap.FONTE in texto
+    # o nome do job vai so ao perfil (marcas/**, negado ao Claude pelo gancho): nem o log do job nem o envelope do
+    # job estado o levam
+    for j in (job1, job3):
+        assert j.name not in (j / 'log' / 'eventos.jsonl').read_text(encoding='utf-8')
 
     print('\n[medicao E2] job 2: %d de %d regras e ancoras do perfil citadas; %d campo preenchido antes do clique; '
           '%d gravada sem clique' % (medicao['citadas'] + (medicao['preenchidos_antes_do_clique'],

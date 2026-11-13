@@ -62,7 +62,7 @@ Vale em qualquer modo, só com contagens.
 - `contagens.folhas`, `contagens.formatos`, `contagens.circuitos` e `contagens.veiculadores`: o que o desdobra achou nas folhas. `contagens.folhas_recusadas`: folhas fora dos formatos aceitos.
 - `contagens.valores_rascunho`: valores tirados da folha que esperam a confirmação do DA; `contagens.valores_confirmados`: os que o DA já confirmou.
 - `contagens.divergencias`: campos em que duas partes da folha dizem valores diferentes. O desdobra não escolhe, e você não recomenda nenhum. O DA escolhe na tela.
-- `contagens.recortes`: páginas escaneadas, sem texto. O DA digita os valores ao lado da imagem da página, na tela.
+- `contagens.recortes`: páginas escaneadas, sem texto. Os valores delas ainda não têm botão na tela. Por enquanto, o DA traz a mesma folha com texto (PDF com camada de texto, HTML salvo, CSV ou texto do e-mail) para você acrescentar ao job.
 - A confirmação dos valores é sempre do DA, no passo 1 da tela, em "Valores de spec". Você nunca escreve nem calcula número de spec.
 - Se o DA quiser ajuda para ligar os trechos de uma folha aos campos, indique a skill `/desdobra:ler-spec`.
 

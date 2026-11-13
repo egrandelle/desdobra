@@ -37,7 +37,7 @@ COMANDO_IMPORTAR = 'sugestao importar'
 COMANDO_ACERTO = 'sugestao acerto'
 # o que o Claude faz com cada recusa do acerto (nunca cita o caminho nem nada do gabarito)
 O_QUE_FAZER_ACERTO = {
-    'sem_laudo': 'O job ainda não tem laudo. Rode "desdobra job proxima" e depois este comando.',
+    'sem_laudo': 'O job ainda não tem laudo. Siga o job (/desdobra:continuar) e meça depois.',
     'sem_briefing': 'O job não tem briefing gravado. Sem --gabarito, a medida é contra o briefing salvo na tela.',
     'gabarito_invalido': 'O gabarito não se lê ou não tem a forma da ficha (kvs com respostas de layer_id e '
                          'funcao). Confira o arquivo passado em --gabarito.',
@@ -48,16 +48,18 @@ O_QUE_FAZER_ACERTO = {
 # o que o Claude faz com cada recusa do arquivo inteiro (o texto vai no envelope; nunca cita nome nem texto do job)
 O_QUE_FAZER_IMPORTAR = {
     'modo_c': 'O modo de dados do job é (c): não há sugestão. A tela segue sem sugestão; nada a fazer.',
-    'sem_sugestoes': 'Escreva sugestoes/sugestoes.json no job (contrato sugestoes/1) e rode este comando de novo.',
+    'sem_sugestoes': 'Escreva sugestoes/sugestoes.json no job (contrato sugestoes/1) e importe de novo '
+                     '(/desdobra:sugerir-funcoes).',
     'grande_demais': 'O sugestoes.json passou do limite. Escreva uma sugestão por alvo, sem outros campos.',
     'json_invalido': 'O sugestoes.json não é JSON válido (ou tem chave repetida, NaN ou Infinity). Escreva de novo.',
     'esquema': 'O sugestoes.json não segue o contrato sugestoes/1 (esquema, pacote_sha256 e a lista sugestoes).',
     'campo_extra': 'O sugestoes.json tem campo fora do contrato sugestoes/1. Deixe só esquema, pacote_sha256 e '
                    'sugestoes, e em cada sugestão só layer_id, funcao e alternativa.',
     'numero': 'O sugestoes.json tem número fora dos ids (geometria, escala ou outro). Deixe só os campos do contrato.',
-    'sem_pacote': 'O job não tem pacote para o modelo. Rode "desdobra sugestao pacote" com o teto e leia o pacote.',
-    'pacote_velho': 'O pacote mudou depois da leitura. Rode "desdobra sugestao pacote" com o teto, leia o pacote de '
-                    'novo e escreva o sugestoes.json com o pacote_sha256 que o comando devolve.',
+    'sem_pacote': 'O job não tem pacote para o modelo. Monte o pacote de novo, com o teto, e leia o pacote '
+                  '(/desdobra:sugerir-funcoes).',
+    'pacote_velho': 'O pacote mudou depois da leitura. Monte o pacote de novo, com o teto, leia o pacote de novo e '
+                    'escreva o sugestoes.json com o pacote_sha256 que o envelope devolve (/desdobra:sugerir-funcoes).',
 }
 
 
@@ -90,8 +92,9 @@ def _pacote(args):
     except Exception:  # noqa: BLE001 - na falha, o Claude fica sem nada para ler
         pacote.fechar(pasta)
         return Resultado(comando=COMANDO_PACOTE, codigo=int(Codigo.ERRO_INTERNO), situacao='erro', pasta_job=pasta,
-                         o_que_fazer='Os pacotes do job não puderam ser refeitos e foram apagados. Rode "desdobra '
-                                     'job proxima" e depois este comando de novo.',
+                         o_que_fazer='Os pacotes do job não puderam ser refeitos e foram apagados. Siga o job '
+                                     '(/desdobra:continuar) e depois peça as sugestões de novo '
+                                     '(/desdobra:sugerir-funcoes).',
                          linhas_humanas=['Os pacotes não puderam ser refeitos.'])
     contagens = {k: v for k, v in r.items() if k != 'modo'}
     # M7c, S3: o sha256 do pacote gravado, que o Claude cita no sugestoes.json (pacote velho e recusado na importacao)
@@ -126,7 +129,7 @@ def _importar(args):
         return Resultado(comando=COMANDO_IMPORTAR, codigo=int(Codigo.RECUSADO), situacao='recusado', pasta_job=pasta,
                          contagens=contagens, numeros=tempo,
                          o_que_fazer='Nenhuma sugestão passou. Veja os códigos de recusa nas contagens, escreva o '
-                                     'sugestoes.json de novo e rode este comando.',
+                                     'sugestoes.json de novo e importe de novo (/desdobra:sugerir-funcoes).',
                          linhas_humanas=['Nenhuma sugestão passou.'])
     return Resultado(comando=COMANDO_IMPORTAR, situacao='ok', pasta_job=pasta, contagens=contagens, numeros=tempo,
                      o_que_fazer='As sugestões conferidas aparecem na tela, ao lado de cada função, e só viram valor '

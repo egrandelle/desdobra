@@ -23,6 +23,14 @@
     },
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "job_id": {"type": "string", "pattern": "^[0-9a-f]{8,64}$"},
+    "nome_job": {
+      "description": "Nome do job como o DA o ve: o nome da pasta do job, que o DA deu na criacao (ajuste nome do M7c; o estado/1 so tem o id). Opcional ao lado do id, so para a tela mostrar o job de origem; o ref e a conferencia continuam pelo id, e o perfil sem nome (gravado antes do ajuste) continua valido. Sem barra, sem controle e sem extensao de arquivo de fonte",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^/\\\\\\u0000-\\u001f]+$",
+      "not": {"pattern": "\\.([Tt][Tt][Ff]|[Oo][Tt][Ff]|[Ww][Oo][Ff][Ff]2?|[Tt][Tt][Cc]|[Oo][Tt][Cc]|[Dd][Ff][Oo][Nn][Tt]|[Pp][Ff][BbMmAa]|[Aa][Ff][Mm]|[Ee][Oo][Tt]|[Ff][Oo][Nn]|[Ff][Nn][Tt]|[Bb][Dd][Ff]|[Pp][Cc][Ff]|[Ss][Uu][Ii][Tt]|[Ll][Ww][Ff][Nn]|[Tt]42)(?![A-Za-z0-9_-])"}
+    },
     "funcao": {
       "description": "As funcoes do briefing/1 sem indeterminado (a regra da camada indeterminado e por camada, no job: arquitetura-v1.md, 4.10)",
       "enum": ["fundo", "imagem", "sujeito", "veu_de_legibilidade", "grafismo", "titulo", "texto_de_apoio", "cta",
@@ -46,6 +54,7 @@
       "required": ["job", "data", "formatos", "confirmado_por", "origem", "meio"],
       "properties": {
         "job": {"$ref": "#/$defs/job_id"},
+        "job_nome": {"$ref": "#/$defs/nome_job"},
         "data": {"$ref": "#/$defs/data"},
         "formatos": {
           "type": "array",
@@ -91,7 +100,8 @@
             "properties": {
               "funcao": {"$ref": "#/$defs/funcao"},
               "regra": {"$ref": "#/$defs/regra"},
-              "job_origem": {"$ref": "#/$defs/job_id"}
+              "job_origem": {"$ref": "#/$defs/job_id"},
+              "job_origem_nome": {"$ref": "#/$defs/nome_job"}
             }
           }
         },
@@ -105,7 +115,8 @@
               "funcao": {"$ref": "#/$defs/funcao"},
               "x": {"enum": ["esquerda", "centro", "direita"]},
               "y": {"enum": ["topo", "meio", "base"]},
-              "job_origem": {"$ref": "#/$defs/job_id"}
+              "job_origem": {"$ref": "#/$defs/job_id"},
+              "job_origem_nome": {"$ref": "#/$defs/nome_job"}
             }
           }
         },
@@ -128,7 +139,8 @@
             "required": ["srgb", "job_origem"],
             "properties": {
               "srgb": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
-              "job_origem": {"$ref": "#/$defs/job_id"}
+              "job_origem": {"$ref": "#/$defs/job_id"},
+              "job_origem_nome": {"$ref": "#/$defs/nome_job"}
             }
           }
         }

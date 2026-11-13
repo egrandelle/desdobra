@@ -20,14 +20,18 @@ from pathlib import Path
 from desdobra import contratos
 from desdobra.resultado import Codigo, Resultado
 
-O_QUE_FAZER_SEM_FOLHAS = ('O job não tem folha de spec. Acrescente as folhas em entrada/specs/ com "desdobra job '
-                          'trocar-entrada <pasta> entrada/specs/<veiculador>/<arquivo> <arquivo>" (PDF, HTML salvo, '
-                          'CSV ou texto do e-mail).')
-O_QUE_FAZER_PENDENTE = ('O rascunho das specs está em specs/rascunho.json. Nenhum valor vale sem o DA: rode "desdobra '
-                        'spec confirmar --job <pasta>" num terminal interativo para confirmar os valores, escolher a '
-                        'leitura onde as fontes divergem e digitar os valores das páginas sem texto.')
-O_QUE_FAZER_OK = ('As specs confirmadas estão em specs/formatos-do-job.json. Para rever, rode "desdobra spec confirmar '
-                  '--job <pasta>" num terminal interativo.')
+O_QUE_FAZER_SEM_FOLHAS = ('O job não tem folha de spec. O DA traz as folhas (PDF, HTML salvo, CSV ou texto do e-mail) '
+                          'e pede ao Claude para acrescentá-las ao job (/desdobra:continuar).')
+O_QUE_FAZER_PENDENTE = ('O rascunho das specs está em specs/rascunho.json. Nenhum valor vale sem o DA: confirmar os '
+                        'valores e escolher a leitura onde as fontes divergem são cliques dele na tela do desdobra. '
+                        'Peça ao Claude para abrir a tela do job (/desdobra:continuar).')
+# a página sem texto de uma folha (o recorte) ainda não tem botão na tela (tela/estado.py, faltam): o texto não promete
+# um clique que o DA não acha e segue o estilo de humano.O_QUE_FAZER_SEM_BOTAO (M7c, ajuste terminal-2)
+O_QUE_FAZER_RECORTES = (' Uma folha tem página sem texto, e os valores dela ainda não têm botão na tela. Por enquanto, '
+                        'o DA traz a mesma folha com texto (PDF com camada de texto, HTML salvo, CSV ou texto do '
+                        'e-mail) e pede ao Claude para acrescentá-la ao job (/desdobra:continuar).')
+O_QUE_FAZER_OK = ('As specs confirmadas estão em specs/formatos-do-job.json. Para rever um valor, o DA usa a tela '
+                  'do desdobra.')
 O_QUE_FAZER_RECUSA = (' Uma ou mais folhas foram recusadas: só entram PDF (com ou sem camada de texto), HTML salvo, '
                       'CSV e texto (.txt ou .eml). Planilha .xlsx e imagem solta ficam fora da v1.')
 
@@ -86,13 +90,13 @@ def _importar(args):
     from desdobra.specs import importar
     pasta = Path(args.job).resolve()
     if not (pasta / 'estado.json').is_file():
-        return _uso('spec importar', 'Rode a importação numa pasta de job ("desdobra job criar").', pasta)
+        return _uso('spec importar', 'A importação só funciona numa pasta de job do desdobra.', pasta)
     try:
         rascunho, formatos, info = importar.importar(pasta)
     except contratos.ErroContrato as e:
         return Resultado(comando='spec importar', codigo=int(Codigo.RECUSADO), situacao='recusado', fase='specs',
-                         o_que_fazer='Um arquivo de specs do job não segue o contrato. Rode "desdobra spec importar '
-                                     '--job <pasta>" sem --envelope para ver qual.',
+                         o_que_fazer='Um arquivo de specs do job não segue o contrato; as linhas do resultado dizem '
+                                     'qual. Peça ao Claude para seguir o job (/desdobra:continuar).',
                          pasta_job=pasta, linhas_humanas=[str(e)])
     r = rascunho['resumo']
     if not r['folhas'] and not info['folhas_recusadas']:
@@ -101,6 +105,8 @@ def _importar(args):
         o_que_fazer = O_QUE_FAZER_OK
     else:
         o_que_fazer = O_QUE_FAZER_PENDENTE
+    if r['recortes']:
+        o_que_fazer += O_QUE_FAZER_RECORTES
     if info['folhas_recusadas']:
         o_que_fazer += O_QUE_FAZER_RECUSA
     cont = _contagens(rascunho, info)
@@ -126,13 +132,14 @@ def _confirmar(args):
                          contagens={'recusa_%s' % e: 1},
                          linhas_humanas=[humano.linha_recusa('spec confirmar')])
     if not (pasta / 'estado.json').is_file():
-        return _uso('spec confirmar', 'Rode a confirmação numa pasta de job ("desdobra job criar").', pasta)
+        return _uso('spec confirmar', 'A confirmação só funciona numa pasta de job do desdobra.', pasta)
     novas, rascunho, formatos, info = confirmar.sessao(pasta, disparo=disparo, filtro_formato=args.formato,
                                                        filtro_campo=args.campo)
     cont = _contagens(rascunho, info)
     cont.update(acoes_novas=len(novas), formatos_do_job=len(formatos['formatos']))
     return Resultado(comando='spec confirmar', situacao='ok', fase='specs',
-                     o_que_fazer=O_QUE_FAZER_OK if formatos['formatos'] else O_QUE_FAZER_PENDENTE, contagens=cont,
+                     o_que_fazer=((O_QUE_FAZER_OK if formatos['formatos'] else O_QUE_FAZER_PENDENTE)
+                                  + (O_QUE_FAZER_RECORTES if rascunho['resumo']['recortes'] else '')), contagens=cont,
                      pasta_job=pasta, linhas_humanas=['%d ação(ões) do DA gravada(s) em specs/confirmacoes.json; %d '
                                                       'formato(s) do job.' % (len(novas), len(formatos['formatos']))])
 
@@ -146,8 +153,8 @@ def _validar(args):
         pasta = Path(args.job).resolve()
         caminho = pasta / importar.ARQUIVO_FORMATOS
         if not caminho.is_file():
-            return _uso('validar', 'O job não tem specs/formatos-do-job.json: rode a fase specs e confirme os valores '
-                                   'com "desdobra spec confirmar".', pasta)
+            return _uso('validar', 'O job não tem specs/formatos-do-job.json: a fase specs vem antes, e o DA confirma '
+                                   'os valores na tela do desdobra.', pasta)
         doc, contra = contratos.ler(caminho, 'spec/1'), 'formatos_do_job'
     else:
         pasta = None
@@ -171,10 +178,11 @@ def _validar(args):
     linhas.insert(0, 'Resultado: %s.' % rel['resultado'])
     if contra != 'formatos_do_job':
         linhas.append('Validação contra valores que o DA ainda não confirmou: só diagnóstico.')
-    o_que_fazer = ('O arquivo reprovou: veja a lista de verificações no terminal.' if reprovado else
+    o_que_fazer = ('O arquivo reprovou: veja a lista de verificações nas linhas do resultado.' if reprovado else
                    'A validação ficou incompleta: o formato não tem regra confirmada de dimensão, peso ou tipo. '
-                   'Confirme as specs com "desdobra spec confirmar" e valide de novo.' if cont['sem_regra'] else
-                   'O arquivo passou com avisos: veja a lista no terminal.' if rel['resultado'] == 'aviso' else
+                   'O DA confirma as specs na tela do desdobra, e a validação é feita de novo.' if cont['sem_regra']
+                   else 'O arquivo passou com avisos: veja a lista nas linhas do resultado.'
+                   if rel['resultado'] == 'aviso' else
                    'O arquivo passou nas verificações deste formato.')
     return Resultado(comando='validar', codigo=int(Codigo.RECUSADO if reprovado else Codigo.OK),
                      situacao='recusado' if reprovado else 'ok', o_que_fazer=o_que_fazer, contagens=cont,
