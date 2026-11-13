@@ -1553,3 +1553,392 @@ def test_marca_nova_no_chromium_avisa_o_nome_que_o_motor_recusa(job, biblioteca,
         finally:
             nav.close()
     assert len(perfil.listar(bib)) == 4
+
+
+# ------------------------------------------------------------------ M7c, M4: o padrao da marca no Design system
+# decisoes-v1.md, 162 e 190 (Q1 e Q3): o segundo job da mesma marca abre com o padrao citado (regra de escala e ancora
+# por funcao, com a versao e o job de origem) e nenhum campo preenchido; so o clique do DA em "Usar o padrao" poe o
+# valor no rascunho, com a origem padrao_marca, e o "Salvar e seguir" leva essa origem, com o ref, ao briefing. O ref
+# que nao bate com o perfil atual e recusado. Perfis sinteticos (test_tela_funcoes.perfil_m4), em pasta temporaria.
+@pytest.fixture
+def marca_m4(job, tmp_path):
+    """A biblioteca com a marca sintetica de duas versoes, escolhida no job (como o ato da tela grava)."""
+    import test_tela_funcoes as ttf
+    bib = tmp_path / 'biblioteca-m4'
+    bib.mkdir()
+    id_ = ttf.perfil_m4(bib)
+    ttf.marca_do_job_m4(job, id_)
+    return bib, id_
+
+
+def _rascunho_sem_design(modelo):
+    return {'funcoes': {str(k): {'funcao': v, 'observacao': None} for k, v in modelo['funcoes'].items()}}
+
+
+def _design_do_da(*funcoes):
+    return {f: {'regra': USADAS[f][0], 'x': USADAS[f][1], 'y': USADAS[f][2]} for f in funcoes}
+
+
+def test_segundo_job_da_marca_abre_com_o_padrao_citado_e_nada_preenchido(job, modelo, marca_m4):
+    import test_tela_funcoes as ttf
+    from desdobra.tela import funcoes as tf
+    bib, id_ = marca_m4
+    conteudo = te.montar(job, biblioteca=str(bib))
+    padrao = _marca_na_tela(conteudo)['padrao']
+    assert padrao == tf.padrao_da_marca(job, bib)
+    assert padrao['versao'] == 2 and set(padrao['funcoes']) == {'titulo', 'estrutura', 'logo_principal'}
+    assert padrao['funcoes']['titulo']['regra']['ref'] == 'marca:%s@v2#job:%s' % (id_, ttf.JOB_P1)
+    # 0 campo preenchido: nada no rascunho, e o Design system continua faltando as funcoes do padrao
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        assert _gravar_rascunho(s, biscoito, _escolhas(conteudo), _rascunho_sem_design(modelo)) == 200
+        dados = contratos.ler(job / tr.ARQUIVO, tr.ESQUEMA)
+        assert not dados.get('design')
+        laudo = contratos.ler(job / 'laudo' / 'laudo.json', 'laudo/1')
+        pend = tf.pendencias(laudo, dados)
+        for f in ('titulo', 'logo_principal'):
+            assert {'tipo': 'regra', 'funcao': f} in pend and {'tipo': 'ancora', 'funcao': f} in pend
+        # a escolha de outra marca na tela muda o padrao citado na hora (recarregar)
+        assert _ato(s, biscoito, 'marca', {'escolha': 'sem_marca'})[1] == 200
+        assert conteudo['recarregar']()['lido']['marca']['padrao'] is None
+    finally:
+        s.parar()
+
+
+def test_sem_marca_ou_sem_biblioteca_o_design_system_segue_sem_padrao(job, modelo, tmp_path):
+    import test_tela_funcoes as ttf
+    assert _marca_na_tela(te.montar(job))['padrao'] is None
+    vazia = tmp_path / 'biblioteca-vazia'
+    vazia.mkdir()
+    assert _marca_na_tela(te.montar(job, biblioteca=str(vazia)))['padrao'] is None
+    ttf.marca_do_job_m4(job, None)
+    conteudo = te.montar(job, biblioteca=str(vazia))
+    assert _marca_na_tela(conteudo)['padrao'] is None
+    s = _servidor(job, conteudo)
+    try:
+        biscoito = tts._entrar(s)
+        _preparar_rascunho(job, modelo, s, biscoito, conteudo)
+        assert bs.pendencias(job, conteudo) == []
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+
+
+def _salvar_com_padrao(job, modelo, bib, design, conteudo=None):
+    """Grava o rascunho com o design pedido, o modo e as familias confirmadas; devolve (conteudo, servidor, cookie)."""
+    conteudo = conteudo or te.montar(job, biblioteca=str(bib))
+    s = _servidor(job, conteudo)
+    biscoito = tts._entrar(s)
+    escolhas = _escolhas(conteudo)
+    assert _gravar_rascunho(s, biscoito, escolhas, dict(_rascunho_sem_design(modelo), design=design)) == 200
+    assert _ato(s, biscoito, 'modo_dados', {'modo': 'c'})[1] == 200
+    for gid, f in escolhas.items():
+        assert _ato(s, biscoito, 'familia', {'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']})[1] == 200
+    return conteudo, s, biscoito
+
+
+def test_usar_o_padrao_e_salvar_grava_a_origem_padrao_marca_com_o_ref(job, modelo, marca_m4):
+    import test_tela_funcoes as ttf
+    from desdobra.tela import funcoes as tf
+    bib, id_ = marca_m4
+    p = tf.padrao_da_marca(job, bib)
+    design = dict(ttf.design_do_padrao(p, 'titulo', 'logo_principal'), **_design_do_da('fundo', 'texto_de_apoio'))
+    # o DA trocou a regra do logo depois do clique: a pagina tira a origem da regra e deixa a da ancora
+    design['logo_principal']['regra'] = 'largura'
+    del design['logo_principal']['origem']['regra']
+    conteudo, s, biscoito = _salvar_com_padrao(job, modelo, bib, design)
+    try:
+        assert bs.pendencias(job, conteudo) == []
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    b = mb.ler(job)
+    regras = {r['funcao']: r['regra'] for r in b['regras_escala']}
+    ancoras = {a['funcao']: a for a in b['ancoras'] if 'funcao' in a}
+    ref_1 = 'marca:%s@v2#job:%s' % (id_, ttf.JOB_P1)
+    ref_2 = 'marca:%s@v2#job:%s' % (id_, ttf.JOB_P2)
+    assert regras['titulo'] == {'valor': 'raiz_area', 'situacao': 'confirmado',
+                                'origem': {'tipo': 'padrao_marca', 'ref': ref_1}}
+    assert ancoras['titulo']['x']['origem'] == ancoras['titulo']['y']['origem'] == {'tipo': 'padrao_marca', 'ref': ref_1}
+    assert regras['logo_principal']['valor'] == 'largura'
+    assert regras['logo_principal']['origem']['tipo'] == humano.ORIGEM_FIXTURE
+    assert ancoras['logo_principal']['x']['origem'] == {'tipo': 'padrao_marca', 'ref': ref_2}
+    assert regras['fundo']['origem']['tipo'] == humano.ORIGEM_FIXTURE
+    contratos.validar(b, mb.ESQUEMA)
+    # o briefing/1 nao mudou: o ref e texto na origem que o esquema ja tinha
+    assert 'padrao_marca' in contratos.carregar_esquema(mb.ESQUEMA)['$defs']['origem']['properties']['tipo']['enum']
+
+
+def test_salvar_recusa_o_padrao_que_nao_bate_com_o_perfil_atual(job, modelo, marca_m4):
+    import test_tela_funcoes as ttf
+    from desdobra.marca import perfil
+    from desdobra.tela import funcoes as tf
+    bib, id_ = marca_m4
+    p = tf.padrao_da_marca(job, bib)
+    design = dict(ttf.design_do_padrao(p, 'titulo', 'logo_principal'), **_design_do_da('fundo', 'texto_de_apoio'))
+    conteudo, s, biscoito = _salvar_com_padrao(job, modelo, bib, design)
+    try:
+        assert bs.pendencias(job, conteudo) == []
+        # a marca ganha a versao 3 com a tela aberta: o clique na versao 2 deixa de valer, e nada e gravado
+        atual = perfil.ler(bib, id_)['atual']
+        base = {k: atual[k] for k in ('regras_escala', 'ancoras', 'faces')}
+        base['regras_escala'] = [r for r in base['regras_escala'] if r['funcao'] != 'logo_principal']
+        base['ancoras'] = [a for a in base['ancoras'] if a['funcao'] != 'logo_principal']
+        ttf.registrar_m4(bib, id_, base, regra_titulo='lado_curto')
+        pend = bs.pendencias(job, conteudo)
+        # revisao do M4: so o titulo, que mudou na versao 3, cai; o logo segue igual e o clique nele continua valendo
+        assert {'codigo': 'padrao_marca_desatualizado', 'funcoes': ['titulo']} in pend
+        assert _salvar(s, biscoito, job)[0] == 403
+        assert not (job / mb.ARQUIVO).read_text(encoding='utf-8').count('padrao_marca')
+    finally:
+        s.parar()
+    # sem a biblioteca na tela (o motor nao confere o perfil), a origem do padrao tambem e recusada
+    sem_bib = te.montar(job)
+    assert any(x['codigo'] == 'padrao_marca_desatualizado' for x in bs.pendencias(job, sem_bib))
+    # o salvar direto pelo gravador tambem recusa
+    sessao = humano.abrir_sessao_tela(teste=True)
+    try:
+        with pytest.raises(bs.ErroSalvar) as e:
+            bs.salvar(job, conteudo, humano.exigir_tela(bs.COMANDO, sessao, True))
+    finally:
+        humano.fechar_sessao_tela(sessao)
+    assert any(x['codigo'] == 'padrao_marca_desatualizado' for x in e.value.pendencias)
+
+
+def test_versao_nova_que_nao_muda_a_funcao_nao_derruba_o_job_salvo(job, modelo, marca_m4):
+    """Revisao do M4: o job salvo com o padrao da versao 2 no titulo e no logo continua salvo e sem pendencia quando
+    outra campanha da marca registra a versao 3 mudando so a estrutura (titulo e logo iguais, mesmo job de origem)."""
+    import test_tela_funcoes as ttf
+    from desdobra.marca import perfil
+    from desdobra.tela import funcoes as tf
+    bib, id_ = marca_m4
+    p = tf.padrao_da_marca(job, bib)
+    design = dict(ttf.design_do_padrao(p, 'titulo', 'logo_principal'), **_design_do_da('fundo', 'texto_de_apoio'))
+    conteudo, s, biscoito = _salvar_com_padrao(job, modelo, bib, design)
+    try:
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    assert te.montar(job, biblioteca=str(bib))['estado']['briefing']['salvo'] is True
+    v = {k: json.loads(json.dumps(perfil.ler(bib, id_)['atual'][k])) for k in ('regras_escala', 'ancoras', 'faces')}
+    for r in v['regras_escala']:
+        if r['funcao'] == 'estrutura':
+            r.update(regra='largura', job_origem='c3' * 16)
+    perfil.nova_versao(bib, id_, campanha=ttf._campanha_m4('c3' * 16), quando='2026-11-14T10:00:00-03:00', **v)
+    depois = te.montar(job, biblioteca=str(bib))
+    assert depois['estado']['briefing']['salvo'] is True
+    assert not [x for x in bs.pendencias(job, depois) if x['codigo'] == 'padrao_marca_desatualizado']
+
+
+def _abrir_design_no_chromium(job, conteudo, pw, card):
+    from desdobra.chromium import navegador
+    srv = ts.ServidorTela(conteudo, pasta=job, modo_teste=True, atos=ta.atos_do_job(job, conteudo=conteudo))
+    srv.__enter__()
+    nav = pw.chromium.launch(headless=True, args=list(navegador.ARGUMENTOS))
+    pg = nav.new_context(viewport={'width': 1600, 'height': 900}, device_scale_factor=1).new_page()
+    try:
+        pg.goto(srv.url_entrada, wait_until='commit')
+    except Exception:  # noqa: BLE001 - o 204 nao completa a navegacao
+        pass
+    pg.goto(srv.url_pagina, wait_until='load')
+    tp._esperar(pg, tp.JS_PRONTO)
+    pg.evaluate('() => document.querySelector("#passos [data-passo=design]").click()')
+    tp._esperar(pg, '() => document.querySelector(%s) ? "1" : ""' % json.dumps(card + ' .funcao-ds-topo'))
+    pg.evaluate('(s) => document.querySelector(s).click()', card + ' .funcao-ds-topo')
+    return srv, nav, pg
+
+
+@pytest.mark.parametrize('caso', ['versao_nova', 'sem_marca'])
+def test_origem_vencida_sai_quando_o_da_clica_de_novo_no_mesmo_valor(job, modelo, marca_m4, caso):
+    """Revisao do M4: o DA usou o padrao (versao 2) no titulo; depois a marca ganhou a versao 3 com outra regra de
+    titulo, ou o job passou a "Sem marca". O card avisa, nao se diz pronto, e a nota do padrao nao diz que nada esta
+    gravado. O DA que quer ficar com o mesmo valor clica de novo na regra e na ancora marcadas: a origem vencida sai do
+    rascunho e o aviso some (o valor fica como escolha dele). Sem marca, o aviso nao manda usar um padrao que nao
+    existe mais."""
+    from playwright.sync_api import sync_playwright
+
+    import test_tela_funcoes as ttf
+    from desdobra.chromium import navegador
+    from desdobra.marca import perfil
+    from desdobra.tela import funcoes as tf
+    bib, id_ = marca_m4
+    navegador.apontar_playwright()
+    p = tf.padrao_da_marca(job, bib)
+    design = dict(ttf.design_do_padrao(p, 'titulo'), **_design_do_da('fundo', 'texto_de_apoio'))
+    conteudo = te.montar(job, biblioteca=str(bib))
+    s = _servidor(job, conteudo)
+    try:
+        assert _gravar_rascunho(s, tts._entrar(s), _escolhas(conteudo),
+                                dict(_rascunho_sem_design(modelo), design=design)) == 200
+    finally:
+        s.parar()
+    if caso == 'versao_nova':
+        v = {k: json.loads(json.dumps(perfil.ler(bib, id_)['atual'][k])) for k in ('regras_escala', 'ancoras', 'faces')}
+        v['regras_escala'][0] = {'funcao': 'titulo', 'regra': 'lado_curto', 'job_origem': 'c3' * 16}
+        v['ancoras'][0] = {'funcao': 'titulo', 'x': 'direita', 'y': 'base', 'job_origem': 'c3' * 16}
+        perfil.nova_versao(bib, id_, campanha=ttf._campanha_m4('c3' * 16), quando='2026-11-14T10:00:00-03:00', **v)
+    else:
+        ttf.marca_do_job_m4(job, None)
+    conteudo = te.montar(job, biblioteca=str(bib))
+    card = '#resumo-design [data-chave="ftitulo"]'
+    texto = '(s) => { const a = document.querySelector(s); return a ? a.innerText : null; }'
+    with sync_playwright() as pw:
+        srv, nav, pg = _abrir_design_no_chromium(job, conteudo, pw, card)
+        try:
+            aviso = pg.evaluate(texto, card + ' .aviso-padrao')
+            assert aviso, 'sem aviso'
+            assert not any(x in aviso for x in ('—', '–')), aviso
+            if caso == 'sem_marca':
+                assert pg.evaluate('(s) => document.querySelector(s)', card + ' .padrao-marca') is None
+                assert 'Use o padrão' not in aviso, aviso
+            else:
+                nota = pg.evaluate(texto, card + ' .padrao-marca .sugestao-nota')
+                assert 'Nada fica gravado' not in nota, nota
+            assert 'pronta' not in pg.evaluate(texto, card + ' .funcao-ds-topo')
+            pg.evaluate('(s) => document.querySelector(s).click()', card + ' button[data-regra="raiz_area"]')
+            pg.evaluate('(s) => document.querySelector(s).click()', card + ' button[data-x="esquerda"][data-y="topo"]')
+            tp._esperar(pg, '() => ["pendente", "salvando"].includes(document.documentElement.dataset.rascunho)'
+                            ' ? "" : "1"')
+            tp._esperar(pg, '() => document.documentElement.dataset.rascunho === "salvo" ? "1" : ""')
+            assert pg.evaluate(texto, card + ' .aviso-padrao') is None
+            d = contratos.ler(job / tr.ARQUIVO, tr.ESQUEMA)['design']['titulo']
+            assert (d['regra'], d['x'], d['y']) == ('raiz_area', 'esquerda', 'topo') and 'origem' not in d
+            assert tf.padrao_invalido({'design': {'titulo': d}}, tf.padrao_da_marca(job, bib)) == []
+        finally:
+            nav.close()
+            srv.__exit__(None, None, None)
+
+
+def test_envelope_do_claude_nao_leva_marca_nem_padrao(job, modelo, marca_m4, capsys):
+    import test_tela_funcoes as ttf
+    from desdobra import cli
+    from desdobra.marca import perfil
+    from desdobra.tela import funcoes as tf
+    bib, id_ = marca_m4
+    p = tf.padrao_da_marca(job, bib)
+    design = dict(ttf.design_do_padrao(p, 'titulo', 'logo_principal'), **_design_do_da('fundo', 'texto_de_apoio'))
+    conteudo, s, biscoito = _salvar_com_padrao(job, modelo, bib, design)
+    try:
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    capsys.readouterr()
+    cli.principal(['--envelope', 'job', 'estado', str(job)])
+    saida = capsys.readouterr().out
+    nome = perfil.ler(bib, id_)['marca']
+    for proibido in (id_, nome, 'marca:', 'padrao_marca', ttf.JOB_P1, str(bib)):
+        assert proibido not in saida, proibido
+
+
+def test_padrao_da_marca_no_chromium(job, modelo, marca_m4, capturas=None, telas=((1600, 900),)):
+    """A pagina no Design system: o padrao citado com a fonte ao lado de cada funcao, nada marcado; "Usar o padrao"
+    poe a regra e a ancora no rascunho com a origem padrao_marca; trocar a regra tira so a origem dela; depois do
+    Salvar e seguir, o briefing grava a origem com o ref. capturas: pasta das fotos da verificacao (fora do
+    repositorio), ou None; telas: os tamanhos de janela das fotos."""
+    from playwright.sync_api import sync_playwright
+
+    import test_tela_funcoes as ttf
+    from desdobra.chromium import navegador
+    from desdobra.tela import funcoes as tf
+    bib, id_ = marca_m4
+    navegador.apontar_playwright()
+    conteudo = te.montar(job, biblioteca=str(bib))
+    js_rascunho = '() => document.documentElement.dataset.rascunho'
+    padrao = '#resumo-design [data-chave="f%s"] .padrao-marca'
+    # as funcoes do passo 2 ja escolhidas (a entrada da pagina e de uso unico: o rascunho vai por outra janela antes)
+    s = _servidor(job, conteudo)
+    try:
+        assert _gravar_rascunho(s, tts._entrar(s), _escolhas(conteudo), _rascunho_sem_design(modelo)) == 200
+    finally:
+        s.parar()
+    with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
+                         atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
+        largura, altura = telas[0]
+        nav = pw.chromium.launch(headless=True, args=list(navegador.ARGUMENTOS))
+        pg = nav.new_context(viewport={'width': largura, 'height': altura}, device_scale_factor=1).new_page()
+        try:
+            try:
+                pg.goto(srv.url_entrada, wait_until='commit')
+            except Exception:  # noqa: BLE001 - o 204 nao completa a navegacao
+                pass
+            pg.goto(srv.url_pagina, wait_until='load')
+            tp._esperar(pg, tp.JS_PRONTO)
+            pg.evaluate('() => document.querySelector("#passos [data-passo=design]").click()')
+            tp._esperar(pg, '() => document.querySelector(%s) ? "1" : ""' % json.dumps(padrao % 'titulo'))
+            # o padrao citado nas funcoes que o perfil tem, com a fonte; a funcao sem regra no perfil fica sem
+            for f in ('titulo', 'logo_principal'):
+                fonte = pg.evaluate('(s) => document.querySelector(s).innerText', padrao % f)
+                assert 'Padrão da marca, versão 2, do job' in fonte, fonte
+                job_origem = ttf.JOB_P1 if f == 'titulo' else ttf.JOB_P2
+                assert job_origem[:8] in fonte and id_ not in fonte
+            assert pg.evaluate('(s) => document.querySelector(s)', padrao % 'fundo') is None
+            # nada marcado: so o topo da funcao aberta
+            assert pg.evaluate('() => document.querySelectorAll("#passo-design .regras [aria-pressed=true],'
+                               ' #passo-design .grade-ancora [aria-pressed=true]").length') == 0
+            assert not contratos.ler(job / tr.ARQUIVO, tr.ESQUEMA).get('design')
+            texto = pg.evaluate('() => document.getElementById("passo-design").innerText')
+            assert not any(x in texto for x in ('—', '–', 'marca:', 'padrao_marca')), texto
+            for w, h in telas:
+                if capturas is not None:
+                    pg.set_viewport_size({'width': w, 'height': h})
+                    pg.screenshot(path=str(capturas / ('m4-1-padrao-citado-%dx%d.png' % (w, h))))
+            pg.set_viewport_size({'width': largura, 'height': altura})
+            # "Usar o padrao" no titulo e no logo
+            for f in ('titulo', 'logo_principal'):
+                pg.evaluate('(s) => document.querySelector(s).click()', (padrao % f) + ' button[data-usar-padrao]')
+            tp._esperar(pg, '() => ["pendente", "salvando"].includes(document.documentElement.dataset.rascunho)'
+                            ' ? "" : "1"')
+            tp._esperar(pg, '() => document.documentElement.dataset.rascunho === "salvo" ? "1" : ""')
+            d = contratos.ler(job / tr.ARQUIVO, tr.ESQUEMA)['design']
+            p = tf.padrao_da_marca(job, bib)
+            assert d['titulo'] == ttf.design_do_padrao(p, 'titulo')['titulo']
+            em_uso = pg.evaluate('(s) => document.querySelector(s).innerText', padrao % 'titulo')
+            assert 'Em uso' in em_uso, em_uso
+            for w, h in telas:
+                if capturas is not None:
+                    pg.set_viewport_size({'width': w, 'height': h})
+                    pg.screenshot(path=str(capturas / ('m4-2-padrao-em-uso-%dx%d.png' % (w, h))))
+            pg.set_viewport_size({'width': largura, 'height': altura})
+            # o DA troca a regra do logo: a origem da regra sai, a da ancora fica
+            pg.evaluate('() => document.querySelector(\'#resumo-design [data-chave="flogo_principal"] .funcao-ds-topo\')'
+                        '.click()')
+            pg.evaluate('() => document.querySelector(\'#resumo-design [data-chave="flogo_principal"]'
+                        ' button[data-regra="largura"]\').click()')
+            # e escolhe a regra e a ancora das funcoes sem padrao
+            for f in ('fundo', 'texto_de_apoio'):
+                r, x, y = USADAS[f]
+                base = '#resumo-design [data-chave="f%s"]' % f
+                pg.evaluate('(s) => document.querySelector(s).click()', base + ' .funcao-ds-topo')
+                pg.evaluate('(s) => document.querySelector(s).click()', base + ' button[data-regra="%s"]' % r)
+                pg.evaluate('(s) => document.querySelector(s).click()',
+                            base + ' button[data-x="%s"][data-y="%s"]' % (x, y))
+            tp._esperar(pg, '() => ["pendente", "salvando"].includes(document.documentElement.dataset.rascunho)'
+                            ' ? "" : "1"')
+            tp._esperar(pg, '() => document.documentElement.dataset.rascunho === "salvo" ? "1" : ""')
+            d = contratos.ler(job / tr.ARQUIVO, tr.ESQUEMA)['design']
+            assert d['logo_principal']['regra'] == 'largura'
+            assert set(d['logo_principal']['origem']) == {'ancora'}
+            assert 'origem' not in d['fundo']
+            fonte = pg.evaluate('(s) => document.querySelector(s).innerText', padrao % 'logo_principal')
+            assert 'Usar o padrão' in fonte, fonte
+            for w, h in telas:
+                if capturas is not None:
+                    pg.set_viewport_size({'width': w, 'height': h})
+                    pg.screenshot(path=str(capturas / ('m4-3-regra-trocada-%dx%d.png' % (w, h))))
+            assert pg.evaluate(js_rascunho) == 'salvo'
+        finally:
+            nav.close()
+        assert srv.contagem['csrf_recusado'] == 0 and srv.contagem['dado_recusado'] == 0
+    # Salvar e seguir numa tela aberta de novo (o passo 3 com o Design system novo)
+    dados = contratos.ler(job / tr.ARQUIVO, tr.ESQUEMA)
+    conteudo = te.montar(job, biblioteca=str(bib))
+    _c, s, biscoito = _salvar_com_padrao(job, modelo, bib, dados['design'], conteudo=conteudo)
+    try:
+        assert _salvar(s, biscoito, job)[1] == 200
+    finally:
+        s.parar()
+    b = mb.ler(job)
+    regras = {r['funcao']: r['regra'] for r in b['regras_escala']}
+    assert regras['titulo']['origem'] == {'tipo': 'padrao_marca', 'ref': 'marca:%s@v2#job:%s' % (id_, ttf.JOB_P1)}
+    assert regras['logo_principal']['origem']['tipo'] == humano.ORIGEM_FIXTURE

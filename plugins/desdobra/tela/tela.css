@@ -525,6 +525,17 @@ main { flex: 1; min-height: 0; display: flex; }
 .ponto[aria-pressed="true"] { background: var(--acento-fundo); }
 .ponto[aria-pressed="true"]::after { background: var(--acento); transform: scale(1.6); }
 .ponto:disabled { cursor: default; }
+/* M7c, M4: o padrao da marca no card da funcao, no desenho da sugestao do Claude (borda tracejada: sugestao citada,
+   nunca valor). Os dois campos lado a lado; o que ja esta em uso ganha o traco do acento */
+.padrao-marca { margin: 6px 0 4px; gap: 8px; }
+.padrao-marca:focus { outline: none; }
+.padrao-marca:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.padrao-linhas { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px 16px; }
+.padrao-linha { display: grid; gap: 0; min-width: 0; padding-left: 8px; border-left: 2px solid var(--linha); transition: border-color 0.2s var(--curva); }
+.padrao-linha.em-uso { border-left-color: var(--acento); }
+.padrao-pe { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding-top: 6px; border-top: 1px solid var(--linha); }
+.padrao-pe .sugestao-nota { margin: 0; flex: 1 1 22ch; }
+.aviso-padrao { margin: 6px 0 4px; padding: 8px 10px; border-left: 2px solid var(--acento); background: var(--acento-fundo); border-radius: 0 var(--raio-p) var(--raio-p) 0; font-size: 12px; }
 .vazio-design { border: 1px dashed var(--linha-forte); border-radius: var(--raio); padding: 20px; display: grid; gap: 8px; justify-items: start; }
 .vazio-titulo { font-weight: 600; }
 

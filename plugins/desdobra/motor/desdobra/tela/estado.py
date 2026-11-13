@@ -1634,9 +1634,14 @@ def _sem_previa(_dados, origem=None, antes=None):
 
 
 def marca_na_tela(pasta, conferencia):
-    """M7c, M3: o bloco da marca do job no passo 1 (desdobra.marca.job.na_tela), sem o caminho da biblioteca."""
+    """M7c, M3: o bloco da marca do job no passo 1 (desdobra.marca.job.na_tela), sem o caminho da biblioteca. M7c, M4:
+    'padrao', o padrao da marca escolhida para o Design system (desdobra.tela.funcoes.padrao_da_marca: regra e ancora
+    por funcao com a versao e o job de origem, ou None), lido de novo a cada montagem e a cada recarregar, sem gravar."""
     from desdobra.marca import job as marca_job
-    return marca_job.na_tela(pasta, conferencia)
+    from desdobra.tela import funcoes as funcoes_da_tela
+    bloco = marca_job.na_tela(pasta, conferencia)
+    bloco['padrao'] = funcoes_da_tela.padrao_da_marca(pasta, conferencia.pasta if conferencia.usavel else None)
+    return bloco
 
 
 def montar(pasta, teto=None, biblioteca=None):
@@ -1710,6 +1715,7 @@ def montar(pasta, teto=None, biblioteca=None):
     b, laudo = ctx['briefing'], ctx['laudo']
     base = pecas_base(laudo, asset_por_camada, face_de)
     conferencia = mod_biblioteca.conferir(biblioteca)
+    pasta_da_biblioteca = conferencia.pasta if conferencia.usavel else None
 
     def com_previas_dos_quadros(l):
         # a previa de cada prancheta no passo 1: as camadas dela como estao no KV, so desenho; e a marca do job (M7c,
@@ -1757,7 +1763,7 @@ def montar(pasta, teto=None, biblioteca=None):
                 for o in estado['orientacoes'] for g in o['grupos']}
     avisos = {g['id']: g['aviso'] for o in estado['orientacoes'] for g in o['grupos']}
     from desdobra.briefing import salvar
-    estado['briefing'] = dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta))
+    estado['briefing'] = dict(salvar.situacao_na_tela(pasta, familias, pasta_da_biblioteca), avisos=_avisos_do_job(pasta))
     # a aprovacao de cada formato do briefing (M7b, B4): aprovado, caiu (com o campo e o motivo para o DA) ou sem
     # aprovacao, e o painel de situacao por formato (M7b, B5), medidos a cada montagem e depois de cada ato
     # (recarregar)
@@ -1804,7 +1810,7 @@ def montar(pasta, teto=None, biblioteca=None):
         return dict(estado, lido=novo_lido, orientacoes=com_os_avisos_de_agora(),
                     faltam=faltam(novo_lido, r['formatos'], n_variantes, familias,
                                   familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao)),
-                    briefing=dict(salvar.situacao_na_tela(pasta, familias), avisos=_avisos_do_job(pasta)),
+                    briefing=dict(salvar.situacao_na_tela(pasta, familias, pasta_da_biblioteca), avisos=_avisos_do_job(pasta)),
                     aprovacoes=aprovacoes, painel=painel)
 
     conteudo = {'estado': estado, 'previas': previas, 'assets': assets, 'fontes': fontes, 'recarregar': recarregar,

@@ -38,7 +38,7 @@ Antes de sugerir, leia com a ferramenta Read a lista de funções: `${CLAUDE_PLU
    ```
 
    Pelo envelope:
-   - o `codigo` não é `0`: explique ao DA o `o_que_fazer` em linguagem simples, sem passar comando a ele, e pare. Se a pasta não é um job do desdobra, peça o caminho de novo (passo 3);
+   - o `codigo` não é `0`: explique ao DA o `o_que_fazer` em linguagem simples, sem passar comando a ele, e pare. Se a pasta não é um job do desdobra, peça de novo o caminho absoluto da pasta (passo 3);
    - no modo c (o `modo_dados` é c), pare. Diga ao DA que, no modo c, a tela segue sem sugestão e ele escolhe cada função na tela, no passo "Funções"; que a sugestão precisa do modo a ou do modo b; e que quem escolhe o modo é ele, no passo 1 da tela, entre os que a agência autorizou. Nesse caso, não leia o pacote: no modo c, ele não traz nome nem texto, e você não sugere nada;
    - `contagens.pacote_modelo` é `0` ou o envelope não traz `ids.pacote_sha256`: a leitura do KV ainda não terminou. Diga ao DA que o job precisa terminar a leitura antes da sugestão, indique a skill `/desdobra:continuar` e pare;
    - senão, guarde o `ids.pacote_sha256` do envelope, chamado de SHA abaixo, e o `modo_dados`, chamado de MODO. Você nunca calcula esse valor; ele vem sempre do envelope.
@@ -68,7 +68,7 @@ Antes de sugerir, leia com a ferramenta Read a lista de funções: `${CLAUDE_PLU
 
    Regras da sugestão:
    - o alvo (`layer_id`) é o id de uma camada ou de um grupo do pacote, copiado como está; um alvo aparece uma vez só;
-   - para cada alvo, uma função e uma alternativa, diferentes entre si, só com os ids da lista de funções (`references/taxonomia-funcoes.md`);
+   - para cada alvo, uma função e uma alternativa, diferentes entre si, só com os ids da lista de funções que você leu no início (`taxonomia-funcoes.md`);
    - siga a regra de rotular por grupo da lista: quando o grupo inteiro faz uma coisa só, sugira no grupo; quando ele mistura funções, sugira camada por camada;
    - nunca ponha número além do `layer_id` (nada de posição, tamanho, escala ou âncora), nem texto livre, nem campo que o contrato não tem: o motor recusa o arquivo com campo a mais;
    - na dúvida sobre uma camada, ou numa camada com `segredo_bloqueado`, deixe-a de fora: o DA escolhe a função dela na tela.

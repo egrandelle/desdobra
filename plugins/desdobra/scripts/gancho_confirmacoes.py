@@ -220,7 +220,9 @@ ESCRITA_EM_MARCAS = re.compile(r'(?<![\w-])(?:rm|rmdir|rd|del|erase|mkdir|md|tou
 # carregado (run_path, spec_from_file_location, python <arquivo>) e o caminho da biblioteca pelo motor
 # (desdobra.biblioteca.pasta_marcas e PASTA_MARCAS), com que o texto do comando nunca traz o segmento marcas/. O codigo
 # montado em variavel ou num script gravado antes continua passando (risco declarado do P1)
-CODIGO_DA_MARCA = re.compile(r'desdobra[\s\'")\]]*\.\s*marca(?![\w-])|'
+# revisao do M4: as funcoes da tela que carregam o perfil da biblioteca (padrao_da_marca, marca_na_tela)
+CODIGO_DA_MARCA = re.compile(r'\b(?:padrao_da_marca|marca_na_tela)\b|'
+                             r'desdobra[\s\'")\]]*\.\s*marca(?![\w-])|'
                              r'from\s+(?:desdobra\s*\.\s*)?marca\s+import\b|'
                              r'from\s+desdobra\s+import\s+[^\n;]*\bmarca\b|\bmarca\s*\.\s*(?:perfil|registrar)\b|'
                              r'(?:fromlist|getattr|import_module|__import__|find_spec|run_module|sys\s*\.\s*modules)'

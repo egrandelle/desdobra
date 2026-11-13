@@ -524,6 +524,10 @@ COMANDOS_NEGADOS = [
     ('Bash', "python -c \"import sys; sys.path.insert(0, 'motor/desdobra/marca'); import perfil\""),
     ('Bash', "python -c \"import runpy; runpy.run_path('motor/desdobra/marca/perfil.py')\""),
     ('Bash', 'python motor/desdobra/marca/perfil.py'),
+    # revisao do M4: o perfil lido pelas funcoes da tela que o carregam (padrao_da_marca, marca_na_tela)
+    ('Bash', "python -c \"from desdobra.tela import funcoes; print(funcoes.padrao_da_marca('j', 'b'))\""),
+    ('Bash', "python -c \"from desdobra.tela import estado; print(estado.marca_na_tela('j', 'b'))\""),
+    ('PowerShell', "python -c \"from desdobra.tela.funcoes import padrao_da_marca as p; print(p('j', 'b'))\""),
     # revisao do M2: a biblioteca pelo motor (desdobra.biblioteca.pasta_marcas), sem o segmento marcas/ no texto
     ('Bash', "python -c \"import shutil; from desdobra.biblioteca import pasta_marcas as p; shutil.rmtree(p('b'))\""),
     ('Bash', "python -c \"from desdobra.biblioteca import pasta_marcas as p; "

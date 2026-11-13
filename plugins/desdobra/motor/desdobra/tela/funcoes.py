@@ -19,6 +19,8 @@ Regras:
 
 Funcao pura dos dados do laudo e do rascunho: nao abre PSD, fonte nem imagem.
 """
+import re
+
 from desdobra import contratos
 from desdobra.briefing import modelo as mb
 
@@ -83,8 +85,15 @@ def nos(laudo, quadro=None):
     return saida
 
 
-def _decisao(valor):
-    return {'valor': valor, 'situacao': 'confirmado', 'origem': dict(ORIGEM)}
+def _decisao(valor, origem=None):
+    return {'valor': valor, 'situacao': 'confirmado', 'origem': dict(origem or ORIGEM)}
+
+
+def _origem_do_campo(d, campo):
+    """M7c, M4: a origem padrao_marca que o clique em "Usar o padrao" deixou no campo (regra ou ancora) da entrada do
+    Design system, ou None (a escolha e do DA)."""
+    o = (d.get('origem') or {}).get(campo)
+    return {'tipo': o['tipo'], 'ref': o['ref']} if isinstance(o, dict) and o.get('tipo') == TIPO_PADRAO else None
 
 
 def briefing_parcial(dados, quadro=None):
@@ -97,10 +106,12 @@ def briefing_parcial(dados, quadro=None):
                 for k, v in sorted((dados.get('cobertas') or {}).items(), key=lambda kv: int(kv[0]))]
     regras, ancoras, regras_ind = [], [], []
     for f, d in sorted((dados.get('design') or {}).items()):
+        # M7c, M4: o valor posto pelo clique em "Usar o padrao" leva a origem padrao_marca com o ref
         if d.get('regra') is not None:
-            regras.append({'funcao': f, 'regra': _decisao(d['regra'])})
+            regras.append({'funcao': f, 'regra': _decisao(d['regra'], _origem_do_campo(d, 'regra'))})
         if d.get('x') is not None and d.get('y') is not None:
-            ancoras.append({'funcao': f, 'x': _decisao(d['x']), 'y': _decisao(d['y'])})
+            o = _origem_do_campo(d, 'ancora')
+            ancoras.append({'funcao': f, 'x': _decisao(d['x'], o), 'y': _decisao(d['y'], o)})
     for k, d in sorted((dados.get('design_camadas') or {}).items(), key=lambda kv: int(kv[0])):
         if d.get('regra') is not None:
             regras_ind.append({'layer_id': int(k), 'regra': _decisao(d['regra'])})
@@ -291,6 +302,119 @@ def sugestoes_na_tela(pasta, teto=None):
     itens = sorted(({'layer_id': x['layer_id'], 'funcao': x['funcao'], 'alternativa': x['alternativa']}
                     for x in dados['sugestoes'] if x['layer_id'] in ids), key=lambda x: x['layer_id'])
     return {'modo': modo, 'sha256': hashlib.sha256(bruto).hexdigest(), 'sugestoes': itens}
+
+
+TIPO_PADRAO = 'padrao_marca'
+CAMPOS_DO_PADRAO = ('regra', 'ancora')
+# o ref do padrao da marca no briefing e no rascunho (texto, sem mudar o briefing/1): o id do perfil, a versao atual e
+# o job de origem da regra ou da ancora
+FORMA_DO_REF = re.compile(r'^marca:([0-9a-f]{32})@v([1-9][0-9]*)#job:([0-9a-f]{8,64})$')
+
+
+def ref_do_padrao(marca_id, versao, job):
+    """O ref do padrao: marca:<id>@v<N>#job:<id>."""
+    return 'marca:%s@v%d#job:%s' % (marca_id, int(versao), job)
+
+
+def padrao_da_marca(pasta, biblioteca):
+    """M7c, M4 (arquitetura-v1.md, 5.3 e 5.7; decisoes-v1.md, 162 e 190, Q1 e Q3): o padrao da marca escolhida no passo
+    1 (briefing/marca.json) para o Design system, lido da versao atual do perfil na biblioteca da agencia:
+    {'versao', 'funcoes': {funcao: {'regra': {'valor', 'job', 'ref', 'desde'} ou None, 'ancora': {'x', 'y', 'job',
+    'ref', 'desde'} ou None}}}, com o job de origem de cada regra e ancora (desde: _desde). None sem biblioteca, sem marca escolhida, em "Sem marca", com
+    a marca fora desta biblioteca, com o perfil que nao se le ou sem registro (versao 0). Le e nunca grava: o padrao e
+    sugestao citada, e so o clique do DA em "Usar o padrao" poe o valor no rascunho. So ids, o enum e a versao: o nome
+    da marca nunca entra."""
+    from desdobra.marca import job as marca_job
+    from desdobra.marca import perfil
+    if biblioteca is None:
+        return None
+    reg = marca_job.ler(pasta)
+    if reg is None or reg['escolha'] != 'marca' or not reg.get('marca_id'):
+        return None
+    try:
+        dados = perfil.ler(biblioteca, reg['marca_id'])
+    except (perfil.ErroPerfil, OSError, ValueError):
+        return None
+    atual = perfil.atual(dados)
+    if atual is None:
+        return None
+    versao, id_ = dados['versao'], dados['id']
+    # revisao do M4: as versoes da mais nova para a mais antiga (o historico guarda todas, nunca apagadas, Q3)
+    versoes = [atual] + list(reversed(dados.get('historico') or []))
+    funcoes = {}
+    for r in atual['regras_escala']:
+        funcoes.setdefault(r['funcao'], {'regra': None, 'ancora': None})['regra'] = {
+            'valor': r['regra'], 'job': r['job_origem'], 'ref': ref_do_padrao(id_, versao, r['job_origem']),
+            'desde': _desde(versoes, 'regras_escala', r, ('regra', 'job_origem'))}
+    for a in atual['ancoras']:
+        funcoes.setdefault(a['funcao'], {'regra': None, 'ancora': None})['ancora'] = {
+            'x': a['x'], 'y': a['y'], 'job': a['job_origem'], 'ref': ref_do_padrao(id_, versao, a['job_origem']),
+            'desde': _desde(versoes, 'ancoras', a, ('x', 'y', 'job_origem'))}
+    return {'versao': versao, 'funcoes': funcoes}
+
+
+def _desde(versoes, lista, item, chaves):
+    """Revisao do M4: a primeira versao, na sequencia que chega a atual sem interrupcao, em que a regra ou a ancora da
+    funcao tem o mesmo valor e o mesmo job de origem. O clique feito em qualquer versao desse intervalo continua
+    valendo: a versao nova que nao muda a funcao nao derruba o clique de antes (decisoes-v1.md, 190, Q3)."""
+    desde = versoes[0]['versao']
+    for v in versoes[1:]:
+        igual = next((x for x in v.get(lista) or () if x.get('funcao') == item['funcao']), None)
+        if igual is None or any(igual.get(k) != item[k] for k in chaves):
+            break
+        desde = v['versao']
+    return desde
+
+
+def _ref_vale(ref, p, versao):
+    """O ref do clique cita a mesma marca e o mesmo job de origem do padrao atual, numa versao entre p['desde'] e a
+    versao atual (o valor nao mudou desde o clique)."""
+    a, b = FORMA_DO_REF.match(ref or ''), FORMA_DO_REF.match(p['ref'])
+    if a is None or b is None or a.group(1) != b.group(1) or a.group(3) != b.group(3):
+        return False
+    return p.get('desde', versao) <= int(a.group(2)) <= versao
+
+
+def _vale_o_padrao(d, campo, f, padrao):
+    """O campo da entrada d do Design system (funcao f) com a origem padrao_marca bate com o padrao atual: a marca
+    escolhida, o job de origem, a versao entre a primeira com o valor de hoje e a atual (_ref_vale) e o mesmo valor."""
+    o = _origem_do_campo(d, campo)
+    p = ((padrao or {}).get('funcoes') or {}).get(f) or {}
+    p = p.get(campo)
+    if o is None or p is None or not _ref_vale(o['ref'], p, padrao['versao']):
+        return False
+    if campo == 'regra':
+        return d.get('regra') == p['valor']
+    return d.get('x') == p['x'] and d.get('y') == p['y']
+
+
+def padrao_invalido(dados, padrao):
+    """As origens padrao_marca do rascunho que nao valem contra o padrao atual (padrao_da_marca; None sem perfil):
+    [{'funcao', 'campo'}], na ordem das funcoes. Vale so o ref da marca escolhida e do job de origem de agora, de uma
+    versao em que o campo ja tinha o valor de hoje (revisao do M4: _desde), com o mesmo valor do perfil; o resto e
+    recusado pelo gravador do briefing."""
+    saida = []
+    for f, d in sorted(((dados or {}).get('design') or {}).items()):
+        for campo in CAMPOS_DO_PADRAO:
+            if _origem_do_campo(d, campo) is not None and not _vale_o_padrao(d, campo, f, padrao):
+                saida.append({'funcao': f, 'campo': campo})
+    return saida
+
+
+def sem_padrao_invalido(dados, padrao):
+    """Copia do rascunho sem as origens padrao_marca que nao valem (padrao_invalido): o valor fica, como escolha do
+    DA. Para o briefing montado so para comparar (a situacao da tela); o gravador recusa antes."""
+    import copy
+    ruins = {(x['funcao'], x['campo']) for x in padrao_invalido(dados, padrao)}
+    if not ruins:
+        return dados
+    novo = copy.deepcopy(dados)
+    for f, campo in ruins:
+        d = novo['design'][f]
+        d['origem'].pop(campo, None)
+        if not d['origem']:
+            del d['origem']
+    return novo
 
 
 def rascunho_de_escolhas(escolhas, observacao='observacao do teste'):

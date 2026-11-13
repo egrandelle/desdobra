@@ -357,6 +357,8 @@
     if (!document.getElementById('passo-pecas').hidden) iniciarPecas(null);
     mostrarAvisos(e);
     atualizarFaltam();
+    // M7c, M4: o padrao da marca citado no Design system segue a marca de agora
+    if (!document.getElementById('passo-design').hidden) montarDesign();
     // M7c, S4: o ato (o modo de dados, por exemplo) pode ter mudado o que a tela mostra como sugestao
     if (sug.lida) lerSugestoes();
     return Promise.resolve(montarLido(e.lido)).then(sincronizarConfirmacoes);
@@ -560,6 +562,8 @@
       trocarPainel(e);
       mostrarAvisos(e);
       atualizarFaltam();
+      // M7c, M4: a marca escolhida ou trocada no passo 1 muda o padrao citado no Design system
+      if (!document.getElementById('passo-design').hidden) montarDesign();
       // revisao do S4: depois de qualquer ato (o modo de dados, por exemplo), o modo que vale e as sugestoes de novo
       if (sug.lida) lerSugestoes();
       return Promise.resolve(montarLido(e.lido)).then(sincronizarConfirmacoes);
@@ -1356,6 +1360,8 @@
       const nome = nomeDaVista(v);
       if (!d.regra) out.push({ texto: 'Escolha a regra de escala.', detalhe: nome, ir: { passo: 'design', chave: v.chave }, tipo: 'regra' });
       if (!d.x || !d.y) out.push({ texto: 'Escolha a âncora.', detalhe: nome, ir: { passo: 'design', chave: v.chave }, tipo: 'ancora' });
+      // M7c, M4: o valor do padrao da marca de antes da versao nova: o servidor recusa salvar ate o DA decidir
+      if (padraoVencido(v)) out.push({ texto: padraoDe(v) ? 'Use o padrão da marca de novo ou clique de novo no valor que quer manter.' : 'Clique de novo no tamanho e na âncora que quer manter.', detalhe: nome, ir: { passo: 'design', chave: v.chave }, tipo: 'padrao' });
     });
     return out;
   }
@@ -1731,7 +1737,13 @@
     const alvo = v.funcao === 'indeterminado' ? p2.design_camadas : p2.design;
     const k = v.funcao === 'indeterminado' ? String(v.raiz) : v.funcao;
     const d = alvo[k] || { regra: null, x: null, y: null };
+    const mudou = campo === 'ancora' ? (d.x !== valor[0] || d.y !== valor[1]) : d.regra !== valor;
+    // revisao do M4: o clique no mesmo valor com a origem vencida (versao nova que mudou o campo, ou outra marca) e a
+    // escolha do DA: a origem vencida sai, e o aviso some
+    const vencida = !!(d.origem && d.origem[campo]) && v.funcao !== 'indeterminado' && !usaOPadrao(d, padraoDe(v), campo);
     if (campo === 'ancora') { d.x = valor[0]; d.y = valor[1]; } else d.regra = valor;
+    // M7c, M4: o campo que o DA muda deixa de ser o padrao da marca (a origem dele sai; a do outro campo fica)
+    if ((mudou || vencida) && d.origem) { delete d.origem[campo]; if (!Object.keys(d.origem).length) delete d.origem; }
     alvo[k] = d;
     p2idx.design = v.chave;
     tirarConfirmacoes();
@@ -1744,6 +1756,117 @@
       return [b.dataset.regra, b.dataset.x, b.dataset.y].join('|') === marca;
     });
     if (novo) novo.focus();
+  }
+  /* ---------------------------------------------------------------- padrao da marca (M7c, M4; decisoes 162 e 190)
+     a regra e a ancora que o perfil da marca escolhida no passo 1 guarda para a funcao, com a versao e o job de
+     origem. Borda tracejada, como a sugestao do Claude: e sugestao citada, nunca valor. So o clique em "Usar o padrao"
+     poe o valor no rascunho, com a origem padrao_marca e o ref; o DA que muda um campo tira a origem dele */
+  function padraoDaMarca() {
+    return (estado && estado.lido && estado.lido.marca && estado.lido.marca.padrao) || null;
+  }
+  function padraoDe(v) {
+    const p = padraoDaMarca();
+    if (!p || v.funcao === 'indeterminado') return null;
+    return (p.funcoes || {})[v.funcao] || null;
+  }
+  function jobCurto(j) { return String(j || '').slice(0, 8); }
+  /* revisao do M4: o ref do clique vale com a mesma marca e o mesmo job de origem, numa versao entre a primeira com o
+     valor de hoje (desde) e a atual, como no motor (desdobra.tela.funcoes._ref_vale): a versao nova que nao muda a
+     funcao nao derruba o clique de antes */
+  function refVale(ref, i) {
+    const forma = /^marca:([0-9a-f]{32})@v([1-9][0-9]*)#job:([0-9a-f]{8,64})$/;
+    const a = forma.exec(ref || ''), b = forma.exec(i.ref || '');
+    const p = padraoDaMarca();
+    if (!a || !b || !p || a[1] !== b[1] || a[3] !== b[3]) return false;
+    const n = Number(a[2]);
+    return n >= Number(i.desde || p.versao) && n <= Number(p.versao);
+  }
+  function usaOPadrao(d, x, campo) {
+    const o = d && d.origem && d.origem[campo];
+    if (!o || !x || !x[campo] || !refVale(o.ref, x[campo])) return false;
+    return campo === 'regra' ? d.regra === x.regra.valor : d.x === x.ancora.x && d.y === x.ancora.y;
+  }
+  /* as origens do padrao no rascunho que nao batem mais com o perfil (a marca ganhou versao nova ou foi trocada no
+     passo 1): o servidor recusa salvar (padrao_marca_desatualizado), e a tela pede o clique de novo */
+  function padraoVencido(v) {
+    if (v.funcao === 'indeterminado') return false;
+    const d = p2.design[v.funcao];
+    if (!d || !d.origem) return false;
+    const x = padraoDe(v) || {};
+    return ['regra', 'ancora'].some(function (c) { return d.origem[c] && !usaOPadrao(d, x, c); });
+  }
+  /* revisao do M4: o aviso da origem vencida diz o que o DA pode fazer; sem padrao na tela (Sem marca, outra marca
+     sem registro), o aviso nao manda usar um padrao que nao existe */
+  function avisoDoPadrao(v) {
+    if (padraoDe(v)) {
+      return 'O padrão da marca mudou depois do seu clique. Use o padrão de novo, ou clique de novo no tamanho e na ' +
+        'âncora que quer manter.';
+    }
+    return 'A marca do job mudou depois do seu clique em Usar o padrão. Clique de novo no tamanho e na âncora que ' +
+      'quer manter, ou escolha outro valor.';
+  }
+  function usarPadrao(v) {
+    const x = padraoDe(v);
+    if (!x) return;
+    const d = p2.design[v.funcao] || { regra: null, x: null, y: null };
+    const origem = {};
+    if (x.regra) { d.regra = x.regra.valor; origem.regra = { tipo: 'padrao_marca', ref: x.regra.ref }; }
+    if (x.ancora) { d.x = x.ancora.x; d.y = x.ancora.y; origem.ancora = { tipo: 'padrao_marca', ref: x.ancora.ref }; }
+    d.origem = origem;
+    p2.design[v.funcao] = d;
+    p2idx.design = v.chave;
+    tirarConfirmacoes();
+    mudouRascunho();
+    atualizarFaltam();
+    montarDesign();
+    const b = document.querySelector('#resumo-design [data-chave="' + v.chave + '"] .padrao-marca');
+    if (b) b.focus();
+  }
+  function quadroDoPadrao(v, d) {
+    const x = padraoDe(v);
+    if (!x) return null;
+    const p = padraoDaMarca();
+    const jobs = [x.regra, x.ancora].filter(Boolean).map(function (i) { return i.job; });
+    const umJob = jobs.every(function (j) { return j === jobs[0]; });
+    const box = el('section', null, 'sugestao padrao-marca');
+    box.tabIndex = -1;
+    box.setAttribute('aria-label', 'Padrão da marca');
+    const topo = el('p', null, 'sugestao-fonte');
+    const selo = el('span', 'Padrão da marca, versão ' + p.versao + (umJob ? ', do job ' + jobCurto(jobs[0]) : ''),
+      'sugestao-selo');
+    if (umJob) selo.title = 'Job de origem ' + jobs[0];
+    topo.appendChild(selo);
+    box.appendChild(topo);
+    const linhas = el('div', null, 'padrao-linhas');
+    [['regra', 'Tamanho'], ['ancora', 'Âncora']].forEach(function (par) {
+      const i = x[par[0]];
+      if (!i) return;
+      const linha = el('div', null, 'padrao-linha' + (usaOPadrao(d, x, par[0]) ? ' em-uso' : ''));
+      linha.appendChild(el('span', par[1] + (umJob ? '' : ', do job ' + jobCurto(i.job)), 'sugestao-rotulo'));
+      linha.appendChild(el('span', par[0] === 'regra' ? maiuscula(nomeRegra(i.valor)) :
+        (ANCORA_Y[i.y] || i.y) + ' ' + (ANCORA_X[i.x] || i.x), 'sugestao-funcao'));
+      linhas.appendChild(linha);
+    });
+    box.appendChild(linhas);
+    const tudo = ['regra', 'ancora'].every(function (c) { return !x[c] || usaOPadrao(d, x, c); });
+    const pe = el('div', null, 'padrao-pe');
+    if (tudo) {
+      pe.appendChild(el('span', 'Em uso', 'sugestao-em-uso'));
+    } else {
+      const b = botao('Usar o padrão', 'botao usar');
+      b.dataset.usarPadrao = v.funcao;
+      b.setAttribute('aria-label', 'Usar o padrão da marca em ' + nomeDaVista(v));
+      if (!escrita) b.disabled = true;
+      b.addEventListener('click', function () { usarPadrao(v); });
+      pe.appendChild(b);
+    }
+    // revisao do M4: com valor ja escolhido, a nota diz o que o clique faz, sem dizer que nada esta gravado
+    const escolhido = !!(d && (d.regra || d.x || d.y));
+    pe.appendChild(el('p', tudo ? 'Você pode trocar qualquer valor abaixo.' : escolhido ?
+      'O valor marcado abaixo fica gravado. Usar o padrão troca pelo valor da marca.' :
+      'Nada fica gravado até você clicar em Usar o padrão ou escolher abaixo.', 'nota sugestao-nota'));
+    box.appendChild(pe);
+    return box;
   }
   function montarDesign() {
     const s = document.getElementById('resumo-design');
@@ -1769,7 +1892,8 @@
     if (!vistas.some(function (v) { return v.chave === p2idx.design; })) p2idx.design = vistas[0].chave;
     vistas.forEach(function (v, i) {
       const d = designDe(v.chave) || {};
-      const pronta = !!(d.regra && d.x && d.y);
+      // revisao do M4: com a origem do padrao vencida, o servidor recusa salvar, entao o card nao se diz pronto
+      const pronta = !!(d.regra && d.x && d.y) && !padraoVencido(v);
       const art = el('article', null, 'funcao-ds' + (v.chave === p2idx.design ? ' atual' : '') + (pronta ? ' feita' : ''));
       art.dataset.chave = v.chave;
       art.style.setProperty('--i', String(i));
@@ -1780,6 +1904,10 @@
       topo.appendChild(el('span', plural(v.camadas.length, 'camada', 'camadas') + (pronta ? ', pronta' : ''), 'decisao-estado'));
       topo.addEventListener('click', function () { p2idx.design = v.chave; montarDesign(); });
       art.appendChild(topo);
+      // M7c, M4: o padrao da marca citado, com a fonte, e o aviso quando o clique de antes nao vale mais
+      if (padraoVencido(v)) art.appendChild(el('p', avisoDoPadrao(v), 'aviso-padrao'));
+      const quadroPadrao = quadroDoPadrao(v, d);
+      if (quadroPadrao) art.appendChild(quadroPadrao);
       const corpo = el('div', null, 'funcao-ds-corpo');
       const blocoRegra = el('div', null, 'bloco-ds');
       blocoRegra.appendChild(el('h3', 'Tamanho', 'subtitulo'));

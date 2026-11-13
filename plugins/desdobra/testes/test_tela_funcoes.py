@@ -812,3 +812,263 @@ def test_ref_das_sugestoes_segue_o_teto_da_tela(job_salvar, modelo):  # noqa: F8
     assert com_b['sugestoes']()['sha256'] is None
     assert bs.montar(job, com_b, {'familias': {}}, **kw)['sugestoes_ref'] is None
     assert bs.montar(job, sem_teto, {'familias': {}}, **kw)['sugestoes_ref'] == _sha_validadas(job)
+
+
+# ------------------------------------------------------------------ M7c, M4: o padrao da marca como sugestao citada
+# arquitetura-v1.md, 5.3 e 5.7; decisoes-v1.md, 162 e 190 (Q1 e Q3): para cada funcao com regra no perfil atual da
+# marca escolhida no passo 1, a tela mostra a regra de escala e a ancora com a fonte ("padrao da marca, versao N, do job
+# X"), sem gravar nada. So o clique do DA em "Usar o padrao" poe o valor no rascunho, com a origem padrao_marca e o ref
+# "marca:<id>@v<N>#job:<id>". Biblioteca e perfis sinteticos, em pasta temporaria (pelo modulo do perfil, M2).
+import copy  # noqa: E402
+
+JOB_P1 = 'a1' * 16
+JOB_P2 = 'b2' * 16
+
+
+def _campanha_m4(job_id):
+    return {'job': job_id, 'data': '2026-11-12', 'formatos': [{'formato': 'f300x250', 'aprovacao_sha256': 'd4' * 32}],
+            'confirmado_por': {'usuario': 'da', 'maquina': 'estacao'}, 'origem': 'da', 'meio': 'tela'}
+
+
+def perfil_m4(bib, nome='Marca Sintetica M4', versoes=2, regra_titulo='raiz_area'):
+    """Um perfil sintetico: na versao 1 (job 1), titulo e estrutura; na 2 (job 2) o logo entra, e o titulo e a
+    estrutura mantem o job 1 de origem. Devolve o id."""
+    from desdobra.marca import perfil
+    id_ = perfil.criar(bib, nome)['id']
+    v1 = {'regras_escala': [{'funcao': 'titulo', 'regra': regra_titulo, 'job_origem': JOB_P1},
+                            {'funcao': 'estrutura', 'regra': 'cover', 'job_origem': JOB_P1}],
+          'ancoras': [{'funcao': 'titulo', 'x': 'esquerda', 'y': 'topo', 'job_origem': JOB_P1},
+                      {'funcao': 'estrutura', 'x': 'centro', 'y': 'meio', 'job_origem': JOB_P1}],
+          'faces': [{'postscript': 'Sintetica-Bold'}]}
+    perfil.nova_versao(bib, id_, campanha=_campanha_m4(JOB_P1), quando='2026-11-12T10:00:00-03:00', **v1)
+    if versoes >= 2:
+        registrar_m4(bib, id_, v1)
+    return id_
+
+
+def registrar_m4(bib, id_, v1, regra_titulo=None):
+    """A versao seguinte do perfil (job 2): o logo entra; regra_titulo troca a regra do titulo (origem job 2)."""
+    from desdobra.marca import perfil
+    v2 = copy.deepcopy(v1)
+    v2['regras_escala'].append({'funcao': 'logo_principal', 'regra': 'raiz_area', 'job_origem': JOB_P2})
+    v2['ancoras'].append({'funcao': 'logo_principal', 'x': 'direita', 'y': 'base', 'job_origem': JOB_P2})
+    if regra_titulo:
+        v2['regras_escala'][0] = {'funcao': 'titulo', 'regra': regra_titulo, 'job_origem': JOB_P2}
+    return perfil.nova_versao(bib, id_, campanha=_campanha_m4(JOB_P2), quando='2026-11-13T10:00:00-03:00', **v2)[0]
+
+
+def marca_do_job_m4(job, marca_id):
+    """briefing/marca.json sintetico (o ato da tela tem os testes dele em test_tela_salvar.py)."""
+    from desdobra.marca import job as mj
+    (job / 'briefing').mkdir(exist_ok=True)
+    contratos.gravar(job / mj.ARQUIVO, {
+        'esquema': mj.ESQUEMA, 'job_id': 'f0' * 16, 'escolha': 'sem_marca' if marca_id is None else 'marca',
+        'marca_id': marca_id, 'origem': 'fixture_de_teste',
+        'escolhido_por': {'usuario': None, 'maquina': None, 'meio': 'medicao', 'quando': '2026-11-13T10:00:00-03:00'}},
+        mj.ESQUEMA)
+
+
+@pytest.fixture
+def bib_m4(tmp_path):
+    bib = tmp_path / 'biblioteca-da-agencia'
+    bib.mkdir()
+    return bib
+
+
+def test_padrao_da_marca_cita_versao_e_job_de_cada_regra(job_funcoes, bib_m4):
+    id_ = perfil_m4(bib_m4)
+    marca_do_job_m4(job_funcoes, id_)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    assert p['versao'] == 2 and set(p['funcoes']) == {'titulo', 'estrutura', 'logo_principal'}
+    t = p['funcoes']['titulo']
+    # desde: a primeira versao, na sequencia que chega a atual, com o mesmo valor e o mesmo job de origem
+    assert t['regra'] == {'valor': 'raiz_area', 'job': JOB_P1, 'ref': 'marca:%s@v2#job:%s' % (id_, JOB_P1),
+                          'desde': 1}
+    assert t['ancora'] == {'x': 'esquerda', 'y': 'topo', 'job': JOB_P1, 'ref': 'marca:%s@v2#job:%s' % (id_, JOB_P1),
+                           'desde': 1}
+    assert p['funcoes']['logo_principal']['regra']['ref'] == 'marca:%s@v2#job:%s' % (id_, JOB_P2)
+    assert tf.ref_do_padrao(id_, 2, JOB_P1) == t['regra']['ref']
+    # so ids, o enum e a versao: o nome da marca nunca entra
+    assert 'Marca Sintetica' not in json.dumps(p)
+    # nada foi gravado no job
+    assert not (job_funcoes / tr.ARQUIVO).exists()
+
+
+def test_sem_marca_sem_biblioteca_ou_perfil_sem_registro_nada_aparece(job_funcoes, bib_m4):
+    assert tf.padrao_da_marca(job_funcoes, bib_m4) is None  # nenhuma marca escolhida
+    id_ = perfil_m4(bib_m4)
+    marca_do_job_m4(job_funcoes, None)
+    assert tf.padrao_da_marca(job_funcoes, bib_m4) is None  # "Sem marca"
+    marca_do_job_m4(job_funcoes, id_)
+    assert tf.padrao_da_marca(job_funcoes, None) is None  # biblioteca nao configurada
+    vazia = bib_m4.parent / 'outra-biblioteca'
+    vazia.mkdir()
+    assert tf.padrao_da_marca(job_funcoes, vazia) is None  # a marca nao esta nesta biblioteca
+    from desdobra.marca import perfil
+    nova = perfil.criar(bib_m4, 'Marca Sintetica Sem Registro')['id']
+    marca_do_job_m4(job_funcoes, nova)
+    assert tf.padrao_da_marca(job_funcoes, bib_m4) is None  # versao 0: nada registrado
+
+
+def design_do_padrao(p, *funcoes):
+    """O que o clique em "Usar o padrao" poe no rascunho, por funcao."""
+    d = {}
+    for f in funcoes:
+        x = p['funcoes'][f]
+        d[f] = {'regra': x['regra']['valor'], 'x': x['ancora']['x'], 'y': x['ancora']['y'],
+                'origem': {'regra': {'tipo': 'padrao_marca', 'ref': x['regra']['ref']},
+                           'ancora': {'tipo': 'padrao_marca', 'ref': x['ancora']['ref']}}}
+    return d
+
+
+def _rascunho_minimo():
+    return {'esquema': tr.ESQUEMA, 'job_id': 'f0' * 16, 'laudo_sha256': 'c' * 64, 'origem': 'rascunho',
+            'atualizado_em': '2026-11-13T10:00:00-03:00', 'familias': {}}
+
+
+def test_padrao_nao_e_valor_e_o_clique_leva_a_origem_ao_briefing_parcial(job_funcoes, bib_m4):
+    laudo = laudo_pequeno()
+    id_ = perfil_m4(bib_m4)
+    marca_do_job_m4(job_funcoes, id_)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    dados = {'funcoes': {'10': _f('titulo')}}
+    # com o padrao citado, a regra e a ancora do titulo continuam faltando: 0 campo preenchido sem o clique
+    assert {'tipo': 'regra', 'funcao': 'titulo'} in tf.pendencias(laudo, dados)
+    dados['design'] = design_do_padrao(p, 'titulo')
+    contratos.validar(dict(_rascunho_minimo(), **dados), tr.ESQUEMA)
+    assert {'tipo': 'regra', 'funcao': 'titulo'} not in tf.pendencias(laudo, dados)
+    parcial = tf.briefing_parcial(dados)
+    regra = next(r for r in parcial['regras_escala'] if r['funcao'] == 'titulo')['regra']
+    assert regra['origem'] == {'tipo': 'padrao_marca', 'ref': p['funcoes']['titulo']['regra']['ref']}
+    ancora = next(a for a in parcial['ancoras'] if a.get('funcao') == 'titulo')
+    assert ancora['x']['origem']['tipo'] == ancora['y']['origem']['tipo'] == 'padrao_marca'
+    assert tf.padrao_invalido(dados, p) == []
+    # sem o clique, a origem e a do DA, como antes
+    sem = tf.briefing_parcial({'design': {'titulo': {'regra': 'largura', 'x': None, 'y': None}}})
+    assert sem['regras_escala'][0]['regra']['origem'] == tf.ORIGEM
+
+
+def _trocar_versao(d, p):
+    o = d['titulo']['origem']['regra']
+    # revisao do M4: o titulo esta igual desde a versao 1, entao so a versao que nao existe (3) nao vale
+    o['ref'] = o['ref'].replace('@v2', '@v3')
+
+
+def _trocar_marca(d, p):
+    d['titulo']['origem']['ancora']['ref'] = 'marca:%s@v2#job:%s' % ('e' * 32, JOB_P1)
+
+
+def _trocar_job(d, p):
+    o = d['titulo']['origem']['regra']
+    o['ref'] = o['ref'].replace(JOB_P1, JOB_P2)
+
+
+@pytest.mark.parametrize('mudar, esperado', [
+    (lambda d, p: d['titulo'].update(regra='largura'), [{'funcao': 'titulo', 'campo': 'regra'}]),
+    (lambda d, p: d['titulo'].update(x='direita'), [{'funcao': 'titulo', 'campo': 'ancora'}]),
+    (_trocar_versao, [{'funcao': 'titulo', 'campo': 'regra'}]),
+    (_trocar_marca, [{'funcao': 'titulo', 'campo': 'ancora'}]),
+    (_trocar_job, [{'funcao': 'titulo', 'campo': 'regra'}]),
+])
+def test_origem_do_padrao_que_nao_bate_com_o_perfil_atual_e_invalida(job_funcoes, bib_m4, mudar, esperado):
+    id_ = perfil_m4(bib_m4)
+    marca_do_job_m4(job_funcoes, id_)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    design = design_do_padrao(p, 'titulo')
+    mudar(design, p)
+    assert tf.padrao_invalido({'design': design}, p) == esperado
+    # sem o perfil (sem marca, sem biblioteca), toda origem do padrao e invalida
+    assert tf.padrao_invalido({'design': design_do_padrao(p, 'titulo')}, None) == \
+        [{'funcao': 'titulo', 'campo': 'regra'}, {'funcao': 'titulo', 'campo': 'ancora'}]
+    # sem_padrao_invalido tira so a origem que nao vale; o valor fica, como escolha do DA
+    limpo = tf.sem_padrao_invalido({'design': design}, p)
+    assert limpo['design']['titulo']['regra'] == design['titulo']['regra']
+    campo = esperado[0]['campo']
+    assert campo not in (limpo['design']['titulo'].get('origem') or {})
+
+
+def test_versao_nova_do_perfil_invalida_o_clique_de_antes(job_funcoes, bib_m4):
+    """O DA usou o padrao da versao 2; a marca ganha a versao 3 com outra regra de titulo: o clique de antes deixa de
+    valer (o ref cita a versao 2), e o padrao citado agora e o da versao 3."""
+    from desdobra.marca import perfil
+    id_ = perfil_m4(bib_m4)
+    marca_do_job_m4(job_funcoes, id_)
+    p2 = tf.padrao_da_marca(job_funcoes, bib_m4)
+    dados = {'design': design_do_padrao(p2, 'titulo')}
+    atual = perfil.ler(bib_m4, id_)['atual']
+    base = {k: atual[k] for k in ('regras_escala', 'ancoras', 'faces')}
+    base['regras_escala'] = [r for r in base['regras_escala'] if r['funcao'] != 'logo_principal']
+    base['ancoras'] = [a for a in base['ancoras'] if a['funcao'] != 'logo_principal']
+    registrar_m4(bib_m4, id_, base, regra_titulo='lado_curto')
+    p3 = tf.padrao_da_marca(job_funcoes, bib_m4)
+    assert p3['versao'] == 3 and p3['funcoes']['titulo']['regra']['valor'] == 'lado_curto'
+    assert {'funcao': 'titulo', 'campo': 'regra'} in tf.padrao_invalido(dados, p3)
+    # revisao do M4: so o campo que mudou na versao nova cai; a ancora do titulo, igual desde a versao 1, continua
+    assert tf.padrao_invalido(dados, p3) == [{'funcao': 'titulo', 'campo': 'regra'}]
+
+
+def test_versao_nova_sem_mudar_a_funcao_mantem_o_clique_de_antes(job_funcoes, bib_m4):
+    """Revisao do M4: o DA usou o padrao da versao 2 no titulo e no logo; outra campanha registra a versao 3 mudando so
+    a estrutura. O titulo e o logo tem o mesmo valor e o mesmo job de origem: o clique de antes continua valendo, e o
+    ref novo do titulo diz desde que versao o valor esta igual. Um ref de versao em que o valor ainda nao estava no
+    perfil (ou de versao que nao existe) nao vale."""
+    from desdobra.marca import perfil
+    id_ = perfil_m4(bib_m4)
+    marca_do_job_m4(job_funcoes, id_)
+    p2 = tf.padrao_da_marca(job_funcoes, bib_m4)
+    assert p2['funcoes']['titulo']['regra']['desde'] == 1
+    assert p2['funcoes']['logo_principal']['regra']['desde'] == 2
+    dados = {'design': design_do_padrao(p2, 'titulo', 'logo_principal')}
+    v = copy.deepcopy({k: perfil.ler(bib_m4, id_)['atual'][k] for k in ('regras_escala', 'ancoras', 'faces')})
+    for r in v['regras_escala']:
+        if r['funcao'] == 'estrutura':
+            r.update(regra='largura', job_origem='c3' * 16)
+    perfil.nova_versao(bib_m4, id_, campanha=_campanha_m4('c3' * 16), quando='2026-11-14T10:00:00-03:00', **v)
+    p3 = tf.padrao_da_marca(job_funcoes, bib_m4)
+    assert p3['versao'] == 3 and p3['funcoes']['estrutura']['regra']['desde'] == 3
+    assert tf.padrao_invalido(dados, p3) == []
+    # o ref da versao 1 no logo (o logo so entrou na versao 2) e o da versao 4 (que nao existe) nao valem
+    velho = copy.deepcopy(dados)
+    velho['design']['logo_principal']['origem']['regra']['ref'] = 'marca:%s@v1#job:%s' % (id_, JOB_P2)
+    velho['design']['titulo']['origem']['ancora']['ref'] = 'marca:%s@v4#job:%s' % (id_, JOB_P1)
+    assert tf.padrao_invalido(velho, p3) == [{'funcao': 'logo_principal', 'campo': 'regra'},
+                                             {'funcao': 'titulo', 'campo': 'ancora'}]
+
+
+def test_regra_da_decisao_10_e_padrao_da_marca_aparecem_cada_um_com_a_fonte(job_funcoes, bib_m4):
+    """A camada coberta mostra a sugestao da regra da decisao 10 (estrutura) no passo 2, e o titulo mostra o padrao da
+    marca no Design system: as duas aparecem, cada uma com a fonte (a da decisao 10 no no da arvore, a da marca com o
+    ref), e nenhuma vira valor. A funcao que a regra da decisao 10 da (estrutura ou fora da peca) nao tem tamanho nem
+    ancora: o padrao da marca para ela fica no perfil e o Design system nao a pede."""
+    laudo = laudo_pequeno()
+    id_ = perfil_m4(bib_m4)
+    marca_do_job_m4(job_funcoes, id_)
+    p = tf.padrao_da_marca(job_funcoes, bib_m4)
+    coberta = next(n for n in tf.nos(laudo) if n['camada'] == 13)
+    assert coberta['coberta'] == {'sugestao': 'estrutura'}
+    assert p['funcoes']['titulo']['regra']['ref'].startswith('marca:%s@v2#' % id_)
+    assert {'estrutura', 'fora_da_peca'} <= set(mb.SEM_GEOMETRIA)
+    dados = {'funcoes': {'10': _f('titulo')}}
+    pend = tf.pendencias(laudo, dados)
+    # a coberta continua pedindo a decisao do DA, e o titulo continua pedindo regra e ancora: nada foi preenchido
+    assert {'tipo': 'coberta', 'camada': 13} in pend
+    assert {'tipo': 'regra', 'funcao': 'titulo'} in pend and {'tipo': 'ancora', 'funcao': 'titulo'} in pend
+    pend = tf.pendencias(laudo, dict(dados, cobertas={'13': 'aceita'}))
+    assert not any(x.get('funcao') == 'estrutura' for x in pend)
+
+
+def test_esquema_do_rascunho_aceita_a_origem_do_padrao_so_no_formato_do_ref():
+    base = _rascunho_minimo()
+    ref = 'marca:%s@v3#job:%s' % ('a' * 32, JOB_P1)
+    ok = {'titulo': {'regra': 'largura', 'x': None, 'y': None,
+                     'origem': {'regra': {'tipo': 'padrao_marca', 'ref': ref}}}}
+    contratos.validar(dict(base, design=ok), tr.ESQUEMA)
+    for ruim in ({'regra': {'tipo': 'da', 'ref': ref}}, {'regra': {'tipo': 'padrao_marca', 'ref': 'marca:abc'}},
+                 {'regra': {'tipo': 'padrao_marca', 'ref': 'marca:%s@v0#job:%s' % ('a' * 32, JOB_P1)}},
+                 {'cor': {'tipo': 'padrao_marca', 'ref': ref}},
+                 {'regra': {'tipo': 'padrao_marca', 'ref': ref, 'nome': 'x'}}):
+        with pytest.raises(contratos.ErroContrato):
+            contratos.validar(dict(base, design={'titulo': dict(ok['titulo'], origem=ruim)}), tr.ESQUEMA)
+    # o elemento indeterminado nao tem padrao da marca (a regra dele e por camada, no job)
+    with pytest.raises(contratos.ErroContrato):
+        contratos.validar(dict(base, design_camadas={'20': dict(ok['titulo'])}), tr.ESQUEMA)

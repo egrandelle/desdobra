@@ -92,13 +92,13 @@
       }
     },
     "design": {
-      "description": "Regra de escala e ancora por funcao, escolhidas no Design system; null enquanto o DA nao escolheu.",
+      "description": "Regra de escala e ancora por funcao, escolhidas no Design system; null enquanto o DA nao escolheu. M7c, M4: o valor posto pelo clique em \"Usar o padrao\" leva a origem padrao_marca por campo (regra, ancora), com o ref do perfil; o DA que muda o campo tira a origem dele.",
       "type": "object",
       "propertyNames": {
         "$ref": "#/$defs/funcao"
       },
       "additionalProperties": {
-        "$ref": "#/$defs/design"
+        "$ref": "#/$defs/design_funcao"
       }
     },
     "design_camadas": {
@@ -648,6 +648,58 @@
               "type": "null"
             }
           ]
+        }
+      }
+    },
+    "design_funcao": {
+      "description": "A entrada do Design system por funcao (design), com a origem por item do M7c, M4.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regra",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "regra": {
+          "$ref": "#/$defs/design/properties/regra"
+        },
+        "x": {
+          "$ref": "#/$defs/design/properties/x"
+        },
+        "y": {
+          "$ref": "#/$defs/design/properties/y"
+        },
+        "origem": {
+          "description": "So o que veio do clique em \"Usar o padrao\" (padrao da marca, arquitetura-v1.md, 5.3 e 5.7). Sem a chave, o valor e escolha do DA.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "regra": {
+              "$ref": "#/$defs/origem_padrao"
+            },
+            "ancora": {
+              "$ref": "#/$defs/origem_padrao"
+            }
+          }
+        }
+      }
+    },
+    "origem_padrao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tipo",
+        "ref"
+      ],
+      "properties": {
+        "tipo": {
+          "const": "padrao_marca"
+        },
+        "ref": {
+          "description": "marca:<id do perfil>@v<versao>#job:<job de origem> (desdobra.tela.funcoes.FORMA_DO_REF)",
+          "type": "string",
+          "pattern": "^marca:[0-9a-f]{32}@v[1-9][0-9]*#job:[0-9a-f]{8,64}$"
         }
       }
     }

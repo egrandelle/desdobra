@@ -33,6 +33,7 @@ ORIGEM_DA = 'da'
 ORIGEM_FIXTURE = 'fixture_de_teste'
 REF_RASCUNHO = 'rascunho da tela'
 REF_MODO = 'briefing/modo-dados.json'
+TIPO_PADRAO = 'padrao_marca'
 CAMPOS_DO_RASCUNHO = ('funcoes', 'cobertas', 'regras_escala', 'regras_indeterminado', 'ancoras')
 PASTA_MUDANCAS = Path('briefing') / 'historico' / 'mudancas'
 ESQUEMA_MUDANCAS = 'historico-mudancas/1'
@@ -78,11 +79,21 @@ def sugestoes_ref(pasta, conteudo=None):
     return funcoes.sugestoes_na_tela(pasta, modo_dados.teto_do_job(pasta))['sha256']
 
 
+def padrao_da_marca(pasta, conteudo=None):
+    """M7c, M4: o padrao atual da marca escolhida no job (desdobra.tela.funcoes.padrao_da_marca), lido da biblioteca
+    que a tela recebeu (conteudo['pasta_biblioteca']); None sem ela (o "briefing confirmar" do terminal, por exemplo)."""
+    from desdobra.tela import funcoes
+    return funcoes.padrao_da_marca(pasta, (conteudo or {}).get('pasta_biblioteca'))
+
+
 def _com_origem(itens, tipo):
+    """As decisoes do rascunho com a origem do Disparo (da ou fixture_de_teste). M7c, M4: a origem padrao_marca que o
+    rascunho traz (o clique em "Usar o padrao") fica, com o ref; quem chama ja tirou a que nao bate com o perfil atual
+    (montar) ou recusa o salvar (pendencias)."""
     saida = copy.deepcopy(itens)
     for item in saida:
         for v in item.values():
-            if isinstance(v, dict) and 'situacao' in v:
+            if isinstance(v, dict) and 'situacao' in v and (v.get('origem') or {}).get('tipo') != TIPO_PADRAO:
                 v['origem'] = {'tipo': tipo, 'ref': REF_RASCUNHO}
     return saida
 
@@ -116,7 +127,9 @@ def montar(pasta, conteudo, dados, *, origem, meio, por, quando, modo):
     laudo = contratos.ler(Path(pasta) / mb.ARQUIVO_LAUDO, 'laudo/1')
     novo = escolhas_do_passo_1(base, dados, laudo, tipo)
     quadro = novo['quadro']['valor'] if mb._decisao_valida(novo['quadro']) else None
-    parcial = funcoes.briefing_parcial(dados, quadro)
+    # M7c, M4: so a origem padrao_marca que bate com o perfil atual da marca do job vai ao briefing (o gravador recusa
+    # antes a que nao bate: pendencias, padrao_marca_desatualizado)
+    parcial = funcoes.briefing_parcial(funcoes.sem_padrao_invalido(dados, padrao_da_marca(pasta, conteudo)), quadro)
     for k in CAMPOS_DO_RASCUNHO:
         novo[k] = _com_origem(parcial[k], tipo)
     novo['modo_dados'] = {'valor': modo, 'situacao': 'confirmado' if modo else 'pendente',
@@ -205,6 +218,12 @@ def pendencias(pasta, conteudo, origem=None):
     modo = _modo(pasta, origem)
     if modo is None:
         saida.append({'codigo': 'modo_dados_sem_escolha'})
+    # M7c, M4: o valor posto por "Usar o padrao" com o ref que nao bate com o perfil atual da marca do job (outra
+    # versao, outra marca, outro job de origem, valor trocado sem tirar a origem, ou sem a biblioteca na tela)
+    from desdobra.tela import funcoes
+    velhos = funcoes.padrao_invalido(dados, padrao_da_marca(pasta, conteudo))
+    if velhos:
+        saida.append({'codigo': 'padrao_marca_desatualizado', 'funcoes': sorted({x['funcao'] for x in velhos})})
     # o gravado de outra versao do laudo, das specs, do design system ou das fontes nao entra aqui: montar parte da
     # retomada (mb.base_da_tela), com os formatos das specs de agora, e nunca carimba os formatos velhos como atuais
     try:
@@ -401,13 +420,14 @@ def _decisoes(b):
     return saida
 
 
-def situacao_na_tela(pasta, familias):
+def situacao_na_tela(pasta, familias, biblioteca=None):
     """{'salvo', 'em'} para a tela: salvo quando "Salvar e seguir" nao mudaria o briefing gravado, que vale para os
     arquivos do job e tem as familias da tela confirmadas. O briefing que o gravador montaria agora sai do mesmo montar
     (o rascunho da tela: passo 1, passo 2 e Design system, familias com versao, edicoes e quebras; o modo de dados; o
     resto do gravado), com a origem do gravado, e e comparado com ele fora do cabecalho e do carimbo das confirmacoes
     (_decisoes): nenhum campo que o gravador escreve fica de fora (correcao do D1 do E1, a funcao trocada no passo 2
-    deixava a tela em "Briefing salvo"). familias: {id: [formatos]}."""
+    deixava a tela em "Briefing salvo"). familias: {id: [formatos]}. biblioteca: a pasta da biblioteca da
+    agencia que a tela recebeu (M7c, M4: a origem padrao_marca do rascunho so conta com o perfil atual)."""
     from desdobra.briefing import modelo as mb
     nao = {'salvo': False, 'em': None}
     try:
@@ -430,7 +450,8 @@ def situacao_na_tela(pasta, familias):
             return nao
     origem = b['cabecalho']['origem']
     try:
-        novo = montar(pasta, {'familias': {gid: {'formatos': list(fids)} for gid, fids in familias.items()}}, dados,
+        novo = montar(pasta, {'familias': {gid: {'formatos': list(fids)} for gid, fids in familias.items()},
+                              'pasta_biblioteca': biblioteca}, dados,
                       origem=origem, meio=b['cabecalho'].get('meio'), por={}, quando=None, modo=_modo(pasta, origem))
     except (contratos.ErroContrato, KeyError, TypeError, ValueError):
         return nao
