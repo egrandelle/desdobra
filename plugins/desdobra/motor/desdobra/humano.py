@@ -58,8 +58,9 @@ COMANDOS = ('render', 'linkado confirmar', 'spec confirmar', 'briefing confirmar
             'parametros-entrega')
 # atos que so existem como botao da tela, sem comando de terminal (decisoes-v1.md, 159 e 170): o Disparo deles sai so
 # por exigir_tela. Ficam fora de COMANDOS e do gancho, que so conhece os comandos de terminal. 'marca escolher' e a
-# marca do job no passo 1 (M7c, M3; decisoes-v1.md, 190, Q5)
-ATOS_DA_TELA = ('modo dados escolher', 'familia confirmar', 'marca escolher')
+# marca do job no passo 1 (M7c, M3; decisoes-v1.md, 190, Q5); 'marca registrar' guarda o padrao da marca no perfil da
+# biblioteca da agencia quando todos os formatos estao aprovados (M7c, M5; decisoes-v1.md, 190, Q2)
+ATOS_DA_TELA = ('modo dados escolher', 'familia confirmar', 'marca escolher', 'marca registrar')
 # marcas do painel de terminal do app do Claude (decisoes-v1.md, 160), medidas no shell do painel em 04/11: o painel
 # nao poe as VARIAVEIS_DO_CLAUDE, mas poe TERM_PROGRAM=claude-desktop e CLAUDE_AGENT_SDK_VERSION, e o shell dele e
 # filho de claude.exe (powershell.exe -> claude.exe -> claude.exe -> sihost.exe). Cada marca recusa sozinha

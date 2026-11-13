@@ -1636,11 +1636,16 @@ def _sem_previa(_dados, origem=None, antes=None):
 def marca_na_tela(pasta, conferencia):
     """M7c, M3: o bloco da marca do job no passo 1 (desdobra.marca.job.na_tela), sem o caminho da biblioteca. M7c, M4:
     'padrao', o padrao da marca escolhida para o Design system (desdobra.tela.funcoes.padrao_da_marca: regra e ancora
-    por funcao com a versao e o job de origem, ou None), lido de novo a cada montagem e a cada recarregar, sem gravar."""
+    por funcao com a versao e o job de origem, ou None), lido de novo a cada montagem e a cada recarregar, sem gravar.
+    M7c, M5: 'registro', o botao de guardar o padrao da marca (desdobra.marca.registrar.na_tela: so com a marca
+    escolhida e todos os formatos aprovados pelo DA, com o que vai ao perfil; sem caminho nem id da marca)."""
     from desdobra.marca import job as marca_job
+    from desdobra.marca import registrar
     from desdobra.tela import funcoes as funcoes_da_tela
     bloco = marca_job.na_tela(pasta, conferencia)
-    bloco['padrao'] = funcoes_da_tela.padrao_da_marca(pasta, conferencia.pasta if conferencia.usavel else None)
+    bib = conferencia.pasta if conferencia.usavel else None
+    bloco['padrao'] = funcoes_da_tela.padrao_da_marca(pasta, bib)
+    bloco['registro'] = registrar.na_tela(pasta, bib)
     return bloco
 
 
@@ -1670,6 +1675,10 @@ def montar(pasta, teto=None, biblioteca=None):
     from desdobra.job import nucleo
     pasta = Path(pasta).resolve()
     from desdobra.briefing import modelo as mb
+    from desdobra.sugestao import pacote as sugestao_pacote
+    # a fase specs que o ato do modo nao conseguiu refazer (outro processo segurava o job) e refeita aqui, antes de
+    # a tela recusar por fase desatualizada: o DA nunca precisa do terminal (revisao 2 da correcao A do M7c, E1)
+    sugestao_pacote.curar_specs(pasta, teto)
     assinatura = assinatura_do_passo_2(pasta)
     passo_1 = _escolhas_do_passo_1(pasta)
     try:
@@ -1831,6 +1840,9 @@ def montar(pasta, teto=None, biblioteca=None):
 
     def atualizador(feita, atual):
         def atualizar():
+            # cada pedido do estado (e o servidor antes de cada ato): a fase specs atrasada so pelo mapeamento que o
+            # ato do modo apagou com o job ocupado e refeita, e o rascunho novo pede a tela montada de novo
+            sugestao_pacote.curar_specs(pasta, teto)
             if mb.hashes_atuais(pasta) != arquivos_feitos:
                 # o laudo, as specs, o design system ou as fontes mudaram com a tela aberta (o ato de spec do passo
                 # 1): os formatos e o briefing de onde a tela parte sao outros

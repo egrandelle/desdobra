@@ -245,6 +245,9 @@ def avaliar(pasta, estado, fases):
 
     Devolve tambem o conjunto das fases cujas entradas mudaram diretamente (para gravar como invalidadas)."""
     por_id = {f.id: f for f in fases}
+    # os arquivos refeitos fora das fases (Fase.refeitas, os pacotes do Claude) nao contam; o job gravado antes do
+    # M7c, E1 ainda tem o hash deles nas entradas e nas saidas, e ele e ignorado aqui
+    refeitas = {r for f in fases for r in f.refeitas}
     resultado, diretas = {}, {}
     for f in fases:
         reg = estado['fases'].get(f.id) or _registro_vazio()
@@ -252,7 +255,8 @@ def avaliar(pasta, estado, fases):
             resultado[f.id] = (False, reg['situacao'])
             continue
         atual = hashes_da_fase(pasta, f, por_id)
-        mudaram = sorted(k for k in set(atual) | set(reg['hash_entradas']) if atual.get(k) != reg['hash_entradas'].get(k))
+        mudaram = sorted(k for k in set(atual) | set(reg['hash_entradas'])
+                         if k not in refeitas and atual.get(k) != reg['hash_entradas'].get(k))
         if mudaram:
             motivo = 'entradas mudaram: %s' % ', '.join(mudaram)
             resultado[f.id] = (False, motivo)
@@ -262,7 +266,7 @@ def avaliar(pasta, estado, fases):
         if 'hash_saidas' in reg:
             saidas_agora = hashes_das_saidas(pasta, f)
             mexidas = sorted(s for s in set(saidas_agora) | set(reg['hash_saidas'])
-                             if saidas_agora.get(s) != reg['hash_saidas'].get(s))
+                             if s not in refeitas and saidas_agora.get(s) != reg['hash_saidas'].get(s))
         else:
             mexidas = [s for s in f.saidas if hash_padrao(pasta, s) is None]
         if mexidas:

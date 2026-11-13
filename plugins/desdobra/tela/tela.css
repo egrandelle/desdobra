@@ -1582,3 +1582,56 @@ img.peca { user-select: none; pointer-events: none; }
   .passo-formatos { grid-template-columns: minmax(0, 1fr) 400px; }
   .painel-coluna { padding: 24px 24px 32px; }
 }
+
+/* ---------------------------------------------------------------- o padrao da marca (M7c, M5)
+   Uma faixa no fio da lista, com o acento: aparece so quando todos os formatos estao aprovados e o job tem marca. A
+   janela do registro lista, por linhas e sem cartoes, o que vai ao perfil: funcao, valor e o job de origem. */
+.registro-marca {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 24px;
+  margin: 0 0 20px;
+  padding: 14px 16px 14px 18px;
+  border: 1px solid var(--acento-linha);
+  border-left: 3px solid var(--acento);
+  border-radius: var(--raio-p);
+  background: var(--acento-fundo);
+  animation: subir 0.3s var(--curva) both;
+}
+.registro-marca[data-situacao="guardado"] { border-color: #cfe3d5; border-left-color: #2f6b45; background: #edf5ef; }
+.registro-textos { min-width: 0; display: grid; gap: 2px; }
+.registro-selo { color: var(--acento); font-size: 12px; font-weight: 600; letter-spacing: 0.01em; overflow-wrap: anywhere; }
+.registro-marca[data-situacao="guardado"] .registro-selo { color: #2f6b45; }
+.registro-marca h2 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.registro-nota { font-size: 12px; max-width: 72ch; color: var(--suave); }
+.registro-guardar { flex: none; white-space: nowrap; }
+.registro-extra { display: grid; gap: 18px; }
+.registro-grupo-topo { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.registro-grupo h3 { font-size: 12px; font-weight: 600; color: var(--suave); margin: 0; }
+.registro-conta { color: var(--mais-suave); font-size: 11px; font-variant-numeric: tabular-nums; }
+.registro-lista { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--linha); }
+.registro-linha {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 1.3fr) auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--linha);
+  animation: subir 0.25s var(--curva) both;
+}
+.registro-funcao { font-weight: 600; overflow-wrap: anywhere; }
+.registro-valor { color: var(--tinta); overflow-wrap: anywhere; }
+.registro-origem { color: var(--mais-suave); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.registro-faces .chip { font-variant-numeric: normal; overflow-wrap: anywhere; }
+.registro-fora { font-size: 12px; padding-top: 2px; }
+@media (max-width: 1280px) {
+  .registro-marca { grid-template-columns: minmax(0, 1fr); }
+  .registro-guardar { justify-self: start; }
+  .registro-linha { grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.2fr) auto; gap: 8px; }
+}
+@media (min-width: 900px) {
+  .registro-extra { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 28px; }
+  .registro-extra > .registro-grupo:nth-child(3), .registro-extra > .registro-fora { grid-column: 1 / -1; }
+  .registro-extra .registro-linha { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto; }
+}

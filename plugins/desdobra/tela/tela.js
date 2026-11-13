@@ -600,7 +600,9 @@
         throw e;
       });
     }).then(function (p) {
-      return confirmarNaJanela(p).then(function (sim) {
+      // M7c, M5: a janela do registro do padrao da marca mostra o que vai ao perfil
+      const extra = nome === 'marca_registrar' ? extraDoRegistro() : null;
+      return confirmarNaJanela(extra ? Object.assign({}, p, { extra: extra, larga: true }) : p).then(function (sim) {
         if (!sim) return enviar('/api/ato/cancelar', { pedido: p.pedido }).then(function () { raiz.dataset.estadoAto = 'cancelado'; });
         const chave = JSON.stringify(dados || {});
         return enviar('/api/ato/confirmar', { pedido: p.pedido, resposta: 'confirmar' })
@@ -3926,6 +3928,7 @@
       lista.appendChild(vazio);
     }
     fs.forEach(function (f, i) { lista.appendChild(linhaDoFormato(f, i)); });
+    montarRegistro();
     montarHistorico((estado.painel && estado.painel.historico) || []);
     if (!pn.escolhido || !formatoDoPainel(pn.escolhido)) {
       // o primeiro que pede atencao do DA; sem nenhum, o primeiro da lista
@@ -4001,11 +4004,96 @@
     rotular(a, 'Aprovar', pn.marcados.size, 'formato marcado', 'formatos marcados');
     r.disabled = !escrita || ocupado || !afetados.length;
     a.disabled = !escrita || ocupado || !pn.marcados.size;
+    document.getElementById('registro-guardar').disabled = !escrita || ocupado;
     document.querySelectorAll('#lista-formatos .linha-marca').forEach(function (c) {
       const f = formatoDoPainel(c.closest('.linha-formato').dataset.formato);
       c.disabled = !escrita || ocupado || !(f && f.pode_aprovar);
     });
     raiz.dataset.painel = fs.length ? 'pronto' : 'vazio';
+  }
+  /* ---------------------------------------------------------------- o padrao da marca (M7c, M5; decisao 190, Q1 a Q3)
+     O botao "Guardar o padrão desta marca" so aparece quando o motor diz que pode (desdobra/marca/registrar.py,
+     na_tela: o job tem marca e todos os formatos estao aprovados pelo DA). Ele e um ato da janela, como os outros: a
+     confirmacao mostra o que vai ao perfil (as regras de escala e as ancoras por funcao com o job de origem, e o nome
+     das faces) e so o Confirmar grava. Depois, a faixa diz em que versao o padrao ficou guardado, sem botao. O nome da
+     marca e o das faces entram so por textContent. */
+  const REGISTRO_SELO = 'Padrão da marca';
+  const REGISTRO_TITULO = 'A campanha foi aprovada';
+  const REGISTRO_GUARDADO = 'Padrão guardado';
+  const REGISTRO_FORA = 'Fica de fora do perfil: as edições de palco, a versão da galeria e os arquivos de fonte. ' +
+    'O perfil guarda só o nome de cada face.';
+  function registroDaMarca() {
+    return (estado && estado.lido && estado.lido.marca && estado.lido.marca.registro) || null;
+  }
+  function montarRegistro() {
+    const r = registroDaMarca();
+    const faixa = document.getElementById('registro-marca');
+    const b = document.getElementById('registro-guardar');
+    const mostra = !!(r && (r.pode || r.guardado));
+    faixa.hidden = !mostra;
+    b.hidden = !(mostra && r.pode);
+    if (!mostra) { delete b.dataset.dados; return; }
+    faixa.dataset.situacao = r.pode ? 'pode' : 'guardado';
+    document.getElementById('registro-selo').textContent = r.nome;
+    faixa.setAttribute('aria-label', REGISTRO_SELO + ' ' + r.nome);
+    document.getElementById('registro-titulo').textContent = r.pode ? REGISTRO_TITULO : REGISTRO_GUARDADO;
+    document.getElementById('registro-nota').textContent = r.pode ?
+      (r.formatos === 1 ? 'O formato do job está aprovado.' : 'Os ' + r.formatos + ' formatos do job estão aprovados.') +
+        ' Guarde as regras de escala e as âncoras deste job para os próximos jobs desta marca.' :
+      'O padrão desta campanha está na versão ' + (r.versao_guardada || r.versao_atual) + ' da marca.' +
+        (r.versao_guardada && r.versao_guardada < r.versao_atual ?
+          ' A versão que vale agora é a ' + r.versao_atual + ', de uma campanha mais nova.' : '') +
+        ' Os próximos jobs dela mostram o padrão como sugestão.';
+    if (r.pode) {
+      b.dataset.dados = JSON.stringify({ impressao: r.impressao });
+      b.disabled = !escrita || pn.ocupado;
+    }
+  }
+  function linhaDoRegistro(lista, nome, valor, i) {
+    const li = el('li', null, 'registro-linha');
+    li.appendChild(el('span', maiuscula(nomeFuncao(i.funcao)), 'registro-funcao'));
+    li.appendChild(el('span', valor, 'registro-valor'));
+    const origem = el('span', i.desta_campanha ? 'deste job' : 'do job ' + i.job + ', mantida', 'registro-origem');
+    if (!i.desta_campanha) origem.title = 'Este job não decidiu esta função. Ela fica como estava no padrão.';
+    li.appendChild(origem);
+    li.setAttribute('aria-label', nome + ' de ' + nomeFuncao(i.funcao) + ': ' + valor + ', ' + origem.textContent);
+    lista.appendChild(li);
+  }
+  /* o que a janela de confirmacao do registro mostra alem do texto do motor */
+  function extraDoRegistro() {
+    const r = registroDaMarca();
+    if (!r || !r.pode) return null;
+    const corpo = el('div', null, 'registro-extra');
+    [['Regras de escala', r.regras, function (i) { return maiuscula(nomeRegra(i.regra)); }],
+      ['Âncoras', r.ancoras, function (i) { return (ANCORA_Y[i.y] || i.y) + ' ' + (ANCORA_X[i.x] || i.x); }]
+    ].forEach(function (g) {
+      const bloco = el('section', null, 'registro-grupo');
+      const topo = el('div', null, 'registro-grupo-topo');
+      topo.appendChild(el('h3', g[0]));
+      topo.appendChild(el('span', String(g[1].length), 'registro-conta'));
+      bloco.appendChild(topo);
+      if (!g[1].length) bloco.appendChild(el('p', 'Nenhuma confirmada neste job.', 'nota'));
+      else {
+        const ul = el('ul', null, 'registro-lista');
+        g[1].forEach(function (i) { linhaDoRegistro(ul, g[0] === 'Âncoras' ? 'Âncora' : 'Regra', g[2](i), i); });
+        bloco.appendChild(ul);
+      }
+      corpo.appendChild(bloco);
+    });
+    const faces = el('section', null, 'registro-grupo');
+    const topo = el('div', null, 'registro-grupo-topo');
+    topo.appendChild(el('h3', 'Faces usadas'));
+    topo.appendChild(el('span', String(r.faces.length), 'registro-conta'));
+    faces.appendChild(topo);
+    if (!r.faces.length) faces.appendChild(el('p', 'Nenhuma face de texto no KV.', 'nota'));
+    else {
+      const ul = el('ul', null, 'formatos-do-ato registro-faces');
+      r.faces.forEach(function (f) { ul.appendChild(el('li', f, 'chip chip-neutro')); });
+      faces.appendChild(ul);
+    }
+    corpo.appendChild(faces);
+    corpo.appendChild(el('p', REGISTRO_FORA, 'nota registro-fora'));
+    return corpo;
   }
   function montarHistorico(h) {
     const ol = document.getElementById('historico-versoes');

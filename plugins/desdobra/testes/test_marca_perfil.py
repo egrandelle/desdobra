@@ -294,6 +294,62 @@ def test_mesmo_job_sem_mudanca_nao_cria_versao(bib):
     assert criou and dados['versao'] == 2 and dados['historico'][0]['job_origem'] == JOB_1
 
 
+def test_nova_versao_recusa_versao_de_partida_diferente_da_esperada(bib):
+    """Quem conferiu o perfil na versao N grava com versao_esperada=N: se outro registro gravou antes, recusa sem
+    gravar; sem versao_esperada, segue como antes."""
+    p = _perfil()
+    id_ = p.criar(bib, 'Marca Sintetica')['id']
+    _registrar(p, bib, id_, JOB_1)
+    arquivo = bib / 'marcas' / id_ / 'perfil-marca.json'
+    antes = arquivo.read_bytes()
+    with pytest.raises(p.ErroPerfil, match='mudou'):
+        p.nova_versao(bib, id_, campanha=_campanha(JOB_2), versao_esperada=0, **_conteudo(JOB_2))
+    assert arquivo.read_bytes() == antes
+    # o mesmo job sem mudanca tambem e recusado quando a versao de partida nao e a esperada
+    with pytest.raises(p.ErroPerfil, match='mudou'):
+        p.nova_versao(bib, id_, campanha=_campanha(JOB_1), quando='2026-11-12T10:00:00-03:00', versao_esperada=0,
+                      **_conteudo(JOB_1))
+    dados, criou = p.nova_versao(bib, id_, campanha=_campanha(JOB_2), versao_esperada=1, **_conteudo(JOB_2))
+    assert criou and dados['versao'] == 2
+
+
+ESPERA_DO_OUTRO_S = 1.0  # numero-neutro: sem a trava, o outro registro grava em milissegundos; com ela, fica esperando
+
+
+def test_nova_versao_concorrente_entre_a_releitura_e_a_gravacao_espera_a_trava_da_marca(bib, monkeypatch):
+    """Revisao da correcao B: outro registro que chega entre a releitura final e a gravacao deste espera a trava da
+    marca; quando entra, le a versao nova, ve que nao e a que conferiu e e recusado. Nenhuma versao some sem erro."""
+    import threading
+    p = _perfil()
+    id_ = p.criar(bib, 'Marca Sintetica')['id']
+    original = p._gravar
+    resultado = {}
+
+    def outro():
+        try:
+            resultado['outro'] = p.nova_versao(bib, id_, campanha=_campanha(JOB_2), versao_esperada=0,
+                                               **_conteudo(JOB_2))
+        except p.ErroPerfil as e:
+            resultado['erro_do_outro'] = str(e)
+    linha = threading.Thread(target=outro)
+
+    def gravar_intercalado(biblioteca, dados):
+        if 'iniciado' not in resultado:
+            resultado['iniciado'] = True
+            linha.start()
+            linha.join(ESPERA_DO_OUTRO_S)
+        return original(biblioteca, dados)
+    monkeypatch.setattr(p, '_gravar', gravar_intercalado)
+    dados, criou = p.nova_versao(bib, id_, campanha=_campanha(JOB_1), versao_esperada=0, **_conteudo(JOB_1))
+    linha.join()
+    assert criou and dados['versao'] == 1
+    final = p.ler(bib, id_)
+    jobs = [v['campanha']['job'] for v in [final['atual']] + final['historico']]
+    assert 'outro' not in resultado or JOB_2 in jobs, 'a versao do outro registro sumiu sem erro'
+    assert 'mudou' in resultado.get('erro_do_outro', '')
+    assert jobs == [JOB_1]
+
+
 def test_versao_recusa_job_de_origem_diferente_da_campanha_e_funcao_repetida(bib):
     p = _perfil()
     id_ = p.criar(bib, 'Marca Sintetica')['id']
@@ -376,7 +432,9 @@ def test_gravacao_atomica_sem_temporario(bib):
     p = _perfil()
     id_ = p.criar(bib, 'Marca Sintetica')['id']
     _registrar(p, bib, id_, JOB_1)
-    assert sorted(x.name for x in (bib / 'marcas' / id_).iterdir()) == ['perfil-marca.json']
+    # a trava da marca (revisao da correcao B) fica na pasta, vazia; nenhum temporario sobra
+    assert sorted(x.name for x in (bib / 'marcas' / id_).iterdir()) == [p.ARQUIVO_TRAVA, 'perfil-marca.json']
+    assert (bib / 'marcas' / id_ / p.ARQUIVO_TRAVA).read_bytes() == b''
 
 
 def test_motor_recusa_gravar_arquivo_com_assinatura_ou_nome_de_fonte_na_marca(bib):

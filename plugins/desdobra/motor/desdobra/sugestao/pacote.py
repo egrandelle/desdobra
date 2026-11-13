@@ -18,9 +18,17 @@ O pacote e refeito sempre que o modo ou o PSD muda:
   - refazer_pacotes: o ato do modo na tela e o "sugestao pacote" refazem os dois pacotes (este e o das specs);
   - conferir_modo: "tela abrir", "job proxima" e "sugestao pacote" recalculam o modo efetivo com o teto da linha de
     comando e refazem os pacotes se o modo mudou (a agencia baixou o teto sem clique do DA), se o pacote e do
-    contrato antigo ou se o KV do job nao e mais o do laudo. Na falha, fecham tudo o que o Claude le em sugestoes/.
+    contrato antigo, se o KV do job nao e mais o do laudo, se um pacote sumiu com a leitura ou o rascunho das specs
+    em dia ou se os bytes gravados nao sao os que o motor grava agora (pacote mexido fora do motor, chave repetida
+    inclusive). Na falha, fecham tudo o que o Claude le em sugestoes/;
+  - curar_specs: a tela (montagem e cada pedido do estado) refaz a fase specs que o ato do modo nao conseguiu refazer
+    porque outro processo segurava o job.
+Os dois pacotes nao contam para a validade das fases do job (desdobra.job.fases, campo refeitas; M7c, E1): trocar o
+modo nao desatualiza a esteira, e e a conferencia acima que garante que o pacote gravado e o do modo e do KV de agora.
 Quando o modo efetivo e c, saem tambem as sugestoes do Claude (sugestoes.json, sugestoes-validadas.json e
-mapeamento-specs.json): nada com nome ou texto fica legivel pelo Claude.
+mapeamento-specs.json): nada com nome ou texto fica legivel pelo Claude. O mapeamento e entrada da fase specs: quando
+ele sai e e a unica entrada da fase que mudou, refazer_pacotes (e conferir_modo, se o ato nao conseguiu) refaz a
+fase no proprio processo e a grava em dia (sem passo no terminal).
 
 O registro do que foi exposto ao modelo vai para log/eventos.jsonl (evento pacote_modelo_exposto) so com o modo, as
 contagens e, das miniaturas, layer_id e sha256; nunca nome, texto ou caminho.
@@ -42,6 +50,10 @@ ARQUIVO_PACOTE = Path('sugestoes') / 'pacote-modelo.json'
 ESCRITOS_DO_CLAUDE = (Path('sugestoes') / 'sugestoes.json', Path('sugestoes') / 'sugestoes-validadas.json',
                       Path('sugestoes') / 'mapeamento-specs.json')
 EVENTO_EXPOSTO = 'pacote_modelo_exposto'
+# o rascunho das specs (desdobra.specs.importar.ARQUIVO_RASCUNHO, teste de igualdade): com ele, o pacote das specs existe
+ARQUIVO_RASCUNHO_SPECS = Path('specs') / 'rascunho.json'
+# o mapeamento do Claude (desdobra.specs.importar.ARQUIVO_MAPEAMENTO, teste de igualdade), entrada da fase specs
+ARQUIVO_MAPEAMENTO = Path('sugestoes') / 'mapeamento-specs.json'
 
 
 def textos_da_camada(camada):
@@ -270,11 +282,55 @@ def refazer_pacotes(pasta_job, teto=None):
         _apagar_arquivo(pasta_job / ARQUIVO_PACOTE)
         alvos = ESCRITOS_DO_CLAUDE if modo == 'c' else ESCRITOS_DO_CLAUDE[:2]
         r['sugestoes_apagadas'] = sum(_apagar_arquivo(pasta_job / rel) for rel in alvos)
+    # o mapeamento do Claude e entrada da fase specs: quando ele sai (o modo c o apaga) com a fase em dia, a fase e
+    # refeita aqui mesmo, sem as propostas dele (revisao da correcao A do M7c, E1). Com o job ocupado, a ErroJob sobe
+    # e a conferencia seguinte refaz (_precisa_refazer, motivo 'specs')
+    if _specs_so_pelo_mapeamento(pasta_job):
+        _refazer_fase_specs(pasta_job, modo, estado.get('job_id'))
     destino_specs, n_specs = pacote_specs.refazer_pacote(pasta_job, modo, job_id=estado.get('job_id'))
     if destino_specs is not None:
         r['pacote_specs'] = 1
         r['segredos_bloqueados'] += n_specs
     return r
+
+
+def _specs_so_pelo_mapeamento(pasta_job):
+    """A fase specs foi concluida com o mapeamento do Claude, o mapeamento nao existe mais e ele e a unica entrada que
+    mudou: refazer a fase agora so tira as propostas do Claude do rascunho, sem mascarar outra mudanca (a folha, as
+    confirmacoes, a biblioteca). A conta cara (o hash das folhas) so roda quando o estado.json diz que a fase rodou
+    com o mapeamento e o arquivo sumiu."""
+    from desdobra.job import fases as mod_fases
+    from desdobra.job import nucleo
+    mapa = ARQUIVO_MAPEAMENTO.as_posix()
+    if (pasta_job / ARQUIVO_MAPEAMENTO).exists():
+        return False
+    reg = nucleo.ler_estado(pasta_job)['fases'].get(mod_fases.FASE_SPECS.id) or {}
+    gravado = reg.get('hash_entradas') or {}
+    if reg.get('situacao') != 'concluida' or gravado.get(mapa) is None:
+        return False
+    fase = mod_fases.FASE_SPECS
+    atual = nucleo.hashes_da_fase(pasta_job, fase, {fase.id: fase})
+    mudaram = {k for k in set(atual) | set(gravado) if k not in fase.refeitas and atual.get(k) != gravado.get(k)}
+    return mudaram == {mapa}
+
+
+def _refazer_fase_specs(pasta_job, modo, job_id):
+    """Refaz a fase specs no proprio processo, sob a trava do job, e grava a fase em dia (job.nucleo.renovar_fase),
+    como faz o ato de spec da tela (desdobra.specs.confirmar.confirmar_da_tela). So quando _specs_so_pelo_mapeamento
+    (conferido de novo dentro da trava): o rascunho sai sem as propostas do Claude, e o DA nunca precisa do terminal.
+    O pacote das specs nao e gravado aqui: quem chama o refaz em seguida, no modo de agora."""
+    from datetime import datetime
+
+    from desdobra.job import nucleo
+    from desdobra.specs import importar
+    with nucleo.Trava(pasta_job):
+        if not _specs_so_pelo_mapeamento(pasta_job):
+            return
+        agora = datetime.now().astimezone().isoformat(timespec='seconds')
+        rascunho, _info = importar.montar(pasta_job, modo=modo, agora=agora, job_id=job_id)
+        importar.gravar(pasta_job, rascunho)
+        nucleo.renovar_fase(pasta_job, 'specs')
+        nucleo.registrar_evento(pasta_job, 'specs_refeita_sem_mapeamento', modo=modo)
 
 
 def _kv_do_estado(estado):
@@ -306,6 +362,9 @@ def _precisa_refazer(pasta_job, estado, modo):
         return 'modo'
     if modo == 'c' and any((pasta_job / rel).exists() for rel in ESCRITOS_DO_CLAUDE):
         return 'modo'
+    if _specs_so_pelo_mapeamento(pasta_job):
+        # o ato do modo apagou o mapeamento e nao conseguiu refazer a fase specs (job ocupado): refazer_pacotes refaz
+        return 'specs'
     arq = pasta_job / ARQUIVO_PACOTE
     if arq.is_file():
         try:
@@ -323,6 +382,10 @@ def _precisa_refazer(pasta_job, estado, modo):
             return 'kv'
     elif tem_pasta:
         return 'modo'
+    elif _laudo_do_kv(pasta_job, estado):
+        # os pacotes nao contam para a validade das fases (desdobra.job.fases, refeitas): o que sumiu (fechar, na
+        # falha de um refazer) volta aqui, sem reler o PSD
+        return 'falta'
     arq_specs = pasta_job / pacote_specs.ARQUIVO_PACOTE
     if arq_specs.is_file():
         try:
@@ -331,7 +394,67 @@ def _precisa_refazer(pasta_job, estado, modo):
             return 'ilegivel'
         if not isinstance(ps, dict) or ps.get('modo_dados') != modo:
             return 'modo'
+    elif (pasta_job / ARQUIVO_RASCUNHO_SPECS).is_file():
+        return 'falta'
+    return _conteudo_mexido(pasta_job, estado, modo)
+
+
+def _conteudo_mexido(pasta_job, estado, modo):
+    """'conteudo' quando um pacote gravado nao tem os bytes que o motor grava agora com o laudo do KV (e o indice das
+    miniaturas) ou com o rascunho das specs, no modo de agora; senao None. Os pacotes nao contam para a validade das fases
+    (desdobra.job.fases, refeitas), e e esta conferencia que pega o pacote mexido fora do motor (revisao da correcao A
+    do M7c, E1). O pacote sem laudo do KV ou sem rascunho tambem conta como mexido: refazer o apaga."""
+    from desdobra import arquivos
+    from desdobra.specs import importar
+    from desdobra.sugestao import specs as pacote_specs
+    detector = segredos.detector_padrao()
+    job_id = estado.get('job_id')
+    arq = pasta_job / ARQUIVO_PACOTE
+    if arq.is_file():
+        if not _laudo_do_kv(pasta_job, estado):
+            return 'conteudo'
+        laudo = contratos.ler(pasta_job / 'laudo' / 'laudo.json', 'laudo/1')
+        indice = None
+        if modo == 'a' and (pasta_job / mod_miniaturas.ARQUIVO_INDICE).is_file():
+            indice = arquivos.ler_json(pasta_job / mod_miniaturas.ARQUIVO_INDICE)
+        miniaturas = indice.get('miniaturas') if isinstance(indice, dict) else None
+        esperado, _achados = montar_pacote(laudo, modo, job_id=job_id, detector=detector, miniaturas=miniaturas)
+        if not _bytes_do_motor(arq, esperado):
+            return 'conteudo'
+    arq_specs = pasta_job / pacote_specs.ARQUIVO_PACOTE
+    if arq_specs.is_file():
+        if not (pasta_job / ARQUIVO_RASCUNHO_SPECS).is_file():
+            return 'conteudo'
+        rascunho = contratos.ler(pasta_job / ARQUIVO_RASCUNHO_SPECS, importar.ESQUEMA)
+        esperado, _achados = pacote_specs.montar_pacote(rascunho, modo, job_id=job_id, detector=detector)
+        if not _bytes_do_motor(arq_specs, esperado):
+            return 'conteudo'
     return None
+
+
+def _bytes_do_motor(arq, esperado):
+    """O arquivo tem exatamente os bytes que o motor grava para `esperado` (contratos.gravar, arquivos.para_json).
+    Comparar o JSON lido nao basta: com uma chave repetida, a ultima vence no json.load, e os bytes que o Claude le
+    trazem a primeira (revisao 2 da correcao A do M7c, E1)."""
+    from desdobra import arquivos
+    try:
+        return Path(arq).read_bytes() == arquivos.para_json(esperado).encode('utf-8')
+    except OSError:
+        return False
+
+
+def curar_specs(pasta_job, teto=None):
+    """A tela (montagem e cada pedido do estado, que o servidor tambem faz antes de cada ato) se cura da fase specs
+    atrasada so porque o mapeamento do Claude saiu (_specs_so_pelo_mapeamento): o ato do modo nao a refez porque outro
+    processo segurava o job. Fora desse caso nao faz nada (a conta e barata: so le o estado.json e ve se o mapeamento
+    existe). Nunca levanta excecao. Devolve True quando mexeu (conferir_modo)."""
+    pasta_job = Path(pasta_job)
+    try:
+        if not _specs_so_pelo_mapeamento(pasta_job):
+            return False
+    except Exception:  # noqa: BLE001 - sem estado legivel, a montagem da tela diz o que houve
+        return False
+    return conferir_modo(pasta_job, teto)
 
 
 def conferir_modo(pasta_job, teto=None):

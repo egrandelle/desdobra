@@ -25,13 +25,15 @@ Gravacao atomica (desdobra.arquivos). A conferencia de fonte olha so o que o des
 recusa a pasta da marca que aponta para fora de <biblioteca>/marcas, e a propria <biblioteca>/marcas que e ligacao ou
 resolve fora da biblioteca (revisao do M2). Nenhum texto do perfil leva arquivo de fonte nem bytes de fonte codificados
 em base64 ou hex (validar). Nada varre o resto da biblioteca. A gravacao
-confere que o arquivo nao mudou desde a leitura; nao ha trava entre dois DAs que gravam ao mesmo tempo (risco
-declarado no plano do M7c).
+confere que o arquivo nao mudou desde a leitura, e nova_versao le e grava sob uma trava do sistema por marca
+(.perfil-marca.trava, vazio, na pasta da marca): dois registros da mesma marca, de dois DAs, nunca gravam um por cima
+do outro sem erro (revisao da correcao B).
 
 Este modulo nao confere a biblioteca (desdobra.biblioteca.conferir): quem chama passa a pasta que ja serve.
 """
 import base64
 import binascii
+import contextlib
 import copy
 import json
 import os
@@ -39,6 +41,12 @@ import re
 import secrets
 from datetime import datetime
 from pathlib import Path
+
+try:
+    import msvcrt
+except ImportError:  # fora do Windows a trava da marca e a do fcntl
+    msvcrt = None
+    import fcntl
 
 from desdobra import contratos
 from desdobra.arquivos import (BYTES_ASSINATURA, EXTENSOES_FONTE, assinatura_de_fonte, eh_nome_de_fonte,
@@ -48,6 +56,7 @@ from desdobra.contratos import ErroContrato
 
 ESQUEMA = 'perfil-marca/1'
 ARQUIVO = 'perfil-marca.json'
+ARQUIVO_TRAVA = '.perfil-marca.trava'  # vazio; so serve para a trava do sistema entre dois registros da marca
 BYTES_DO_ID = 16  # numero-neutro: 128 bits ao acaso, o id nao diz nada da marca
 TENTATIVAS_DO_ID = 3  # numero-neutro: id repetido com 128 bits ao acaso nao acontece; o laco so evita sobrescrever
 _ID = re.compile(r'^[0-9a-f]{32}$')
@@ -64,6 +73,10 @@ _BASE64 = re.compile(r'^[A-Za-z0-9+/_-]{6,}={0,2}$')
 
 class ErroPerfil(Exception):
     """O perfil nao pode ser lido ou gravado como pedido. A mensagem nao leva o caminho da biblioteca."""
+
+
+class ErroPerfilOcupado(ErroPerfil):
+    """Outro registro da mesma marca segurou a trava do perfil alem da espera (_trava_da_marca)."""
 
 
 def agora():
@@ -250,6 +263,42 @@ def listar(biblioteca):
     return sorted(achados, key=lambda m: (m['marca'].casefold(), m['id']))
 
 
+@contextlib.contextmanager
+def _trava_da_marca(biblioteca, id_):
+    """Trava do sistema operacional em <biblioteca>/marcas/<id>/.perfil-marca.trava, um arquivo vazio que fica na
+    pasta. Dois registros da mesma marca nao leem e gravam o perfil ao mesmo tempo: o segundo espera o primeiro
+    gravar. O sistema solta a trava quando o processo termina, mesmo caido, e por isso nenhuma trava velha prende a
+    marca. No Windows a espera e a do msvcrt.LK_LOCK (o proprio msvcrt tenta de novo a cada segundo, por 10
+    tentativas); depois dela o registro e recusado."""
+    marcas = _conferir_marcas(biblioteca)
+    pasta = pasta_da_marca(biblioteca, id_)
+    alvo = pasta / ARQUIVO_TRAVA
+    if not pasta.is_dir() or pasta.resolve().parent != marcas.resolve() or alvo.is_symlink():
+        raise ErroPerfil('A pasta da marca aponta para fora da biblioteca da agência.')
+    try:
+        fd = os.open(alvo, os.O_RDWR | os.O_CREAT)
+    except OSError:
+        raise ErroPerfil('O desdobra não conseguiu abrir a trava do perfil da marca.') from None
+    try:
+        try:
+            if msvcrt is not None:
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+            else:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            raise ErroPerfilOcupado('Outro registro desta marca está gravando agora. Registre de novo.') from None
+        try:
+            yield
+        finally:
+            if msvcrt is not None:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
 def _gravar(biblioteca, dados):
     validar(dados)
     gravar_na_marca(biblioteca, dados['id'], ARQUIVO, para_json(dados).encode('utf-8'))
@@ -277,11 +326,25 @@ def _conteudo(versao):
         'aprovacoes': sorted((f['formato'], f['aprovacao_sha256']) for f in versao['campanha']['formatos'])}
 
 
-def nova_versao(biblioteca, id_, *, campanha, regras_escala, ancoras, faces, cores=None, quando=None):
+def nova_versao(biblioteca, id_, *, campanha, regras_escala, ancoras, faces, cores=None, quando=None,
+                versao_esperada=None):
     """Grava a versao nova do perfil com o registro de uma campanha aprovada. Devolve (perfil, criou). A versao atual
-    vai inteira para o fim do historico; o mesmo job sem mudanca devolve o perfil como estava e criou False."""
+    vai inteira para o fim do historico; o mesmo job sem mudanca devolve o perfil como estava e criou False.
+    versao_esperada: a versao do perfil que quem chama conferiu; se a lida aqui for outra (outro registro da mesma
+    marca gravou no meio), recusa sem gravar, para nenhuma funcao registrada pelo outro sumir. A leitura, a conferencia
+    e a gravacao correm sob a trava da marca (_trava_da_marca): outro registro que chega no meio espera e, quando
+    entra, le a versao ja gravada (revisao da correcao B)."""
+    _ler_bytes(biblioteca, _conferir_id(id_))
+    with _trava_da_marca(biblioteca, id_):
+        return _nova_versao_travada(biblioteca, id_, campanha=campanha, regras_escala=regras_escala, ancoras=ancoras,
+                                    faces=faces, cores=cores, quando=quando, versao_esperada=versao_esperada)
+
+
+def _nova_versao_travada(biblioteca, id_, *, campanha, regras_escala, ancoras, faces, cores, quando, versao_esperada):
     bruto = _ler_bytes(biblioteca, id_)
     dados = _de_bytes(bruto, _conferir_id(id_))
+    if versao_esperada is not None and dados['versao'] != versao_esperada:
+        raise ErroPerfil('O perfil da marca mudou desde a conferência do registro. Registre de novo.')
     anterior = dados['atual']
     versao = {'versao': dados['versao'] + 1, 'job_origem': campanha.get('job') if isinstance(campanha, dict) else None,
               'quando': quando or agora(), 'campanha': copy.deepcopy(campanha),

@@ -35,6 +35,12 @@ class Fase:
     # entradas de fora da pasta do job (a biblioteca de specs do plugin, os limites): (nome, funcao sem argumento
     # que devolve o sha256). Entram no hash da fase como as outras entradas
     externas: tuple = ()
+    # arquivos que a fase grava, mas que o motor refaz fora dela a cada troca de modo de dados ou de PSD (os pacotes
+    # do Claude, refeitos por desdobra.sugestao.pacote.refazer_pacotes; M7c, S2). Nao contam para a validade da fase
+    # nem entram no hash das fases que dependem dela: quem garante que batem com o modo e com o KV de agora e
+    # desdobra.sugestao.pacote.conferir_modo, que refaz ou fecha. Contar com eles desatualizava a esteira inteira a
+    # cada escolha de modo na tela (M7c, E1)
+    refeitas: tuple = ()
 
     def __post_init__(self):
         if self.tipo not in ('fase', 'portao'):
@@ -63,7 +69,8 @@ SE_A_FASE_FALHA = ('Peça ao Claude para seguir o job; se a falha voltar, peça 
 FASES_M1 = (
     Fase(id='ler', tipo='fase', descricao='Leitura isolada do PSD e laudo',
          # entrada/campanha: o laudo propoe o casamento de cada smart object linkado com os arquivos dela
-         entradas=('entrada/kv.*', 'entrada/campanha'), saidas=('laudo/laudo.json', 'sugestoes/pacote-modelo.json'),
+         entradas=('entrada/kv.*', 'entrada/campanha'), saidas=('laudo/laudo.json',),
+         refeitas=('sugestoes/pacote-modelo.json',),
          comando=comando_motor('ler'),
          o_que_fazer='A leitura do PSD falhou. ' + SE_A_FASE_FALHA + ' Se o arquivo foi recusado, salve o PSD de novo '
                      'no Photoshop e peça ao Claude para trocar a entrada do job.'),
@@ -117,7 +124,7 @@ def _specs_importar():
 FASE_SPECS = Fase(
     id='specs', tipo='fase', descricao='Rascunho das specs do veiculador a partir das folhas',
     entradas=('entrada/specs', 'specs/confirmacoes.json', 'sugestoes/mapeamento-specs.json'),
-    saidas=('specs/rascunho.json', 'specs/formatos-do-job.json', 'sugestoes/pacote-specs.json'),
+    saidas=('specs/rascunho.json', 'specs/formatos-do-job.json'), refeitas=('sugestoes/pacote-specs.json',),
     comando=comando_motor('spec', 'importar'),
     externas=(('externa:biblioteca-specs', lambda: _specs_importar().hash_da_biblioteca()),
               ('externa:limites-specs', lambda: _specs_importar().hash_dos_limites())),

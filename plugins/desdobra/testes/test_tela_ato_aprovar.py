@@ -165,8 +165,9 @@ def test_ato_de_aprovar_usa_o_comando_aprovar_sem_ato_novo_da_tela(job):
     assert ato.comando == 'aprovar' and ato.longo and callable(ato.preparar) and not ato.selo_por_formato
     assert ato.outros_comandos({'formatos': ['giro'], 'sentidos': {'giro': 'horario'}}) == ['parametros-entrega']
     assert ato.outros_comandos({'formatos': DOIS}) == []
-    # M7c, M3: a marca do job e o unico ato da tela novo depois do aprovar
-    assert humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher')
+    # M7c, M3 e M5: a marca do job e o registro do padrao dela sao os atos da tela novos depois do aprovar
+    assert humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher',
+                                   'marca registrar')
     assert 'aprovar' in humano.COMANDOS and 'parametros-entrega' in humano.COMANDOS
 
 

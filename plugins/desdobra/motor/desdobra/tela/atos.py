@@ -16,7 +16,9 @@ confere os dados antes do dialogo (validar), monta o texto do dialogo com o que 
   - aprovar: a aprovacao dos formatos marcados, com o arquivo final de cada um na janela e o sentido do giro que falta
     gravado pela mesma confirmacao (desdobra.tela.ato_aprovar; M7b, B4);
   - marca: a marca do job, entre as marcas da biblioteca da agencia, a "Marca nova" e "Sem marca", opcional
-    (desdobra.marca.job; M7c, M3; decisoes-v1.md, 190, Q5).
+    (desdobra.marca.job; M7c, M3; decisoes-v1.md, 190, Q5);
+  - marca_registrar: guardar o padrao da marca no perfil da biblioteca da agencia, so com a marca escolhida e todos os
+    formatos aprovados pelo DA (desdobra.marca.registrar; M7c, M5; decisoes-v1.md, 190, Q2).
 Os textos sao do motor, em portugues para o DA, sem comando nem identificador; o que vem do cliente (nome de camada,
 nome de arquivo, texto da folha) a pagina poe so por textContent.
 """
@@ -137,7 +139,7 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         acao = confirmar.confirmar_da_tela(pasta, d['valor_id'], d.get('leitura'), disparo=disparo)
         return {'spec': acao is not None}
 
-    atos = {'marca': _ato_da_marca(pasta, conteudo)}
+    atos = {'marca': _ato_da_marca(pasta, conteudo), 'marca_registrar': _ato_de_registrar(pasta, conteudo)}
     if conteudo is not None:
         # as familias sao lidas do conteudo a cada pedido: no job novo elas nascem depois do passo 2, quando o servidor
         # monta o passo 3 de novo no mesmo dicionario (desdobra.tela.servidor, _atualizar)
@@ -187,6 +189,42 @@ def _ato_da_marca(pasta, conteudo):
         return {'marca': reg['escolha']}
     return Ato(comando=marca_job.COMANDO, titulo='Escolher a marca do job', texto=texto, sim=SIM, nao=NAO,
                executar=executar, validar=lambda d: marca_job.conferir(d, biblioteca()) is not None)
+
+
+REGISTRAR_SIM = 'Guardar o padrão'
+
+
+def _ato_de_registrar(pasta, conteudo):
+    """O ato "marca_registrar" (M7c, M5; decisoes-v1.md, 190, Q1 a Q3): o botao "A campanha foi aprovada: guardar o
+    padrao desta marca", que a pagina mostra so com lido.marca.registro.pode (desdobra.marca.registrar.na_tela). Os
+    dados sao {'impressao': <a do registro que a janela mostra>}: o registro que mudou depois que a pagina montou a
+    janela e recusado antes do dialogo, e de novo no Confirmar. A pasta da biblioteca e a do conteudo da montagem,
+    lida a cada pedido, como no ato da marca."""
+    from desdobra.marca import registrar
+    from desdobra.tela.servidor import Ato
+
+    def biblioteca():
+        return (conteudo or {}).get('pasta_biblioteca')
+
+    def valido(d):
+        if not _chaves(d, 'impressao') or not isinstance(d['impressao'], str):
+            return False
+        v = registrar.na_tela(pasta, biblioteca())
+        return v['pode'] is True and v['impressao'] == d['impressao']
+
+    def texto(_d):
+        v = registrar.na_tela(pasta, biblioteca())
+        anterior = ('' if not v['versao_atual'] else
+                    ' A versão %d continua guardada no histórico da marca.' % v['versao_atual'])
+        return ('A campanha aprovada vira a versão %d do padrão da marca "%s": as regras de escala e as âncoras que '
+                'você confirmou, cada uma com o job de origem, e o nome das faces usadas.%s Nos próximos jobs desta '
+                'marca, o padrão aparece como sugestão, e nada muda sem o seu clique.'
+                % (v['versao_nova'], v['nome'], anterior))
+
+    def executar(disparo, d):
+        return registrar.gravar(pasta, disparo=disparo, biblioteca=biblioteca(), impressao=d['impressao'])
+    return Ato(comando=registrar.COMANDO, titulo='Guardar o padrão desta marca', texto=texto, sim=REGISTRAR_SIM,
+               nao=NAO, executar=executar, validar=valido)
 
 
 def _ato_da_familia(pasta, conteudo):
