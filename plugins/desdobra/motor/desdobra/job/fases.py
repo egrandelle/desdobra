@@ -125,7 +125,10 @@ def _specs_importar():
 # terminal, e quem precisa dos formatos confirmados (derivacao e entrega) confere specs/formatos-do-job.json.
 FASE_SPECS = Fase(
     id='specs', tipo='fase', descricao='Rascunho das specs do veiculador a partir das folhas',
-    entradas=('entrada/specs', 'specs/confirmacoes.json', 'sugestoes/mapeamento-specs.json'),
+    # 0.9.2: os formatos que o DA digita na tela, sem folha de spec (desdobra.specs.digitados), tambem sao entrada. Sem o
+    # arquivo, o hash e None nos dois lados, e o job de antes nao fica desatualizado
+    entradas=('entrada/specs', 'specs/confirmacoes.json', 'sugestoes/mapeamento-specs.json',
+              'briefing/formatos-digitados.json'),
     saidas=('specs/rascunho.json', 'specs/formatos-do-job.json'), refeitas=('sugestoes/pacote-specs.json',),
     comando=comando_motor('spec', 'importar'),
     externas=(('externa:biblioteca-specs', lambda: _specs_importar().hash_da_biblioteca()),

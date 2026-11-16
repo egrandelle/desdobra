@@ -46,7 +46,7 @@ Antes de começar, leia as três referências desta skill com a ferramenta Read:
    - o PSD ou PSB do KV (pode vir como primeiro argumento: $0);
    - a pasta nova do job, vazia ou ainda inexistente (pode vir como segundo argumento: $1). Peça o caminho absoluto da pasta nova; nunca peça nem aceite um caminho relativo da pasta do job. Se o DA mandar um caminho que não começa no disco, peça de novo com a dica acima;
    - as fontes usadas no PSD, chamadas de FONTES: um ou mais arquivos, ou pastas com os arquivos. Sem fontes agora, o job pode ser criado mesmo assim, e as camadas de texto ficam marcadas como fonte faltando até o DA mandar os arquivos. Se a agência não tem o arquivo de uma fonte, o DA pode decidir na tela, no passo 1, usar o texto dessa fonte como imagem;
-   - as folhas de spec do veiculador, chamadas de SPECS: uma pasta com uma subpasta por veiculador. Sem folhas agora, o job pode ser criado mesmo assim.
+   - as folhas de spec do veiculador, chamadas de SPECS: uma pasta com uma subpasta por veiculador. Sem folhas agora, o job pode ser criado mesmo assim, mas fica sem nenhum formato até o DA escrever os formatos na tela, no passo 1, em Valores de spec (a largura e a altura de cada um, em pixels). Sem formato, as famílias do passo 4 não aparecem. Diga isso ao DA quando ele não tiver folha.
 
    Não explique formato de fonte de antemão. Só se o motor recusar um arquivo, explique o motivo a partir do `o_que_fazer` do envelope (veja `fluxo.md`, "Recusa na criação"). O desdobra trata toda fonte enviada como fonte com direito de uso, e a responsabilidade pela licença é da agência ou do usuário: não pergunte nada sobre licença.
 
@@ -84,10 +84,10 @@ Antes de começar, leia as três referências desta skill com a ferramenta Read:
    ```
 
    Se o `codigo` não for `0`, explique ao DA o `o_que_fazer`, sem passar comando a ele (veja `regras-do-modelo.md`, "O `o_que_fazer` do motor"), e pare. Se a tela abriu, explique ao DA, em linguagem de direção de arte, o que ele faz nela (a ordem está em `glossario.md`, "A tela, passo a passo"):
-   - **Passo 1, O que eu li no arquivo:** ele escolhe o modo de dados do job, entre os que a agência autorizou (nada vem marcado), escolhe a prancheta da peça quando o PSD tem mais de uma, vê os bloqueios, confere os arquivos linkados, confirma os valores de spec ao lado da folha e escolhe o giro de cada formato;
+   - **Passo 1, O que eu li no arquivo:** ele escolhe o modo de dados do job, entre os que a agência autorizou (nada vem marcado), escolhe a prancheta da peça quando o PSD tem mais de uma, vê os bloqueios, confere os arquivos linkados, confirma os valores de spec ao lado da folha ou, sem folha, escreve a largura e a altura de cada formato em Valores de spec, e escolhe o giro de cada formato;
    - **Passo 2, Funções da peça:** ele diz o papel de cada camada ou pasta (título, logo, produto, fundo e assim por diante). A função dada a uma pasta passa para as camadas de dentro;
-   - **Passo 3, Famílias:** ele vê a prévia de cada família de formatos e confere a composição;
-   - **Passo 4, Design system:** para cada função, ele escolhe como o tamanho muda de uma peça para outra e onde o elemento se prende;
+   - **Passo 3, Design system:** para cada função, ele escolhe como o tamanho muda de uma peça para outra e onde o elemento se prende;
+   - **Passo 4, Famílias:** ele vê a prévia de cada família de formatos e confere a composição. As famílias aparecem quando o job tem formato e as funções e o Design system estão completos;
    - **Passo 5, Render e aprovação:** ele manda renderizar e aprova os formatos.
 
    Diga também que o que ele escolhe fica salvo sozinho no rascunho do job, que "Salvar e seguir" passa ao próximo passo, e que ele fecha a janela quando terminar. Se ele quiser ajuda para ligar os trechos de uma folha de spec aos campos, indique a skill `/desdobra:ler-spec`. Se ele escolher o modo a ou b e quiser sugestões de função, ele escreve "quero sugestões" aqui no chat.

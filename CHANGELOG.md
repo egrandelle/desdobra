@@ -2,6 +2,38 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.9.2 (16/11/2026): formatos digitados na tela
+
+Para o job que chega sem folha de spec. Sem folha, o job não tinha formato nenhum, e as famílias nunca apareciam. Tudo foi conferido em arquivos sintéticos.
+
+- No passo 1 da tela, em "Valores de spec", o bloco "Formatos sem folha de spec" recebe a largura e a altura de cada formato em pixels. Dá para colar vários de uma vez, separados por vírgula, como 1080x1920, 300x600.
+- A tela avisa na hora o que não entendeu, o formato repetido e o tamanho fora do que o desdobra aceita.
+- Uma janela de confirmação mostra os formatos, e eles entram já confirmados, com quem escreveu e quando. O Claude não escreve formatos.
+- Os formatos aparecem em "Formatos e giro" e, com as funções e o Design system completos, nas famílias.
+
+A tela também ficou mais clara para quem desenha:
+
+- O Design system passou a ser o passo 3 e as Famílias o passo 4, porque as famílias dependem dele.
+- Sem família para mostrar, o passo das Famílias explica por quê, mostra o que falta (formatos, funções, tamanho e âncora) e tem o botão para o lugar certo.
+- No topo do passo 1, uma faixa diz o que trava o job e o que falta para as famílias, com o botão "Resolver aqui" ou "Escrever os formatos". Cada bloqueio também ganhou o botão que leva ao lugar onde ele se resolve.
+- O motivo do "Salvar e seguir" desligado fica em destaque ao lado do botão, com "Ir até lá".
+- As abas dos passos mostram o que já está feito e o que falta. A lista do que falta vem separada por passo.
+- Na lista de camadas do passo 2 há busca pelo nome e o filtro "Só as sem função".
+- Os nomes no palco ficaram curtos (função e camada); a regra aparece ao parar o mouse em cima e na linha do elemento escolhido. Sem elemento escolhido, a barra de edição mostra só Desfazer e Escolher vários.
+- Texto maior nos passos de leitura, cinza mais escuro para ler melhor e botões desligados sem a transparência.
+- Cada formato digitado tem o botão "Remover".
+- Se a folha de spec trouxer o mesmo formato, vale a folha depois que a medida dela for confirmada, e a tela avisa. Antes disso, o formato que você escreveu continua no job. Se a folha sair, o formato digitado volta.
+- Dá para escrever o milhar com ponto, como 1.080 x 1.920.
+- Quando as funções e o Design system estão completos e as famílias ainda não aparecem, o passo das Famílias diz o motivo, com o nome das camadas, e o botão leva ao lugar certo.
+- O aviso de que uma escolha não foi salva aparece em frase também nas telas menores.
+- Na janela de confirmação, o botão que confirma fica em destaque, e o de remover fica na cor de aviso.
+- Os botões desligados do passo 5 dizem por que estão desligados quando o mouse para em cima.
+- No palco, o nome que ficaria em cima de outro sai da vista. O nome do elemento escolhido sempre aparece.
+- A camada com transparência aparece sem o quadrado preto em volta.
+- O formato que você escreveu aparece pela medida em "Formatos e giro", sem o código interno.
+- Um formato escrito no modo de teste nunca chega ao render, à entrega nem ao padrão da marca.
+- Um formato digitado só tem a medida: peso, área segura e faixas ficam sem regra do veículo.
+
 ## 0.9.1 (16/11/2026): texto como imagem
 
 Para o KV que tem texto vivo no PSD, mas cuja fonte a agência nunca recebeu em arquivo. Tudo foi conferido em arquivos sintéticos.

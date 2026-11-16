@@ -20,7 +20,9 @@ confere os dados antes do dialogo (validar), monta o texto do dialogo com o que 
   - marca_registrar: guardar o padrao da marca no perfil da biblioteca da agencia, so com a marca escolhida e todos os
     formatos aprovados pelo DA (desdobra.marca.registrar; M7c, M5; decisoes-v1.md, 190, Q2);
   - texto_como_imagem: o DA nao tem o arquivo de uma fonte do PSD e decide usar o texto das camadas dela como imagem,
-    ou desfaz a decisao (desdobra.fontes.como_imagem; 0.9.1).
+    ou desfaz a decisao (desdobra.fontes.como_imagem; 0.9.1);
+  - formatos_digitados: sem folha de spec, o DA escreve a largura e a altura de cada formato em pixels, ou remove um
+    formato da lista dele (desdobra.specs.digitados; 0.9.2).
 Os textos sao do motor, em portugues para o DA, sem comando nem identificador; o que vem do cliente (nome de camada,
 nome de arquivo, texto da folha) a pagina poe so por textContent.
 """
@@ -142,7 +144,8 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         return {'spec': acao is not None}
 
     atos = {'marca': _ato_da_marca(pasta, conteudo), 'marca_registrar': _ato_de_registrar(pasta, conteudo),
-            'texto_como_imagem': _ato_texto_como_imagem(pasta)}
+            'texto_como_imagem': _ato_texto_como_imagem(pasta),
+            'formatos_digitados': _ato_formatos_digitados(pasta)}
     if conteudo is not None:
         # as familias sao lidas do conteudo a cada pedido: no job novo elas nascem depois do passo 2, quando o servidor
         # monta o passo 3 de novo no mesmo dicionario (desdobra.tela.servidor, _atualizar)
@@ -204,6 +207,40 @@ def _ato_texto_como_imagem(pasta):
         return {'texto_como_imagem': d['acao']}
     return Ato(comando=como_imagem.COMANDO, titulo='Texto como imagem', texto=texto, sim=SIM, nao=NAO,
                executar=executar, validar=lambda d: alvo(d) is not None)
+
+
+def _ato_formatos_digitados(pasta):
+    """O ato "formatos_digitados" do passo 1 (0.9.2): sem folha de spec, o DA escreve a largura e a altura de cada
+    formato em pixels, um ou varios de uma vez, ou remove um da lista (desdobra.specs.digitados). Dados: {'acao':
+    'acrescentar', 'texto'} ou {'acao': 'remover', 'largura', 'altura'}. O motor confere no pedido e no Confirmar; o
+    dialogo diz as medidas como o motor as leu."""
+    from desdobra.specs import digitados
+    from desdobra.tela.servidor import Ato
+
+    def texto(d):
+        if d['acao'] == 'acrescentar':
+            medidas = digitados.interpretar(d['texto'])[0]
+            frase = digitados.frase_das_medidas(medidas)
+            if len(medidas) == 1:
+                return ('O formato %s entra no job como você digitou, sem folha de spec. Ele aparece em Formatos e '
+                        'giro, e as famílias passam a contar com ele. Você pode remover o formato aqui mesmo, depois.'
+                        % frase)
+            return ('Os %d formatos %s entram no job como você digitou, sem folha de spec. Eles aparecem em Formatos e '
+                    'giro, e as famílias passam a contar com eles. Você pode remover cada formato aqui mesmo, depois.'
+                    % (len(medidas), frase))
+        medida = (d['largura'], d['altura'])
+        nome = digitados.medida_na_tela(*medida)
+        if medida in digitados.medidas_da_folha(digitados.rascunho_gravado(pasta)):
+            return ('O formato %s sai da sua lista. Nada muda nas peças, porque a folha de spec já traz este formato.'
+                    % nome)
+        return ('O formato %s sai do job. Se ele estava numa família já confirmada, a família volta a pedir a sua '
+                'confirmação.' % nome)
+
+    def executar(disparo, d):
+        gravado = digitados.gravar(pasta, d, disparo=disparo)
+        return {'formatos_digitados': d['acao'], 'n': len(gravado['formatos'])}
+    return Ato(comando=digitados.COMANDO, titulo='Formatos digitados', texto=texto, sim=SIM, nao=NAO,
+               executar=executar, validar=lambda d: digitados.conferir(pasta, d) is None)
 
 
 MARCA_TROCA = 'Você pode trocar a marca aqui mesmo, depois.'

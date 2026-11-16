@@ -215,6 +215,72 @@ def valor_digitado(ident, campo, texto, folha_id, recorte):
     return v
 
 
+# 0.9.2: o formato que o DA digita na tela, sem folha de spec (desdobra.specs.digitados): um veiculador e um circuito
+# so dele, a entrada "tela" no lugar da folha (os ids de folha sao f<8 hex>, sem colisao) e a origem do valor
+VEICULADOR_DIGITADO = 'digitado'
+# a folha de um veiculador cuja pasta ou arquivo se chama "digitado" fica com este id (desdobra.specs.importar)
+VEICULADOR_DIGITADO_DA_FOLHA = 'digitado-folha'
+CIRCUITO_DIGITADO = 'tela'
+FOLHA_DIGITADA = 'tela'
+ORIGEM_DIGITADO_NA_TELA = 'digitado_pelo_da_na_tela'
+
+
+def valor_digitado_na_tela(ident, largura, altura, confirmacao):
+    """A dimensao do formato que o DA digitou na tela, sem folha de spec. O texto e o que o motor normaliza da medida
+    (LxA), e o numero sai dele pelo mesmo extrator da folha. A unidade e px pela propria tela (o campo pede pixels), e o
+    valor nasce confirmado, com quem e quando (confirmacao: {'por', 'meio', 'em', 'leitura'})."""
+    texto = '%dx%d' % (largura, altura)
+    lei = extrair.EXTRATORES[CAMPOS['dimensao'][1]](texto, None)
+    return {'id': ident, 'campo': 'dimensao', 'forma': lei['forma'], 'valor': lei['valor'], 'texto_original': texto,
+            'numeros_literais': lei['numeros_literais'], 'unidade': 'px', 'unidade_original': 'px',
+            'base_unidade': None, 'condicao': None, 'fonte': None, 'origem': ORIGEM_DIGITADO_NA_TELA,
+            'mapeamento': 'da', 'situacao': 'confirmado', 'alertas': [], 'confirmacao': dict(confirmacao),
+            'texto_digitado': texto}
+
+
+def eh_digitado_na_tela(fmt):
+    return (fmt.get('entrada') or {}).get('folha') == FOLHA_DIGITADA
+
+
+def medida_em_px(fmt):
+    """(largura, altura) da dimensao em px do formato, ou None (sem valor, outra unidade ou divergente)."""
+    d = (fmt.get('campos') or {}).get('dimensao') or {}
+    v = d.get('valor')
+    if not isinstance(v, dict) or (d.get('unidade') or 'px') != 'px':
+        return None
+    return v.get('largura'), v.get('altura')
+
+
+def medidas_confirmadas_da_folha(formatos):
+    """{(largura, altura)} dos formatos da folha de spec (nao digitados na tela) com chave e dimensao em px
+    confirmada: so eles cobrem o formato digitado. A folha em rascunho nao cobre, porque formatos_do_job so leva a
+    dimensao confirmada, e a medida que o DA ja confirmou na tela sumiria do job (revisao do 0.9.2)."""
+    saida = {medida_em_px(f) for f in formatos
+             if f.get('chave') and not eh_digitado_na_tela(f)
+             and ((f.get('campos') or {}).get('dimensao') or {}).get('situacao') == 'confirmado'}
+    saida.discard(None)
+    return saida
+
+
+def tirar_digitados_cobertos(doc):
+    """Tira do documento o formato digitado na tela cuja medida um formato da folha com chave e dimensao confirmada
+    tambem tem: vale a folha (0.9.2). Roda depois das acoes do DA, quando a confirmacao da folha ja vale, e cobre o caso
+    da medida divergente que o DA escolheu depois (a chave so nasce em chaves_depois_das_escolhas). O veiculador e o
+    circuito digitado saem quando ficam sem formato (e o veiculador, sem folha). Devolve quantos formatos tirou."""
+    da_folha = medidas_confirmadas_da_folha(doc['formatos'])
+    fica = [f for f in doc['formatos'] if not (eh_digitado_na_tela(f) and medida_em_px(f) in da_folha)]
+    tirados = len(doc['formatos']) - len(fica)
+    doc['formatos'] = fica
+    circs = {f['circuito'] for f in fica}
+    cid = '%s:%s' % (VEICULADOR_DIGITADO, CIRCUITO_DIGITADO)
+    if cid not in circs:
+        doc['circuitos'] = [c for c in doc['circuitos'] if c['id'] != cid]
+    veics = {f['veiculador'] for f in fica} | {c['veiculador'] for c in doc['circuitos']}
+    doc['veiculadores'] = [v for v in doc['veiculadores']
+                           if not (v['id'] == VEICULADOR_DIGITADO and not v.get('folhas') and v['id'] not in veics)]
+    return tirados
+
+
 def tem_valor(v):
     return bool(v) and v.get('valor') is not None
 
@@ -801,6 +867,32 @@ class Montagem:
         for v in self.veiculadores.values():
             v.setdefault('tetos_por_tamanho', [])
 
+    def adicionar_digitados(self, formatos):
+        """Os formatos que o DA digitou na tela, sem folha de spec (0.9.2, desdobra.specs.digitados): cada um vira o
+        formato digitado-<L>x<A> do veiculador digitado, circuito digitado:tela, com a dimensao confirmada. Vem depois
+        das folhas, das propostas e dos digitados do recorte (nenhuma proposta alcanca o formato digitado) e antes das
+        chaves. Todos entram aqui: a folha cobre o digitado so com a dimensao confirmada, e a confirmacao do DA vale
+        depois, em aplicar_acoes; quem tira o coberto e tirar_digitados_cobertos (revisao do 0.9.2: a folha ou a
+        proposta em rascunho nao esconde a medida que o DA ja confirmou). formatos: [{'largura', 'altura',
+        'confirmacao'}], na ordem da lista do DA. Devolve quantos entraram."""
+        ja = set()
+        n = 0
+        for ordem, f in enumerate(formatos, 1):
+            medida = (f['largura'], f['altura'])
+            if medida in ja:
+                continue
+            ja.add(medida)
+            veic = self.veiculador(VEICULADOR_DIGITADO)
+            circ = self.circuito(veic['id'], None, CIRCUITO_DIGITADO)
+            fid = '%s-%dx%d' % (VEICULADOR_DIGITADO, medida[0], medida[1])
+            fmt = novo_registro(fid, 'formato', veiculador=veic['id'], circuito=circ['id'], chave=None,
+                                entrada={'folha': FOLHA_DIGITADA, 'pagina': None, 'ordem': ordem})
+            fmt['campos']['dimensao'] = valor_digitado_na_tela('%s/dimensao' % fid, medida[0], medida[1],
+                                                               f['confirmacao'])
+            self.formatos[fid] = fmt
+            n += 1
+        return n
+
 
 # ------------------------------------------------------------------ acoes do DA
 def chaves_depois_das_escolhas(doc):
@@ -1002,7 +1094,9 @@ def resumo(doc):
             'sem_valor': sum(1 for _r, _c, v in valores if v['valor'] is None),
             'com_alerta': sum(1 for _r, _c, v in valores if v['alertas']),
             'divergencias': sum(1 for _r, _c, v in valores if 'fontes_divergentes' in v['alertas'] and v['valor'] is None),
-            'digitados': sum(1 for _r, _c, v in valores if v['origem'] == 'digitado_pelo_da_a_partir_do_recorte')}
+            'digitados': sum(1 for _r, _c, v in valores if v['origem'] == 'digitado_pelo_da_a_partir_do_recorte'),
+            # 0.9.2: os formatos que o DA digitou na tela, sem folha de spec
+            'formatos_digitados': sum(1 for f in doc['formatos'] if eh_digitado_na_tela(f))}
 
 
 def conferir_literais(doc):
@@ -1013,7 +1107,7 @@ def conferir_literais(doc):
 
     def conferir(ident, v):
         fon = v.get('fonte') or {}
-        if v.get('origem') == 'digitado_pelo_da_a_partir_do_recorte':
+        if v.get('origem') in ('digitado_pelo_da_a_partir_do_recorte', ORIGEM_DIGITADO_NA_TELA):
             base = v.get('texto_digitado') or ''
         elif v.get('origem') == 'extraido_do_trecho' and fon.get('trecho'):
             base = textos.get((fon['folha'], fon['trecho']), '')

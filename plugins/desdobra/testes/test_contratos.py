@@ -150,3 +150,21 @@ def test_estrutura_declara_as_contagens_inteiras_de_pixel():
         ruim['prova_pixel'] = dict(est['prova_pixel'], **{campo: valor})
         with pytest.raises(ErroContrato):
             contratos.validar(ruim, 'estrutura/1')
+
+
+def test_formatos_digitados_so_aceitam_medida_inteira_positiva_e_origem_conhecida():
+    """0.9.2: briefing/formatos-digitados.json (formatos-digitados/1), gravado so pelo ato da tela."""
+    por = {'usuario': 'u', 'maquina': 'm', 'meio': 'tela', 'quando': '2026-11-16T10:00:00-03:00'}
+    dados = {'esquema': 'formatos-digitados/1', 'job_id': 'ab' * 16,
+             'formatos': [{'largura': 1080, 'altura': 1920, 'origem': 'da', 'decidido_por': por}],
+             'historico': [{'acao': 'acrescentar', 'largura': 1080, 'altura': 1920, 'origem': 'da', 'por': por}]}
+    contratos.validar(dados, 'formatos-digitados/1')
+    for campo, valor in (('largura', 0), ('altura', 10.5), ('origem', 'claude'), ('nome', 'x')):
+        ruim = json.loads(json.dumps(dados))
+        ruim['formatos'][0][campo] = valor
+        with pytest.raises(ErroContrato):
+            contratos.validar(ruim, 'formatos-digitados/1')
+    ruim = json.loads(json.dumps(dados))
+    ruim['historico'][0]['acao'] = 'apagar'
+    with pytest.raises(ErroContrato):
+        contratos.validar(ruim, 'formatos-digitados/1')

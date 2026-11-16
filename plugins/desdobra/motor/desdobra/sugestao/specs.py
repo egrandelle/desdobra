@@ -68,12 +68,16 @@ def montar_pacote(rascunho, modo, *, job_id=None, detector=None):
                 continue
             pacote['folhas'].append({'id': f['id'], 'formato': f['formato'], 'n_paginas': f['n_paginas'],
                                      'camada_texto': f['camada_texto'], 'veiculador': f['veiculador']})
+        # 0.9.2: o formato digitado pelo DA na tela (e o circuito e o veiculador so dele) nao tem trecho de folha para
+        # ligar: fica fora dos alvos do Claude
+        digitado = modelo.VEICULADOR_DIGITADO
         candidatos = ([{'id': x['id'], 'nivel': 'formato', 'chave': x.get('chave'), 'pagina': x['entrada']['pagina'],
-                        'folha': x['entrada']['folha']} for x in rascunho['formatos']] +
+                        'folha': x['entrada']['folha']} for x in rascunho['formatos']
+                       if not modelo.eh_digitado_na_tela(x)] +
                       [{'id': x['id'], 'nivel': 'circuito', 'chave': None, 'pagina': None, 'folha': None}
-                       for x in rascunho['circuitos']] +
+                       for x in rascunho['circuitos'] if x['id'] != '%s:%s' % (digitado, modelo.CIRCUITO_DIGITADO)] +
                       [{'id': x['id'], 'nivel': 'veiculador', 'chave': None, 'pagina': None, 'folha': None}
-                       for x in rascunho['veiculadores']])
+                       for x in rascunho['veiculadores'] if x['id'] != digitado or x.get('folhas')])
         for alvo in candidatos:
             # os ids e as chaves levam texto da folha (o circuito, o veiculador): alvo com achado fica de fora
             achado = detector.achado_em('trecho_spec', None, {'textos': [alvo['id'], alvo['chave'] or '']})

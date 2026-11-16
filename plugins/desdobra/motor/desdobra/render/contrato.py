@@ -63,6 +63,8 @@ DESCRICOES_BLOQUEIO = {
                                           'na tela de briefing, no passo do que o desdobra leu.',
     'spec_confirmada_no_modo_de_teste': 'Um valor de spec foi confirmado no modo de teste da tela. Confirme o valor '
                                         'de novo na tela de briefing.',
+    'formato_digitado_no_modo_de_teste': 'Um formato escrito na tela foi confirmado no modo de teste. Remova esse '
+                                         'formato da lista e escreva de novo na tela de briefing, em Valores de spec.',
     'largura_divergente': 'A conferência de fontes achou divergência de largura numa camada de texto. É decisão do DA, '
                           'que a aceita na confirmação do render, na tela.',
     'fases_desatualizadas': 'Uma fase de que o render depende (leitura, fontes, segunda passada do laudo ou design '
@@ -313,6 +315,10 @@ def montar(pasta_job, *, funcoes=None, formato=FORMATO_ORIGEM):
     if any(a.get('por') == ORIGEM_FIXTURE for a in acoes_spec):
         # o valor de spec confirmado no modo de teste da tela nunca chega ao master (revisao do M7a)
         bloqueios.append(_bloqueio('spec_confirmada_no_modo_de_teste'))
+    # o formato digitado no modo de teste da tela tambem nunca chega ao master (revisao do 0.9.2)
+    from desdobra.specs import digitados
+    if any(f.get('origem') != digitados.ORIGEM_DA for f in (digitados.ler(pasta_job) or {}).get('formatos') or []):
+        bloqueios.append(_bloqueio('formato_digitado_no_modo_de_teste'))
     doc_l = laudo['documento']
     if any(r.get('etapa') == 'composicao' for r in laudo.get('recusas') or []):
         bloqueios.append(_bloqueio('composicao_acima_do_orcamento'))

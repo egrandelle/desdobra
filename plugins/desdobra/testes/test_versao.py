@@ -49,6 +49,18 @@ def test_contrato_do_texto_como_imagem_sai_na_0_9_1_ou_depois():
     assert _tupla(_versao_do_manifesto()) >= (0, 9, 1)
 
 
+# 0.9.2: os formatos digitados pelo DA na tela, sem folha de spec, trazem um contrato novo
+CONTRATOS_DO_0_9_2 = ('formatos-digitados-1.json',)
+
+
+def test_contrato_dos_formatos_digitados_sai_na_0_9_2_ou_depois():
+    for nome in CONTRATOS_DO_0_9_2:
+        assert (SCHEMAS / nome).is_file(), nome
+    assert _tupla(_versao_do_manifesto()) >= (0, 9, 2)
+    texto = CHANGELOG.read_text(encoding='utf-8')
+    assert re.search(r'^## 0\.9\.2 \(\d\d/\d\d/\d{4}\): formatos digitados na tela$', texto, flags=re.M)
+
+
 def test_primeira_entrada_do_changelog_e_a_versao_do_manifesto():
     texto = CHANGELOG.read_text(encoding='utf-8')
     entradas = re.findall(r'^## (\d+\.\d+\.\d+) ', texto, flags=re.M)

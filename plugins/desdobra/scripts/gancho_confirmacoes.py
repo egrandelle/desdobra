@@ -11,9 +11,9 @@ Le da entrada padrao o JSON do evento (tool_name e tool_input) e nega (permissio
     Python do motor), que
     mexe na conferencia do disparo humano, ou que escreve num arquivo que so o DA grava;
   - nas ferramentas que gravam arquivo (Write, Edit, MultiEdit, NotebookEdit), arquivo que so o DA grava ou que so o
-    motor grava: tudo em briefing/** (o briefing confirmado, o rascunho da tela briefing/rascunho.json, o historico e
-    a aprovacao inclusive) e em derivacao/**, o estado.json do job, specs/confirmacoes.json, master, render.json e
-    contrato de render/, o que esta em entrega/, o manifesto e o relatorio da entrega e parametros/entrega.json
+    motor grava: tudo em briefing/** (o briefing confirmado, o rascunho da tela briefing/rascunho.json, o historico,
+    a aprovacao e, desde a 0.9.2, os formatos digitados na tela inclusive) e em derivacao/**, o estado.json do job,
+    specs/confirmacoes.json, master, render.json e contrato de render/, o que esta em entrega/, o manifesto e o relatorio da entrega e parametros/entrega.json
     (decisoes-v1.md, 159; proposta do M7, 160c). O codigo-fonte do pacote (desdobra/briefing/<modulo>.py,
     desdobra/derivacao/<modulo>.py, desdobra/entrega/<modulo>.py) continua editavel;
   - a ferramenta do painel de terminal do app do Claude (mcp__terminal__run_in_terminal), sempre, como pede a
@@ -167,6 +167,11 @@ CODIGO = re.compile(r'renderizar\s*\(|linkados\s*\.\s*(confirmar|sessao)|confirm
                     r'desdobra\s*\.\s*fontes\s*\.\s*como_imagem\b|'
                     r'from\s+desdobra\s*\.\s*fontes\s+import\s+[^\n;]*\bcomo_imagem\b|'
                     r'\bcomo_imagem\s*\.\s*(?:gravar|reaplicar|aplicar|remover)\b|'
+                    # os formatos digitados pelo DA na tela (0.9.2, desdobra.specs.digitados): o modulo, a importacao
+                    # dele e a funcao que grava
+                    r'desdobra\s*\.\s*specs\s*\.\s*digitados\b|'
+                    r'from\s+desdobra\s*\.\s*specs\s+import\s+[^\n;]*\bdigitados\b|'
+                    r'\bdigitados\s*\.\s*gravar\b|'
                     # a fase gravada em dia no proprio processo (desdobra.job.nucleo.renovar_fase, so do ato de spec da
                     # tela) e o estado.json pelo codigo (gravar_estado): carimbariam como em dia uma saida de fase escrita
                     # a mao, como specs/formatos-do-job.json (revisao do M7a)
@@ -197,6 +202,8 @@ ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])((?<!skills[\\/])(?:(?<!desdobra[\\/])bri
                             r'parametros[\\/]entrega\.json|aval-chromium-janela\.json|'
                             # a declaracao do texto como imagem (0.9.1) tambem so pelo nome, com o cwd em briefing
                             r'texto-como-imagem\.json\b|'
+                            # os formatos digitados pelo DA na tela (0.9.2), tambem so pelo nome
+                            r'formatos-digitados\.json\b|'
                             # o perfil de marca (M7c, M2): marcas/<id>/perfil-marca.json, ou so o nome, com o cwd na
                             # pasta da marca
                             r'(?:marcas[\\/][^\\/]+[\\/])?perfil-marca\.json\b)' % {'f': FONTE_DO_PACOTE},
@@ -1196,6 +1203,22 @@ def decidir_pasta_do_da_por_comando(comando, cwd):
     return None
 
 
+# revisao do 0.9.2: o modulo de um ato do DA da tela (os formatos digitados e o texto como imagem) montado em partes
+# com importacao dinamica ("s.__name__ + '.digitados'"), como em sugestoes/ (CODIGO_DE_SUGESTOES_ACHATADO). O texto e
+# conferido em minusculas, so com letras e algarismos
+ATOS_DO_DA_ACHATADOS = re.compile(r'digitados|comoimagem')
+
+
+def _ato_do_da_montado(comando):
+    """True quando o comando roda codigo com importacao dinamica e cita o modulo de um ato do DA da tela, mesmo em
+    partes. Busca no fonte nao roda codigo e segue."""
+    if not _roda_codigo(comando) or not IMPORTACAO_DINAMICA.search(comando):
+        return False
+    texto = CHAMADA_DO_MOTOR_OU_DO_TESTE.sub(' ', comando)
+    return bool(IMPORTACAO_DINAMICA.search(texto) and
+                ATOS_DO_DA_ACHATADOS.search(re.sub(r'[^a-z0-9]', '', texto.lower())))
+
+
 def _decidir_comando(bruto):
     """As regras dos atos do DA e da tela num comando da Bash ou da PowerShell."""
     if PARTE_DO_DA.search(bruto) and ESCRITA.search(bruto):
@@ -1206,6 +1229,8 @@ def _decidir_comando(bruto):
         if SUBCOMANDO.search(comando) or SUBCOMANDO_EM_VARIAVEL.search(comando):
             return 'deny'
         if 'desdobra' in comando and CODIGO.search(comando):
+            return 'deny'
+        if 'desdobra' in comando and _ato_do_da_montado(comando):
             return 'deny'
         if ARQUIVOS_DO_DA.search(comando) and ESCRITA.search(comando):
             return 'deny'

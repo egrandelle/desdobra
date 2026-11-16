@@ -883,7 +883,12 @@ def paradas(pasta, laudo):
     return [por_tipo[t] for t in ('largura', 'mesclagem', 'isolador') if t in por_tipo]
 
 
-BLOQUEIO_DE_FASE = 'O desdobra parou nesta etapa, e a próxima versão da tela traz o que fazer aqui.'
+# revisao do 0.9.2: o texto do bloqueio segue o botao da pagina (Resolver aqui, nas specs e no laudo das fontes) e a
+# frase de baixo (o bloqueio sem botao se resolve com o Claude); nunca diz que a tela ainda nao traz o caminho
+BLOQUEIO_DE_FASE = ('O desdobra parou nesta etapa, e ela não se resolve nesta tela. Conte ao Claude, no chat, o que '
+                    'aparece aqui.')
+BLOQUEIO_DAS_SPECS = 'O desdobra parou nas specs. Em Valores de spec, no passo 1, veja o que falta.'
+BLOQUEIO_DO_LAUDO_DAS_FONTES = 'O desdobra parou na conferência das fontes. Em Fontes do job, veja o que falta.'
 # 0.9.1: o bloqueio das fontes leva ao que o DA faz na propria tela (o arquivo da fonte, ou o texto como imagem)
 BLOQUEIO_DAS_FONTES = ('O desdobra parou nas fontes. Em Fontes do job, veja o que falta: mande o arquivo da fonte ao '
                        'Claude ou, sem ele, use o texto como imagem.')
@@ -898,6 +903,10 @@ def bloqueio_na_tela(fid, bloqueio, declaravel=False):
     cita comando de terminal. declaravel: ha face que o DA pode mandar como imagem agora (o botao do passo 1)."""
     if fid == 'fontes':
         texto = BLOQUEIO_DAS_FONTES if declaravel else BLOQUEIO_DAS_FONTES_SEM_BOTAO
+    elif fid == 'specs':
+        texto = BLOQUEIO_DAS_SPECS
+    elif fid == 'laudo-fontes':
+        texto = BLOQUEIO_DO_LAUDO_DAS_FONTES
     else:
         texto = BLOQUEIO_DE_FASE
     return {'fase': fid, 'descricao': descricao_da_fase(fid), 'texto': texto}
@@ -936,6 +945,7 @@ def lido(pasta, estado_job, laudo, briefing, formatos, faces_servidas, teto=None
     from desdobra.job import fases as mod_fases
     from desdobra.job import nucleo
     from desdobra.specs import confirmar as mod_confirmar
+    from desdobra.specs import digitados as mod_digitados
     from desdobra.specs import modelo as mod_specs
     pasta = Path(pasta)
     avaliacao, _d = nucleo.avaliar(pasta, estado_job, mod_fases.ESTEIRA)
@@ -966,7 +976,9 @@ def lido(pasta, estado_job, laudo, briefing, formatos, faces_servidas, teto=None
     specs['folhas'] = len((doc or {}).get('folhas') or [])
     specs['sem_medida'] = formatos_sem_medida(pasta) if doc is not None else []
     # o giro de cada formato e escolha do DA (revisao do M7a): o que a folha diz do giro vai como dica, nunca marcado
+    # 0.9.2: o formato que o DA digitou na tela, sem folha de spec (desdobra.specs.digitados), e o bloco dele
     specs['formatos'] = [{'id': f['id'], 'chave': f.get('chave'), 'sem_folha': bool(f.get('sem_folha')),
+                          'digitado': (f.get('chave') or '').startswith(mod_digitados.VEICULADOR + '|'),
                           'tem_spec': bool(((formatos.get(f['id']) or {}).get('formato') or {}).get('tem_spec')),
                           'largura': f['largura'], 'altura': f['altura'], 'rotacao': f.get('rotacao'),
                           'giro_da_folha': giro_da_folha(doc, f.get('chave'))}
@@ -974,6 +986,7 @@ def lido(pasta, estado_job, laudo, briefing, formatos, faces_servidas, teto=None
     # sem formato em pixels: o que o DA faz, no lugar da lista (revisao do M7a)
     specs['sem_formatos'] = '' if specs['formatos'] else \
         (SEM_MEDIDA_EM_PIXELS if specs['folhas'] else SEM_FOLHA_DE_SPEC)
+    specs['digitados'] = mod_digitados.na_tela(pasta)
     lf = _ler(pasta / 'laudo' / 'laudo-fontes.json', 'laudo/1')
     usadas = (lf or laudo).get('fontes_usadas') or []
     nomes = {c['identidade']['layer_id']: c.get('nome') or '' for c in laudo['camadas']}
@@ -1102,7 +1115,9 @@ def faltam(lido_, formatos, variantes=None, familias=None, confirmadas=()):
                       'detalhe': SEM_MEDIDA_EM_PIXELS if lido_['specs'].get('folhas') else SEM_FOLHA_DE_SPEC})
     if lido_.get('quadros') and not any(q['escolhido'] for q in lido_['quadros']):
         itens.append({'texto': QUADRO_SEM_ESCOLHA, 'detalhe': '', 'ir': {'passo': 'lido'}})
-    sem_giro = [f['id'] for f in lido_['specs']['formatos'] if f.get('rotacao') is None]
+    # o formato escrito na tela aparece pela medida, sem o id do motor (revisao do 0.9.2)
+    sem_giro = [('%d x %d' % (f['largura'], f['altura']) if f.get('digitado') else f['id'])
+                for f in lido_['specs']['formatos'] if f.get('rotacao') is None]
     if sem_giro:
         itens.append({'texto': GIRO_SEM_ESCOLHA, 'detalhe': ', '.join(sem_giro), 'ir': {'passo': 'lido'}})
     for f in lido_['fontes_que_faltam']:
@@ -1182,28 +1197,62 @@ def assets_das_camadas(pasta, laudo):
         regs = []
     por_id = {}
     for r in regs:
-        sha = (r.get('pixels') or {}).get('asset_sha256')
+        px = r.get('pixels') or {}
+        sha, sha_alfa = px.get('asset_sha256'), px.get('alfa_visivel_sha256')
         if isinstance(r.get('layer_id'), int) and isinstance(sha, str) and re.match(r'^[0-9a-f]{64}$', sha):
-            por_id[r['layer_id']] = sha
+            if not (isinstance(sha_alfa, str) and re.match(r'^[0-9a-f]{64}$', sha_alfa)):
+                sha_alfa = None
+            por_id[r['layer_id']] = (sha, sha_alfa)
     servidos, por_sha, por_camada = {}, {}, {}
+
+    def _ler(s):
+        try:
+            dados = (Path(pasta) / 'laudo' / 'assets' / ('%s.png' % s)).read_bytes()
+        except OSError:
+            return None
+        if not dados.startswith(ASSINATURA_PNG) or arquivos.sha256_bytes(dados) != s:
+            return None
+        return dados
+
     for c in laudo['camadas']:
         lid = c['identidade']['layer_id']
-        sha = por_id.get(lid)
-        if sha is None:
+        par = por_id.get(lid)
+        if par is None:
             continue
-        if sha not in por_sha:
-            arq = Path(pasta) / 'laudo' / 'assets' / ('%s.png' % sha)
-            try:
-                dados = arq.read_bytes()
-            except OSError:
+        if par not in por_sha:
+            dados = _ler(par[0])
+            if dados is None:
                 continue
-            if not dados.startswith(ASSINATURA_PNG) or arquivos.sha256_bytes(dados) != sha:
-                continue
+            if par[1] is not None:
+                # revisao do 0.9.2 (A7): o asset guarda so os pixels proprios; com mascara (ou com o alfa que o PSD
+                # guarda na mascara), a tela mostra a camada com o alfa visivel, sem o quadrado opaco em volta
+                dados = _com_alfa_visivel(dados, _ler(par[1])) or dados
             ident = 'a%03d' % (len(por_sha) + 1)
-            por_sha[sha] = ident
+            por_sha[par] = ident
             servidos[ident] = (dados, 'image/png')
-        por_camada[lid] = por_sha[sha]
+        por_camada[lid] = por_sha[par]
     return servidos, por_camada
+
+
+def _com_alfa_visivel(dados, dados_alfa):
+    """O PNG da camada com o alfa visivel (o alfa proprio vezes a mascara, gravado pelo leitor), ou None quando o alfa
+    falta ou nao tem o tamanho da camada. Os dois PNG sao do motor, conferidos pelo sha256."""
+    import io
+
+    from PIL import Image
+    if dados_alfa is None:
+        return None
+    try:
+        with Image.open(io.BytesIO(dados)) as img, Image.open(io.BytesIO(dados_alfa)) as alfa:
+            if img.size != alfa.size:
+                return None
+            rgba = img.convert('RGBA')
+            rgba.putalpha(alfa.convert('L'))
+            saida = io.BytesIO()
+            rgba.save(saida, format='PNG')
+            return saida.getvalue()
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None
 
 
 # ------------------------------------------------------------------ montagem
@@ -1213,15 +1262,27 @@ def com_o_passo_2_do_rascunho(pasta, ctx):
     gravar (desdobra.briefing.salvar.montar). Sem passo 2 no rascunho, ou com ele ainda incompleto (a conferencia do
     motor acha problema), fica o contexto de antes. O passo 2 mudado com a tela aberta vale no proximo GET do estado
     (montar, atualizar); as confirmacoes das familias caem na gravacao (desdobra.tela.rascunho.gravar)."""
+    from desdobra.derivacao import nucleo as nd
+    conferido = conferencia_do_passo_2(pasta, ctx)
+    if conferido is None or conferido[1]:
+        return ctx
+    novo = conferido[0]
+    return nd.contexto(ctx['laudo'], novo, ds=ctx['ds'], job_id=ctx['estado']['job_id'], pasta=ctx['pasta'],
+                       briefing_sha256=ctx['briefing_sha256'], portao_fontes=ctx['portao_fontes'],
+                       medidas_quebras=ctx['medidas_quebras'], da_tela=True)
+
+
+def conferencia_do_passo_2(pasta, ctx):
+    """(briefing com o passo 2 e o Design system do rascunho por cima, erros da conferencia do motor sem o modo de
+    dados), ou None sem passo 2 no rascunho. Os erros dizem tambem o motivo da espera das Familias (revisao do 0.9.2)."""
     import copy
 
     from desdobra.briefing import modelo as mb
     from desdobra.briefing import salvar
-    from desdobra.derivacao import nucleo as nd
     from desdobra.tela import funcoes, rascunho
     dados, _de_outro = rascunho.ler(pasta, rascunho.laudo_sha256(pasta))
     if not dados or not dados.get('funcoes'):
-        return ctx
+        return None
     base = ctx['briefing']
     novo = copy.deepcopy(base)
     quadro = base['quadro']['valor'] if mb._decisao_valida(base['quadro']) else None
@@ -1234,11 +1295,7 @@ def com_o_passo_2_do_rascunho(pasta, ctx):
         novo['cabecalho'] = dict(novo['cabecalho'], origem=tipo)
     erros = [e for e in mb.conferir(ctx['laudo'], novo, ctx['estado']['job_id'])
              if not (e['codigo'] == 'pendente_obrigatorio' and e.get('onde') == '/modo_dados')]
-    if erros:
-        return ctx
-    return nd.contexto(ctx['laudo'], novo, ds=ctx['ds'], job_id=ctx['estado']['job_id'], pasta=ctx['pasta'],
-                       briefing_sha256=ctx['briefing_sha256'], portao_fontes=ctx['portao_fontes'],
-                       medidas_quebras=ctx['medidas_quebras'], da_tela=True)
+    return novo, erros
 
 
 
@@ -1248,13 +1305,31 @@ AGUARDA_PASSO_2 = ('As famílias aparecem aqui quando todas as camadas tiverem f
                    'regra de escala e âncora, no Design system.')
 AGUARDA_CONFERENCIA = ('As funções e o Design system estão preenchidos, mas o desdobra ainda não consegue montar as '
                        'famílias com essas escolhas. Confira as funções das camadas no passo 2.')
+# revisao do 0.9.2: com a lista toda feita e a conferencia do motor recusando, a espera diz o motivo concreto e o botao
+# leva ao passo dele (motivo_da_conferencia). {camadas}: o nome das camadas
+AGUARDA_CONFERENCIA_COM_MOTIVO = ('As funções e o Design system estão preenchidos, mas o desdobra ainda não consegue '
+                                  'montar as famílias. %s')
+MOTIVOS_DA_CONFERENCIA = {
+    'mestre_sem_elemento': ('Nenhuma camada ficou dentro da peça: todas estão em Fora da peça ou sem nada visível. Em '
+                            'Funções, dê a função certa às camadas que aparecem na peça.'),
+    'camada_sem_tinta_sem_bloco': ('A camada {camadas} não tem nada visível na peça e não está em nenhum bloco. Em '
+                                   'Funções, mude a função dela para Fora da peça.'),
+    'bloco_com_regras_diferentes': ('As camadas {camadas} andam juntas num bloco, e as funções delas têm regras de '
+                                    'escala diferentes. No Design system, dê a mesma regra a essas funções.'),
+    'regra_de_bloco_conflitante': ('As camadas {camadas} andam juntas num bloco com regras de escala que não '
+                                   'combinam. No Design system, dê a mesma regra às funções dessas camadas.'),
+}
+DESTINO_DO_MOTIVO = {'mestre_sem_elemento': 'funcoes', 'camada_sem_tinta_sem_bloco': 'funcoes',
+                     'bloco_com_regras_diferentes': 'design', 'regra_de_bloco_conflitante': 'design'}
 AGUARDA_QUADRO = 'O PSD tem pranchetas. Escolha no passo 1 de qual prancheta a peça sai, e as famílias aparecem aqui.'
 # specs sem nenhum formato em pixels (revisao do M7a): o passo 3 e a lista do que falta dizem o que falta e o que fazer
 SEM_FORMATOS = ('As famílias saem dos formatos das specs, e o job ainda não tem nenhum formato com medida em pixels. '
                 'Veja no passo 1 o que falta.')
 SEM_FORMATOS_FALTA = 'As specs do job ainda não têm nenhum formato com medida em pixels.'
-SEM_FOLHA_DE_SPEC = ('O job ainda não tem folha de spec. Consiga com o veículo a folha com as medidas em pixels e peça '
-                     'para incluí-la no job. Os formatos aparecem aqui assim que ela for lida.')
+# 0.9.2: sem folha, o DA escreve os formatos na tela (desdobra.specs.digitados)
+SEM_FOLHA_DE_SPEC = ('O job ainda não tem folha de spec. Escreva a largura e a altura de cada formato no passo 1, em '
+                     'Valores de spec, ou consiga com o veículo a folha com as medidas em pixels e peça para incluí-la '
+                     'no job.')
 SEM_MEDIDA_EM_PIXELS = ('As folhas de spec do job não trazem uma medida em pixels que o desdobra consiga usar. Se as '
                         'folhas trazem medidas diferentes para o mesmo formato, escolha a certa em Valores de spec. Se a '
                         'medida está em outra unidade, consiga com o veículo a folha em pixels e peça para incluí-la no '
@@ -1366,7 +1441,37 @@ def espera_do_passo_3(pasta, ctx):
     dados, _de_outro = rascunho.ler(pasta, rascunho.laudo_sha256(pasta))
     if funcoes.pendencias(ctx['laudo'], dados or {}, ctx['info'].get('quadro')):
         return AGUARDA_PASSO_2
-    return AGUARDA_CONFERENCIA
+    # o motivo vem da conferencia do briefing com o passo 2 do rascunho por cima (o ctx pode ser o de antes dele)
+    conferido = conferencia_do_passo_2(pasta, ctx)
+    motivo = motivo_da_conferencia(conferido[1] if conferido else erros, ctx['laudo'])
+    return AGUARDA_CONFERENCIA_COM_MOTIVO % motivo[0] if motivo else AGUARDA_CONFERENCIA
+
+
+def motivo_da_conferencia(erros, laudo):
+    """(texto, passo) do primeiro erro da conferencia do briefing que o DA resolve na tela, com o nome das camadas, ou
+    None. passo: 'funcoes' ou 'design', para onde o botao da espera leva (revisao do 0.9.2: tudo feito na lista e o
+    motor ainda recusa, como no KV A)."""
+    nomes = {c['identidade']['layer_id']: c.get('nome') or '' for c in laudo.get('camadas') or []}
+    for e in erros:
+        codigo = e.get('codigo')
+        if codigo not in MOTIVOS_DA_CONFERENCIA:
+            continue
+        m = e.get('medidas') or {}
+        ids = m.get('camadas') or ([m['layer_id']] if m.get('layer_id') is not None else [])
+        camadas = ', '.join(nomes.get(i) or str(i) for i in ids)
+        return MOTIVOS_DA_CONFERENCIA[codigo].replace('{camadas}', camadas), DESTINO_DO_MOTIVO[codigo]
+    return None
+
+
+def destino_da_espera(texto):
+    """Para onde o botao da espera leva quando a lista do que as familias pedem esta toda feita: o passo do motivo
+    concreto ('funcoes' ou 'design'), ou None."""
+    if not texto or not texto.startswith(AGUARDA_CONFERENCIA_COM_MOTIVO[:40]):
+        return None
+    for codigo, frase in MOTIVOS_DA_CONFERENCIA.items():
+        if frase.split('{camadas}')[0] in texto:
+            return DESTINO_DO_MOTIVO[codigo]
+    return None
 
 
 def palco_do_documento(laudo, base, resolvidas, quadro):
@@ -1812,7 +1917,8 @@ def montar(pasta, teto=None, biblioteca=None):
               'funcoes': {'arvore': arvore(laudo, b, ctx['resolvidas'], quadro),
                           'resumo': resumo_das_funcoes(b, ctx['resolvidas']), 'palco_kv': kv_palco,
                           'decisoes': decisoes_do_passo_2(laudo, quadro)},
-              'passo_3': {'aguarda_passo_2': espera is not None, 'texto': espera or '', 'passo_2_aplicado': aplicado},
+              'passo_3': {'aguarda_passo_2': espera is not None, 'texto': espera or '', 'passo_2_aplicado': aplicado,
+                          'ir': destino_da_espera(espera)},
               'faltam': [],
               # a tolerancia da intencao de alinhamento e os limites do tamanho no palco (M7b, D3)
               'edicao': {'tolerancia_alinhamento': limites.valor('derivacao.alinhamento_intencao_tolerancia'),
@@ -1903,8 +2009,9 @@ def montar(pasta, teto=None, biblioteca=None):
             if ctx is ctx_base and _escolhas_do_passo_1(pasta) == passo_1 and                     com_o_passo_2_do_rascunho(pasta, ctx_base) is ctx_base:
                 # o passo 2 mudou e ainda nao fecha, como antes: as familias e as previas sao as mesmas, e so o aviso
                 # do passo 3 muda (sem derivar de novo a cada clique do DA)
-                p3 = dict(atual['estado']['passo_3'], texto=espera_do_passo_3(pasta, ctx_base) or '',
-                          passo_2_aplicado=_sem_passo_2(pasta))
+                espera_nova = espera_do_passo_3(pasta, ctx_base)
+                p3 = dict(atual['estado']['passo_3'], texto=espera_nova or '', passo_2_aplicado=_sem_passo_2(pasta),
+                          ir=destino_da_espera(espera_nova))
                 novo = dict(atual, estado=dict(atual['estado'], passo_3=p3),
                             recarregar=lambda: dict(recarregar(), passo_3=p3))
                 novo['atualizar'] = atualizador(nova, novo)

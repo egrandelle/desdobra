@@ -20,8 +20,10 @@ from pathlib import Path
 from desdobra import contratos
 from desdobra.resultado import Codigo, Resultado
 
-O_QUE_FAZER_SEM_FOLHAS = ('O job não tem folha de spec. O DA traz as folhas (PDF, HTML salvo, CSV ou texto do e-mail) '
-                          'e pede ao Claude para acrescentá-las ao job (/desdobra:continuar).')
+# 0.9.2: sem folha, o DA escreve os formatos na tela (desdobra.specs.digitados)
+O_QUE_FAZER_SEM_FOLHAS = ('O job não tem folha de spec. O DA escreve a largura e a altura de cada formato na tela do '
+                          'desdobra, no passo 1, em Valores de spec, ou traz as folhas (PDF, HTML salvo, CSV ou texto do '
+                          'e-mail) e pede ao Claude para acrescentá-las ao job (/desdobra:continuar).')
 O_QUE_FAZER_PENDENTE = ('O rascunho das specs está em specs/rascunho.json. Nenhum valor vale sem o DA: confirmar os '
                         'valores e escolher a leitura onde as fontes divergem são cliques dele na tela do desdobra. '
                         'Peça ao Claude para abrir a tela do job (/desdobra:continuar).')
@@ -99,7 +101,7 @@ def _importar(args):
                                      'qual. Peça ao Claude para seguir o job (/desdobra:continuar).',
                          pasta_job=pasta, linhas_humanas=[str(e)])
     r = rascunho['resumo']
-    if not r['folhas'] and not info['folhas_recusadas']:
+    if not r['folhas'] and not r.get('formatos_digitados') and not info['folhas_recusadas']:
         o_que_fazer = O_QUE_FAZER_SEM_FOLHAS
     elif formatos['formatos']:
         o_que_fazer = O_QUE_FAZER_OK

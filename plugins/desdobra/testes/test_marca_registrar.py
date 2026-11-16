@@ -200,7 +200,7 @@ def test_registrar_e_ato_so_da_tela():
     assert reg.COMANDO == 'marca registrar'
     # 0.9.1: o texto como imagem e o ato da tela novo depois do registro
     assert humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher', 'marca registrar',
-                                   'fonte como imagem')
+                                   'fonte como imagem', 'formatos digitados')  # 0.9.2: os formatos digitados
     assert reg.COMANDO not in humano.COMANDOS
     with pytest.raises(ValueError):
         humano.exigir(reg.COMANDO)  # nao ha comando de terminal para o registro

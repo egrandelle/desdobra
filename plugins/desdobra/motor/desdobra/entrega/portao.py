@@ -154,6 +154,10 @@ def confirmacao_de_teste(pasta):
     if any((c.get('confirmado_por') or {}).get('origem') == mb.ORIGEM_FIXTURE
            for campos in params.values() for c in campos.values()):
         return 'confirmacao_de_fixture_de_teste'
+    # o formato digitado no modo de teste da tela (0.9.2, revisao): a medida confirmada pelo Disparo de teste
+    from desdobra.specs import digitados
+    if any(f.get('origem') != digitados.ORIGEM_DA for f in (digitados.ler(pasta) or {}).get('formatos') or []):
+        return 'confirmacao_de_fixture_de_teste'
     return None
 
 

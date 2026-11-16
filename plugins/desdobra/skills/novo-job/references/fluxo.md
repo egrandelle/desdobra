@@ -60,6 +60,7 @@ Vale em qualquer modo, só com contagens.
 ## Fase `specs` (o rascunho das specs do veiculador)
 
 - `contagens.folhas`, `contagens.formatos`, `contagens.circuitos` e `contagens.veiculadores`: o que o desdobra achou nas folhas. `contagens.folhas_recusadas`: folhas fora dos formatos aceitos.
+- `contagens.folhas` igual a zero: o job está sem folha de spec e, por isso, sem nenhum formato. As famílias do passo 4 só aparecem depois que o DA escrever a largura e a altura de cada formato na tela, no passo 1, em "Valores de spec", ou mandar a folha para você acrescentar ao job. Diga isso a ele com essas palavras. `contagens.formatos_digitados`: quantos formatos o DA já escreveu na tela.
 - `contagens.valores_rascunho`: valores tirados da folha que esperam a confirmação do DA; `contagens.valores_confirmados`: os que o DA já confirmou.
 - `contagens.divergencias`: campos em que duas partes da folha dizem valores diferentes. O desdobra não escolhe, e você não recomenda nenhum. O DA escolhe na tela.
 - `contagens.recortes`: páginas escaneadas, sem texto. Os valores delas ainda não têm botão na tela. Por enquanto, o DA traz a mesma folha com texto (PDF com camada de texto, HTML salvo, CSV ou texto do e-mail) para você acrescentar ao job.

@@ -784,6 +784,54 @@
    "nota": "Teto do tamanho de um trecho. O maior paragrafo das folhas reais tem menos de mil caracteres; acima disto a folha e recusada (trecho_longo)."
   },
   {
+   "id": "specs.digitado_lado_min_px",
+   "valor": 16,
+   "unidade": "px por lado",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "formatos digitados na tela, sem folha de spec (0.9.2, pedido do dono do produto em 16/11/2026)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "INFERENCIA: menor lado de um formato digitado pelo DA na tela (desdobra.specs.digitados). Abaixo disto nenhum formato de midia; o menor IAB comum tem 88 x 31. A tela recusa o formato menor na hora, sem gravar."
+  },
+  {
+   "id": "specs.digitado_lado_max_px",
+   "valor": 16384,
+   "unidade": "px por lado",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "formatos digitados na tela, sem folha de spec (0.9.2, pedido do dono do produto em 16/11/2026)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "INFERENCIA: maior lado de um formato digitado pelo DA na tela, o maior lado de captura do Chromium headless. Conferir com o teto de memoria do render e do isolador: um painel muito grande pode passar na tela e cair no render."
+  },
+  {
+   "id": "specs.digitados_max",
+   "valor": 50,
+   "unidade": "formatos digitados por job",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "formatos digitados na tela, sem folha de spec (0.9.2, pedido do dono do produto em 16/11/2026)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "INFERENCIA: quantos formatos o DA pode digitar no mesmo job. O maior job sintetico tem menos de 20 formatos."
+  },
+  {
+   "id": "specs.digitado_texto_max_caracteres",
+   "valor": 2000,
+   "unidade": "caracteres por pedido",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "formatos digitados na tela, sem folha de spec (0.9.2, pedido do dono do produto em 16/11/2026)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "avisa",
+   "nota": "INFERENCIA: teto do texto que o DA cola de uma vez no campo dos formatos (cerca de 150 formatos de 13 caracteres). O texto maior e recusado antes de qualquer leitura."
+  },
+  {
    "id": "specs.pdf_trechos_por_pagina_max",
    "valor": 1000,
    "unidade": "pedacos de texto por pagina de PDF",

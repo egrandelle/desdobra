@@ -74,3 +74,13 @@ def test_sinopse_de_job_criar_mostra_modo_dados_opcional():
     doc = (RAIZ_REPO / 'docs' / 'm1-interfaces.md').read_text(encoding='utf-8')
     linhas = [l for l in doc.splitlines() if 'job criar' in l and '--fontes <arquivo ou pasta>' in l]
     assert linhas and not any(obrigatorio.search(l) for l in linhas)
+
+
+def test_sem_folha_a_skill_diz_que_o_da_escreve_os_formatos_na_tela():
+    """0.9.2: o job sem folha de spec fica sem formato ate o DA escrever a largura e a altura de cada formato na tela,
+    no passo 1. A skill diz isso na criacao e na explicacao da tela, sem mandar o DA ao terminal."""
+    texto = (SKILL / 'SKILL.md').read_text(encoding='utf-8')
+    linha = next(l for l in texto.splitlines() if 'Sem folhas agora' in l)
+    assert 'na tela' in linha and 'Valores de spec' in linha and 'formatos' in linha
+    passo_1 = next(l for l in texto.splitlines() if 'Passo 1, O que eu li no arquivo' in l)
+    assert 'sem folha' in passo_1 and 'largura e a altura de cada formato' in passo_1

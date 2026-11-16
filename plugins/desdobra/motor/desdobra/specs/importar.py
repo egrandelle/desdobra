@@ -12,8 +12,10 @@ da Globo); folha solta direto em entrada/specs/ e um veiculador sozinha. Folha c
 biblioteca (biblioteca-specs/) usa o veiculador e a curadoria de mapeamento desse perfil.
 
 Entram, nesta ordem: as leituras das folhas, as tabelas por tamanho, o mapeamento da biblioteca, as propostas do
-Claude (sugestoes/mapeamento-specs.json, so nos modos a e b), os valores digitados pelo DA e as confirmacoes do DA
-(specs/confirmacoes.json). O rascunho e funcao dessas entradas: rodar de novo da o mesmo resultado.
+Claude (sugestoes/mapeamento-specs.json, so nos modos a e b), os valores digitados pelo DA ao lado do recorte, os
+formatos que o DA digitou na tela sem folha de spec (briefing/formatos-digitados.json, 0.9.2; a medida que a folha ja
+traz fica de fora) e as confirmacoes do DA (specs/confirmacoes.json). O rascunho e funcao dessas entradas: rodar de
+novo da o mesmo resultado.
 """
 from pathlib import Path
 
@@ -58,6 +60,10 @@ def folhas_do_job(pasta):
             continue
         rel = arq.relative_to(base)
         vid = modelo.slug_seguro(rel.parts[0]) if len(rel.parts) > 1 else modelo.slug_seguro(arq.stem)
+        if vid == modelo.VEICULADOR_DIGITADO:
+            # o id do veiculador dos formatos escritos na tela e reservado: a pasta ou a folha "digitado" ganha outro,
+            # e o formato da folha nunca se mistura com os digitados (revisao do 0.9.2)
+            vid = modelo.VEICULADOR_DIGITADO_DA_FOLHA
         saida.append((arq.relative_to(pasta).as_posix(), vid))
     return saida
 
@@ -195,6 +201,9 @@ def montar(pasta, *, modo='c', plat=None, biblioteca=None, agora=None, job_id=No
             info['propostas_do_modelo'] = m.contagem['propostas_aplicadas'] - antes
     acoes = ler_confirmacoes(pasta)['acoes']
     dig_ok, dig_ign = modelo.aplicar_digitados(m, acoes)
+    # 0.9.2: os formatos que o DA digitou na tela, sem folha (a medida que a folha ja traz fica de fora: vale a folha)
+    from desdobra.specs import digitados
+    info['formatos_digitados'] = m.adicionar_digitados(digitados.lista_para_o_modelo(pasta))
     m.conferir_unidades()
     m.fechar_chaves()
     m.completar_tudo()
@@ -209,6 +218,8 @@ def montar(pasta, *, modo='c', plat=None, biblioteca=None, agora=None, job_id=No
     ok, ign = modelo.aplicar_acoes(doc, acoes)
     # a medida escolhida pelo DA num formato de medida divergente da a chave dele (revisao dos becos, D2)
     modelo.chaves_depois_das_escolhas(doc)
+    # a medida divergente escolhida agora pode cobrir um formato digitado na tela: vale a folha (0.9.2)
+    modelo.tirar_digitados_cobertos(doc)
     doc['resumo'] = modelo.resumo(doc)
     modelo._situacao_das_folhas(doc)
     info.update(acoes_aplicadas=ok + dig_ok, acoes_ignoradas=ign + dig_ign,

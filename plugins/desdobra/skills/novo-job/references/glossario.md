@@ -4,10 +4,10 @@ Palavras que o DA vê na tela e no chat, com o sentido que elas têm no desdobra
 
 ## A tela, passo a passo
 
-1. **O que eu li no arquivo.** O DA escolhe o modo de dados do job, escolhe a prancheta da peça quando o PSD tem mais de uma, vê os bloqueios, confere os arquivos linkados, confirma os valores de spec ao lado da folha e escolhe o giro de cada formato.
+1. **O que eu li no arquivo.** O DA escolhe o modo de dados do job, escolhe a prancheta da peça quando o PSD tem mais de uma, vê os bloqueios, confere os arquivos linkados, confirma os valores de spec ao lado da folha, escreve a largura e a altura de cada formato quando o job não tem folha de spec e escolhe o giro de cada formato.
 2. **Funções da peça.** O DA diz o papel de cada camada ou pasta. A função dada a uma pasta passa para as camadas de dentro, e ele pode trocar uma camada depois.
-3. **Famílias.** O DA vê a prévia de cada família de formatos e confere a composição.
-4. **Design system.** Para cada função, o DA escolhe como o tamanho muda de uma peça para outra e onde o elemento se prende.
+3. **Design system.** Para cada função, o DA escolhe como o tamanho muda de uma peça para outra e onde o elemento se prende.
+4. **Famílias.** O DA vê a prévia de cada família de formatos e confere a composição. As famílias aparecem quando o job tem formato e as funções e o Design system estão completos; antes disso, o passo mostra o que falta e leva até lá.
 5. **Render e aprovação.** O DA manda renderizar os formatos e aprova os que estão prontos.
 
 O que o DA escolhe fica salvo sozinho no rascunho do job. "Salvar e seguir" passa ao próximo passo.

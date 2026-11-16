@@ -167,7 +167,8 @@ def test_ato_de_aprovar_usa_o_comando_aprovar_sem_ato_novo_da_tela(job):
     assert ato.outros_comandos({'formatos': DOIS}) == []
     # M7c, M3 e M5: a marca do job e o registro do padrao dela sao os atos da tela novos depois do aprovar
     assert humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher',
-                                   'marca registrar', 'fonte como imagem')  # 0.9.1: o texto como imagem
+                                   'marca registrar', 'fonte como imagem',  # 0.9.1: o texto como imagem
+                                   'formatos digitados')  # 0.9.2: os formatos digitados
     assert 'aprovar' in humano.COMANDOS and 'parametros-entrega' in humano.COMANDOS
 
 

@@ -466,7 +466,9 @@ def test_esteira_tem_a_fase_specs():
     ids = [f.id for f in mod_fases.ESTEIRA]
     specs = next(f for f in mod_fases.ESTEIRA if f.id == 'specs')
     assert ids[-1] == 'specs' and specs.depende_de == ()
-    assert set(specs.entradas) == {'entrada/specs', 'specs/confirmacoes.json', 'sugestoes/mapeamento-specs.json'}
+    # 0.9.2: os formatos que o DA digita na tela, sem folha de spec, tambem sao entrada da fase
+    assert set(specs.entradas) == {'entrada/specs', 'specs/confirmacoes.json', 'sugestoes/mapeamento-specs.json',
+                                   'briefing/formatos-digitados.json'}
     assert specs.comando('P')[-4:] == ['spec', 'importar', '--job', 'P']
 
 

@@ -108,7 +108,10 @@
   const CLASSES_FUNCAO = [['base', 'Imagem e fundo'], ['texto', 'Texto'], ['marca', 'Marca'],
     ['global', 'Da peça inteira'], ['fora', 'Fora da peça'], ['indeterminado', 'Outra função']];
   const INVERSA = { estrutura: 'fora_da_peca', fora_da_peca: 'estrutura' };
-  const PASSOS = { lido: 1, funcoes: 2, pecas: 3, design: 4, formatos: 5 };
+  /* 0.9.2 (A2): o Design system vem antes das Famílias, porque as famílias dependem dele */
+  const PASSOS = { lido: 1, funcoes: 2, design: 3, pecas: 4, formatos: 5 };
+  const NOMES_PASSOS = { lido: 'O que eu li', funcoes: 'Funções', design: 'Design system', pecas: 'Famílias',
+    formatos: 'Render e aprovação' };
   const AMOSTRA = 'Aa Bb Cc 0123';
   const PASSO_ZOOM = 1.25;
   const MARGEM = 40;
@@ -206,7 +209,7 @@
   const DICA_PRONTA = 'Tudo confirmado. Pode salvar.';
   const DICA_P2 = 'Faltam escolhas nas funções ou no design system.';
   const DICA_MODO = 'Escolha o modo de dados no passo 1.';
-  const DICA_SEM_FORMATOS = 'O job ainda não tem formato com medida em pixels. Veja o passo 1.';
+  const DICA_SEM_FORMATOS = 'O job ainda não tem formato com medida em pixels. Escreva os formatos no passo 1, em Valores de spec.';
   const DICA_QUADRO = 'Escolha a prancheta da peça no passo 1.';
   const DICA_GIRO = 'Escolha o giro de cada formato no passo 1.';
   const DICA_MEDIDA = 'Escolha a medida do formato com duas medidas no passo 1.';
@@ -268,6 +271,7 @@
     const selo = document.getElementById('selo');
     selo.textContent = situacao === 'erro' && rascunho.tentativas >= REPETIR_RASCUNHO_MS.length ?
       TEXTO_RASCUNHO.erro_parado : TEXTO_RASCUNHO[situacao];
+    selo.title = selo.textContent; // 0.9.2 (B6): abaixo de 1280 px o selo e um ponto, e a frase fica no title
     selo.dataset.estado = situacao;
     // "Confirmar família" segue o rascunho gravado: desliga no erro e volta quando ele grava
     if ((antes === 'erro') !== (situacao === 'erro') && typeof atualizarBotaoFamilia === 'function' && vista.familia) {
@@ -515,6 +519,8 @@
     document.getElementById('confirmacao-texto').textContent = p.texto;
     sim.textContent = p.sim;
     nao.textContent = p.nao;
+    // revisao do 0.9.2: o Confirmar e a acao primaria da janela; o que tira algo do job vai na cor de aviso
+    sim.classList.toggle('botao-perigo', !!p.perigo);
     // o que o ato mostra alem do texto (M7b, B5): os formatos do render, o arquivo final de cada formato a aprovar
     const extra = document.getElementById('confirmacao-extra');
     limpar(extra);
@@ -558,8 +564,12 @@
       estado.faltam = e.faltam;
       estado.briefing = e.briefing;
       estado.aviso_atualizacao = e.aviso_atualizacao;
+      // revisao do 0.9.2: a espera das Familias segue o ato (os formatos escritos mudam o texto do servidor mesmo sem
+      // familia nenhuma ainda), para nao contradizer a lista do que as familias pedem
+      estado.passo_3 = e.passo_3;
       salvoNaTela = !!(e.briefing && e.briefing.salvo);
       trocarPainel(e);
+      if (!estado.orientacoes.length && !document.getElementById('passo-pecas').hidden) iniciarPecas(null);
       mostrarAvisos(e);
       atualizarFaltam();
       // M7c, M4: a marca escolhida ou trocada no passo 1 muda o padrao citado no Design system
@@ -604,7 +614,9 @@
       // 0.9.1: a janela do texto como imagem lista as camadas atingidas
       const extra = nome === 'marca_registrar' ? extraDoRegistro() :
         (nome === 'texto_como_imagem' ? extraDoTextoComoImagem(dados) : null);
-      return confirmarNaJanela(extra ? Object.assign({}, p, { extra: extra, larga: nome === 'marca_registrar' }) : p).then(function (sim) {
+      const perigo = !!(dados && dados.acao === 'remover');
+      return confirmarNaJanela(Object.assign({}, p, extra ? { extra: extra, larga: nome === 'marca_registrar' } : {},
+        { perigo: perigo })).then(function (sim) {
         if (!sim) return enviar('/api/ato/cancelar', { pedido: p.pedido }).then(function () { raiz.dataset.estadoAto = 'cancelado'; });
         const chave = JSON.stringify(dados || {});
         return enviar('/api/ato/confirmar', { pedido: p.pedido, resposta: 'confirmar' })
@@ -698,12 +710,59 @@
     if (id === 'pecas' && !document.querySelector('#orientacoes [role=tab]')) iniciarPecas(null);
     if (id === 'pecas') reajustar(document.getElementById('palco'));
     if (id === 'formatos') montarPainel();
+    atualizarSalvar();
   }
 
   /* ---------------------------------------------------------------- falta N */
   function fecharFaltam() {
     document.getElementById('lista-faltam').hidden = true;
     document.getElementById('faltam').setAttribute('aria-expanded', 'false');
+  }
+  /* 0.9.2 (A4, A6): o lugar do passo 1 onde cada item se resolve, pelo que o item diz (o servidor manda so o passo) */
+  function alvoDoLido(f) {
+    const l = (estado && estado.lido) || null;
+    const t = String(f.texto || '').toLowerCase();
+    if (l && !l.specs.formatos.length && (t.indexOf('medida em pixels') >= 0 || f.detalhe === l.specs.sem_formatos)) {
+      return { alvo: l.specs.folhas ? 'bloco-specs' : 'digitados', foco: l.specs.folhas ? null : 'digitados-campo' };
+    }
+    if (t.indexOf('fonte') >= 0) return { alvo: 'fontes', foco: null };
+    if (t.indexOf('modo de dados') >= 0) return { alvo: 'lido-modo', foco: null };
+    if (t.indexOf('prancheta') >= 0) return { alvo: 'bloco-quadros', foco: null };
+    if (t.indexOf('giro') >= 0) return { alvo: 'lido-formatos', foco: null };
+    if (t.indexOf('linkad') >= 0) return { alvo: 'lido-linkados', foco: null };
+    if (t.indexOf('spec') >= 0 || t.indexOf('medida') >= 0) return { alvo: 'bloco-specs', foco: null };
+    return { alvo: null, foco: null };
+  }
+  /* rola ate o lugar, marca por um instante e poe o foco no primeiro controle dele (ou no indicado) */
+  function chegarEm(idAlvo, idFoco) {
+    const alvo = idAlvo ? document.getElementById(idAlvo) : null;
+    if (!alvo) return;
+    const calmo = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    alvo.scrollIntoView({ block: 'start', behavior: calmo ? 'auto' : 'smooth' });
+    alvo.classList.remove('chegou-aqui');
+    void alvo.offsetWidth; // a marca recomeca a cada chegada
+    alvo.classList.add('chegou-aqui');
+    setTimeout(function () { alvo.classList.remove('chegou-aqui'); }, 1500);
+    const foco = idFoco ? document.getElementById(idFoco) :
+      alvo.querySelector('button:not(:disabled), textarea:not(:disabled), input:not(:disabled)');
+    if (foco && !foco.disabled) foco.focus({ preventScroll: true });
+  }
+  /* o "Ir até aqui" de cada item: o passo e, quando a tela sabe, o lugar dentro dele */
+  function irPara(ir) {
+    ir = ir || {};
+    if (ir.passo === 'pecas' && ir.formato) irParaFormato(ir.formato);
+    else if (ir.passo === 'pecas' && ir.familia) irParaFamilia(ir.familia);
+    else if (ir.passo === 'funcoes' && ir.camada !== undefined) irParaCamada(ir.camada);
+    else if (ir.passo === 'design' && ir.chave) irParaDesign(ir.chave);
+    else {
+      mostrarPasso(ir.passo || 'lido');
+      if (ir.alvo) chegarEm(ir.alvo, ir.foco);
+    }
+  }
+  function comAlvo(f) {
+    if (!f.ir || f.ir.passo !== 'lido' || f.ir.alvo) return f;
+    const a = alvoDoLido(f);
+    return a.alvo ? Object.assign({}, f, { ir: Object.assign({}, f.ir, a) }) : f;
   }
   function montarFaltam(lista) {
     const botaoFaltam = document.getElementById('faltam');
@@ -712,20 +771,59 @@
     botaoFaltam.classList.toggle('zero', !lista.length);
     limpar(ol);
     if (!lista.length) item(ol, 'Nada falta no que a tela mostra.', 'vazio');
-    lista.forEach(function (f) {
+    /* 0.9.2 (M6): a lista na ordem dos passos, com o nome do passo em cima do primeiro item de cada um */
+    const ordem = lista.map(function (f, i) { return [f, i]; }).sort(function (a, b) {
+      const pa = PASSOS[(a[0].ir && a[0].ir.passo) || 'lido'] || 9, pb = PASSOS[(b[0].ir && b[0].ir.passo) || 'lido'] || 9;
+      return pa - pb || a[1] - b[1];
+    });
+    let passoAntes = null;
+    ordem.forEach(function (par) {
+      const f = comAlvo(par[0]);
+      const passo = (f.ir && f.ir.passo) || 'lido';
       const li = el('li');
+      if (passo !== passoAntes) {
+        li.classList.add('abre-grupo');
+        li.appendChild(el('span', 'Passo ' + PASSOS[passo] + ', ' + NOMES_PASSOS[passo], 'grupo-item'));
+        passoAntes = passo;
+      }
       li.appendChild(el('span', f.texto, 'texto-item'));
       if (f.detalhe) li.appendChild(el('span', f.detalhe, 'detalhe-item'));
       const ir = botao('Ir até aqui', 'ir');
       ir.addEventListener('click', function () {
         fecharFaltam();
-        if (f.ir && f.ir.passo === 'pecas' && f.ir.formato) irParaFormato(f.ir.formato);
-        else if (f.ir && f.ir.passo === 'funcoes' && f.ir.camada !== undefined) irParaCamada(f.ir.camada);
-        else if (f.ir && f.ir.passo === 'design' && f.ir.chave) irParaDesign(f.ir.chave);
-        else mostrarPasso((f.ir && f.ir.passo) || 'lido');
+        irPara(f.ir);
       });
       li.appendChild(ir);
       ol.appendChild(li);
+    });
+    ultimaFaltam = lista;
+    marcarAbas(lista);
+  }
+  /* 0.9.2 (M9): cada aba diz se o passo esta feito ou se falta algo nele; o nome da aba nao muda */
+  let ultimaFaltam = [];
+  function marcarAbas(lista) {
+    const conta = {};
+    lista.forEach(function (f) { const p = (f.ir && f.ir.passo) || 'lido'; conta[p] = (conta[p] || 0) + 1; });
+    const ids = estado ? idsDasFamilias() : [];
+    const semConfirmar = ids.filter(function (id) { const f = rascunho.familias[id]; return !(f && f.confirmada); }).length;
+    if (escrita && ids.length) conta.pecas = Math.max(conta.pecas || 0, semConfirmar);
+    document.querySelectorAll('#passos [role=tab]').forEach(function (b) {
+      const p = b.dataset.passo;
+      const n = conta[p] || 0;
+      let situacao = '';
+      // o visto so quando o passo tem o que fazer e esta feito: o Design system espera as funcoes, as Familias
+      // esperam existir, e o passo 1 espera ter formato
+      const pronto = p === 'pecas' ? ids.length > 0 :
+        p === 'design' ? !conta.funcoes && !!p2idx.opcoes && vistasDoDesign().length > 0 :
+        p === 'funcoes' ? p2idx.nos.length > 0 :
+        p === 'lido' ? !!(estado && estado.lido && estado.lido.specs.formatos.length) : false;
+      if (n) situacao = 'falta';
+      else if (escrita && estado && pronto) situacao = 'feito';
+      if (situacao) b.dataset.estado = situacao; else delete b.dataset.estado;
+      const nome = NOMES_PASSOS[p] || b.textContent;
+      if (situacao === 'falta') b.setAttribute('aria-label', nome + ', ' + (n === 1 ? 'falta 1' : 'faltam ' + n));
+      else if (situacao === 'feito') b.setAttribute('aria-label', nome + ', feito');
+      else b.removeAttribute('aria-label');
     });
   }
   function ligarFaltam() {
@@ -827,25 +925,263 @@
     corpo.appendChild(bloco);
     return corpo;
   }
+  /* 0.9.2, formatos digitados: sem folha de spec, o DA escreve a largura e a altura de cada formato. A pagina le o
+     texto a cada tecla com o mesmo parser do motor (desdobra.specs.digitados.interpretar; as regras, os limites e as
+     mensagens vem do motor em lido.specs.digitados), mostra a previa e o erro na hora, e o motor confere de novo no
+     pedido e no Confirmar. O campo fica no HTML: o que o DA escreveu nao se perde quando o passo 1 e redesenhado */
+  const DIGITADOS_BRANCO = '[ \\t\\u00a0]';
+  const DIGITADOS_SEPARADOR = /[,;\r\n]+/;
+  const DIGITADOS_APARAR = new RegExp('^' + DIGITADOS_BRANCO + '+|' + DIGITADOS_BRANCO + '+$', 'g');
+  // o numero aceita o milhar com ponto, como o DA escreve no Brasil ("1.080 x 1.920"; revisao do 0.9.2)
+  const DIGITADOS_NUMERO = '([0-9]{1,3}(?:[.][0-9]{3})+|[0-9]+)';
+  const DIGITADOS_MEDIDA = new RegExp('^' + DIGITADOS_BRANCO + '*' + DIGITADOS_NUMERO + DIGITADOS_BRANCO + '*(?:px)?' +
+    DIGITADOS_BRANCO + '*[xX×*]' + DIGITADOS_BRANCO + '*' + DIGITADOS_NUMERO + DIGITADOS_BRANCO + '*(?:px)?' +
+    DIGITADOS_BRANCO + '*$', 'i');
+  const DIGITADOS_DECIMAL = /[0-9][.][0-9]/;
+  const DIGITADOS_ERROS_VISIVEIS = 3;
+  let digitadosRegras = null;
+  function medidaNaTela(l, a) { return l + ' x ' + a; }
+  function fraseDasMedidas(ms) {
+    const nomes = ms.map(function (m) { return medidaNaTela(m[0], m[1]); });
+    return nomes.length === 1 ? nomes[0] : nomes.slice(0, -1).join(', ') + ' e ' + nomes[nomes.length - 1];
+  }
+  /* o espelho de desdobra.specs.digitados.interpretar: {medidas: [[l, a]], erros: [{codigo, trecho, largura, altura}]} */
+  function interpretarFormatos(texto, r) {
+    const erro = function (codigo, trecho, l, a) {
+      return { codigo: codigo, trecho: trecho === undefined ? null : trecho, largura: l === undefined ? null : l, altura: a === undefined ? null : a };
+    };
+    if (typeof texto !== 'string') return { medidas: [], erros: [erro('vazio')] };
+    if (texto.length > r.texto_max) return { medidas: [], erros: [erro('texto_longo')] };
+    const pedacos = texto.split(DIGITADOS_SEPARADOR).map(function (p) { return p.replace(DIGITADOS_APARAR, ''); })
+      .filter(function (p) { return p !== ''; });
+    if (!pedacos.length) return { medidas: [], erros: [erro('vazio')] };
+    const medidas = [];
+    const erros = [];
+    const repetidas = new Set();
+    pedacos.forEach(function (p) {
+      const m = DIGITADOS_MEDIDA.exec(p);
+      if (!m) { erros.push(erro(DIGITADOS_DECIMAL.test(p) ? 'nao_inteiro' : 'nao_entendido', p)); return; }
+      const l = Number(m[1].split('.').join(''));
+      const a = Number(m[2].split('.').join(''));
+      const chave = l + 'x' + a;
+      if (Math.min(l, a) < r.lado_min) erros.push(erro('pequeno', null, l, a));
+      else if (Math.max(l, a) > r.lado_max) erros.push(erro('grande', null, l, a));
+      else if (medidas.some(function (x) { return x[0] === l && x[1] === a; })) {
+        if (!repetidas.has(chave)) { repetidas.add(chave); erros.push(erro('repetido_no_texto', null, l, a)); }
+      } else medidas.push([l, a]);
+    });
+    return { medidas: medidas, erros: erros };
+  }
+  function mensagemDigitado(e, r) {
+    const campos = { trecho: e.trecho || '', largura: e.largura, altura: e.altura, min: r.lado_min,
+      max: e.codigo === 'demais' ? r.max : r.lado_max };
+    let t = (r.mensagens || {})[e.codigo] || (r.mensagens || {}).recusado || '';
+    Object.keys(campos).forEach(function (k) {
+      t = t.split('{' + k + '}').join(campos[k] === null || campos[k] === undefined ? '' : String(campos[k]));
+    });
+    return t;
+  }
+  /* o que a pagina confere antes do pedido, alem do parser: a lista do DA, a folha e o teto */
+  function conferirDigitados(texto) {
+    const r = digitadosRegras;
+    const lido = interpretarFormatos(texto, r);
+    if (lido.erros.length) return lido;
+    const naLista = (r.lista || []).map(function (x) { return x.largura + 'x' + x.altura; });
+    const naFolha = (r.da_folha || []).map(function (x) { return x[0] + 'x' + x[1]; });
+    lido.medidas.forEach(function (m) {
+      const k = m[0] + 'x' + m[1];
+      if (naLista.indexOf(k) >= 0) lido.erros.push({ codigo: 'ja_na_lista', trecho: null, largura: m[0], altura: m[1] });
+      else if (naFolha.indexOf(k) >= 0) lido.erros.push({ codigo: 'ja_na_folha', trecho: null, largura: m[0], altura: m[1] });
+    });
+    if (!lido.erros.length && naLista.length + lido.medidas.length > r.max) {
+      lido.erros.push({ codigo: 'demais', trecho: null, largura: null, altura: null });
+    }
+    return lido;
+  }
+  function mostrarErroDigitados(textos) {
+    const caixa = document.getElementById('digitados-erro');
+    const campo = document.getElementById('digitados-campo');
+    limpar(caixa);
+    const vistos = textos.slice(0, DIGITADOS_ERROS_VISIVEIS);
+    vistos.forEach(function (t) { caixa.appendChild(el('p', t)); });
+    if (textos.length > vistos.length) caixa.appendChild(el('p', 'e mais ' + (textos.length - vistos.length)));
+    campo.setAttribute('aria-invalid', textos.length ? 'true' : 'false');
+    campo.setAttribute('aria-describedby', textos.length ? 'digitados-erro digitados-previa' : 'digitados-previa');
+  }
+  function lerCampoDigitados() {
+    const campo = document.getElementById('digitados-campo');
+    const bloco = document.getElementById('digitados');
+    const botaoAcr = document.getElementById('digitados-acrescentar');
+    const previaNo = document.getElementById('digitados-previa');
+    if (!digitadosRegras) return;
+    const texto = campo.value;
+    const vazio = texto.replace(DIGITADOS_APARAR, '') === '';
+    const parse = interpretarFormatos(texto, digitadosRegras);
+    // o resultado do parser fica no bloco, para o teste conferir que a pagina e o motor leem igual
+    bloco.dataset.medidas = JSON.stringify(parse.medidas);
+    bloco.dataset.codigos = JSON.stringify(parse.erros.map(function (e) { return e.codigo; }));
+    const lido = conferirDigitados(texto);
+    const erros = vazio ? [] : lido.erros;
+    mostrarErroDigitados(erros.map(function (e) { return mensagemDigitado(e, digitadosRegras); }));
+    previaNo.textContent = (!erros.length && lido.medidas.length) ?
+      (lido.medidas.length === 1 ? 'Vai entrar: ' : 'Vão entrar: ') + fraseDasMedidas(lido.medidas) + '.' : '';
+    botaoAcr.disabled = !escrita || vazio || erros.length > 0 || !lido.medidas.length;
+    campo.style.height = 'auto';
+    campo.style.height = Math.min(campo.scrollHeight, campo.dataset.alturaMax ? Number(campo.dataset.alturaMax) : campo.scrollHeight) + 'px';
+  }
+  function acrescentarDigitados() {
+    const campo = document.getElementById('digitados-campo');
+    const b = document.getElementById('digitados-acrescentar');
+    if (b.disabled) return;
+    pedirAto('formatos_digitados', { acao: 'acrescentar', texto: campo.value }, function () {
+      mostrarErroDigitados([mensagemDigitado({ codigo: 'recusado' }, digitadosRegras)]);
+    });
+  }
+  function ligarDigitados() {
+    const campo = document.getElementById('digitados-campo');
+    if (!campo) return;
+    if (!escrita) campo.disabled = true;
+    // o campo cresce ate 4 linhas, depois rola
+    const linha = parseFloat(getComputedStyle(campo).lineHeight) || 20;
+    campo.dataset.alturaMax = String(Math.round(linha * 4 + 16));
+    campo.addEventListener('input', lerCampoDigitados);
+    campo.addEventListener('keydown', function (ev) {
+      // Enter acrescenta; Shift+Enter quebra a linha (a lista colada de uma planilha vem com quebras)
+      if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); acrescentarDigitados(); }
+    });
+    document.getElementById('digitados-acrescentar').addEventListener('click', acrescentarDigitados);
+  }
+  function montarDigitados(d) {
+    if (!d) return;
+    digitadosRegras = d;
+    // revisao do 0.9.2: a lista gravada que nao se le (ou de outro job) aparece como aviso, sem sumir em silencio
+    const raizDig = document.getElementById('digitados');
+    let aviso = document.getElementById('digitados-problema');
+    if (!aviso && raizDig) {
+      aviso = el('p', null, 'decisao-nota aviso');
+      aviso.id = 'digitados-problema';
+      aviso.setAttribute('role', 'alert');
+      raizDig.insertBefore(aviso, raizDig.firstChild);
+    }
+    if (aviso) {
+      aviso.textContent = d.problema || '';
+      aviso.hidden = !d.problema;
+    }
+    const bloco = document.getElementById('digitados-lista-bloco');
+    const ul = document.getElementById('digitados-lista');
+    limpar(ul);
+    bloco.hidden = !d.lista.length;
+    d.lista.forEach(function (x) {
+      const li = el('li', null, 'digitados-item' + (x.na_folha ? ' coberto' : ''));
+      const topo = el('div', null, 'digitados-item-topo');
+      topo.appendChild(el('span', x.medida, 'digitados-medida'));
+      if (x.na_folha) topo.appendChild(el('span', 'Agora vem da folha de spec', 'selo-digitado-coberto'));
+      else topo.appendChild(el('span', x.quando ? 'Escrito por você em ' + x.quando : 'Escrito por você', 'opcao-detalhe'));
+      if (x.teste) topo.appendChild(el('span', 'Teste', 'chip chip-neutro'));
+      const b = botaoAto(x.na_folha ? 'Tirar da lista' : 'Remover', 'formatos_digitados',
+        { acao: 'remover', largura: x.largura, altura: x.altura });
+      b.setAttribute('aria-label', (x.na_folha ? 'Tirar da lista o formato ' : 'Remover o formato ') + x.medida);
+      topo.appendChild(b);
+      li.appendChild(topo);
+      if (x.na_folha) {
+        li.appendChild(el('p', 'A folha de spec trouxe o mesmo formato, e vale a folha. Se a folha sair do job, o formato escrito por você volta.', 'nota'));
+      }
+      ul.appendChild(li);
+    });
+    lerCampoDigitados();
+  }
+  depoisDoAto.formatos_digitados = function (d) {
+    const campo = document.getElementById('digitados-campo');
+    if (d && d.acao === 'acrescentar') {
+      campo.value = '';
+      lerCampoDigitados();
+      campo.focus();
+      return;
+    }
+    // depois do Remover, o foco vai ao proximo item da lista ou ao campo
+    const botoes = Array.from(document.querySelectorAll('#digitados-lista button[data-ato]'));
+    if (botoes.length) botoes[0].focus(); else campo.focus();
+  };
+  /* 0.9.2 (A4): onde cada bloqueio se resolve na tela, pela etapa que parou. As fontes vao a coluna das fontes (o
+     arquivo ou o texto como imagem); as specs, a Valores de spec. O bloqueio sem botao na tela diz isso, sem comando */
+  const RESOLVER_AQUI = 'Resolver aqui';
+  const SEM_ACAO_NA_TELA = 'Este bloqueio não se resolve nesta tela. Conte ao Claude, no chat, o que aparece aqui.';
+  function destinoDoBloqueio(fase) {
+    if (fase === 'fontes' || fase === 'laudo-fontes') {
+      return { passo: 'lido', alvo: 'fontes', foco: null };
+    }
+    if (fase === 'specs') return { passo: 'lido', alvo: 'bloco-specs', foco: null };
+    return null;
+  }
+  function itensDeBloqueio(l) {
+    const itens = [];
+    l.bloqueios.forEach(function (b) { itens.push({ titulo: b.descricao, texto: b.texto, camadas: [], ir: destinoDoBloqueio(b.fase) }); });
+    l.camadas_bloqueadas.forEach(function (c) {
+      itens.push({ titulo: 'Camada que não pôde ser lida', texto: (c.motivos || []).join('; '), camadas: [c.nome], ir: null });
+    });
+    (l.paradas || []).forEach(function (p) { itens.push({ titulo: null, texto: p.texto, camadas: p.camadas, ir: null }); });
+    return itens;
+  }
   function montarBloqueios(l) {
     const no = document.getElementById('lido-bloqueios');
     limpar(no);
-    const itens = [];
-    l.bloqueios.forEach(function (b) { itens.push([b.descricao, b.texto, []]); });
-    l.camadas_bloqueadas.forEach(function (c) {
-      itens.push(['Camada que não pôde ser lida', (c.motivos || []).join('; '), [c.nome]]);
-    });
-    (l.paradas || []).forEach(function (p) { itens.push([null, p.texto, p.camadas]); });
-    if (!itens.length) { no.appendChild(el('p', 'Nenhum bloqueio.', 'vazio-calmo')); return; }
+    const itens = itensDeBloqueio(l);
+    // sem bloqueio, o bloco sai: "Nenhum bloqueio" parecia dizer que nada faltava, mesmo sem formato
+    document.getElementById('bloco-bloqueios').hidden = !itens.length;
+    if (!itens.length) return itens;
     const ul = el('ul', null, 'paradas');
     itens.forEach(function (t) {
       const li = el('li', null, 'parada');
-      if (t[0]) li.appendChild(el('span', t[0], 'parada-titulo'));
-      li.appendChild(el('span', t[1], 'parada-texto'));
-      if (t[2] && t[2].length) li.appendChild(el('span', t[2].join(', '), 'parada-camadas'));
+      if (t.titulo) li.appendChild(el('span', t.titulo, 'parada-titulo'));
+      li.appendChild(el('span', t.texto, 'parada-texto'));
+      if (t.camadas && t.camadas.length) li.appendChild(el('span', t.camadas.join(', '), 'parada-camadas'));
+      if (t.ir) {
+        const b = botao(RESOLVER_AQUI, 'ir');
+        b.addEventListener('click', function () { irPara(t.ir); });
+        li.appendChild(b);
+      } else if ((t.texto || '').indexOf('Claude') < 0) {
+        // o texto do servidor que ja diz o caminho (Conte ao Claude) nao ganha a mesma frase de novo
+        li.appendChild(el('span', SEM_ACAO_NA_TELA, 'parada-sem-acao'));
+      }
       ul.appendChild(li);
     });
     no.appendChild(ul);
+    return itens;
+  }
+  /* 0.9.2 (A4, A3): a faixa do topo do passo 1 com o que trava o job e com o que falta para as familias aparecerem,
+     cada linha com o botao para o lugar. Sem nada disso, a faixa sai */
+  function montarFaixaDoLido(l, bloqueios) {
+    const no = document.getElementById('faixa-lido');
+    limpar(no);
+    const linhas = [];
+    if (bloqueios.length) {
+      const primeiro = bloqueios.find(function (b) { return b.ir; }) || bloqueios[0];
+      linhas.push({ classe: 'bloqueio',
+        titulo: bloqueios.length === 1 ? 'O job está parado em 1 bloqueio' : 'O job está parado em ' + bloqueios.length + ' bloqueios',
+        texto: (primeiro.titulo ? primeiro.titulo + '. ' : '') + primeiro.texto,
+        botao: primeiro.ir ? RESOLVER_AQUI : 'Ver os bloqueios',
+        ir: primeiro.ir || { passo: 'lido', alvo: 'bloco-bloqueios', foco: null } });
+    }
+    if (!l.specs.formatos.length) {
+      const semFolha = !l.specs.folhas;
+      linhas.push({ classe: 'formatos', titulo: 'O job ainda não tem formato',
+        texto: semFolha ? 'As famílias saem dos formatos. Sem folha de spec, escreva a largura e a altura de cada formato em pixels.' :
+          (l.specs.sem_formatos || 'As folhas de spec não trazem medida em pixels que o desdobra consiga usar.'),
+        botao: semFolha ? 'Escrever os formatos' : 'Ver os valores de spec',
+        ir: semFolha ? { passo: 'lido', alvo: 'digitados', foco: 'digitados-campo' } : { passo: 'lido', alvo: 'bloco-specs', foco: null } });
+    }
+    linhas.forEach(function (x) {
+      const linha = el('div', null, 'faixa-linha ' + x.classe);
+      const textos = el('div', null, 'faixa-textos');
+      textos.appendChild(el('p', x.titulo, 'faixa-titulo'));
+      textos.appendChild(el('p', x.texto, 'faixa-texto'));
+      linha.appendChild(textos);
+      const b = botao(x.botao, 'botao' + (x.classe === 'formatos' ? ' botao-primario' : ''));
+      b.addEventListener('click', function () { irPara(x.ir); });
+      linha.appendChild(b);
+      no.appendChild(linha);
+    });
+    no.hidden = !linhas.length;
   }
   function montarLinkados(lks) {
     const no = document.getElementById('lido-linkados');
@@ -960,9 +1296,15 @@
     const no = document.getElementById('lido-formatos');
     limpar(no);
     if (!s.formatos.length) {
+      // 0.9.2 (A3): o estado normal do job novo, num cartao neutro com a saida ao lado do texto
       const vazio = el('div', null, 'vazio-formatos');
       vazio.appendChild(el('p', 'As specs do job ainda não têm nenhum formato com medida em pixels.', 'vazio-titulo'));
       if (s.sem_formatos) vazio.appendChild(el('p', s.sem_formatos, 'nota'));
+      const ir = botao(s.folhas ? 'Ver os valores de spec' : 'Escrever os formatos', 'botao');
+      ir.addEventListener('click', function () {
+        if (s.folhas) chegarEm('bloco-specs', null); else chegarEm('digitados', 'digitados-campo');
+      });
+      vazio.appendChild(ir);
       no.appendChild(vazio);
       return;
     }
@@ -971,17 +1313,20 @@
       const art = el('article', null, 'decisao giro' + (giroCompleto(g) ? ' feita' : ''));
       const topo = el('div', null, 'decisao-topo');
       const nome = el('span', null, 'decisao-nome');
-      nome.appendChild(el('span', f.id, 'giro-id'));
+      // revisao do 0.9.2: o formato escrito na tela aparece pela medida, sem o id do motor
+      if (f.digitado) nome.appendChild(el('span', 'Escrito por você', 'giro-id'));
+      else nome.appendChild(el('span', f.id, 'giro-id'));
       nome.appendChild(el('span', dimensao(f.largura, f.altura), 'giro-medida'));
       topo.appendChild(nome);
       topo.appendChild(el('span', descreverGiro(g), 'decisao-estado'));
       art.appendChild(topo);
-      art.appendChild(el('p', f.sem_folha ? 'Formato de teste, sem folha.' : (f.tem_spec ? 'Com spec confirmada.' :
-        'Sem spec confirmada.'), 'decisao-nota giro-spec'));
-      art.appendChild(el('p', f.giro_da_folha ? 'A folha diz: ' + f.giro_da_folha : 'A folha não fala de giro.', 'giro-folha'));
+      art.appendChild(el('p', f.sem_folha ? 'Formato de teste, sem folha.' : (f.digitado ? 'Formato escrito por você, sem folha de spec.' :
+        (f.tem_spec ? 'Com spec confirmada.' : 'Sem spec confirmada.')), 'decisao-nota giro-spec'));
+      art.appendChild(el('p', f.digitado ? 'Sem folha de spec, o giro é só escolha sua.' :
+        (f.giro_da_folha ? 'A folha diz: ' + f.giro_da_folha : 'A folha não fala de giro.'), 'giro-folha'));
       const linha = el('div', null, 'opcoes-funcao giro-opcoes');
       linha.setAttribute('role', 'group');
-      linha.setAttribute('aria-label', 'Giro de ' + f.id);
+      linha.setAttribute('aria-label', 'Giro de ' + (f.digitado ? dimensao(f.largura, f.altura) : f.id));
       GIROS.forEach(function (x) {
         linha.appendChild(botaoGiro(x[1], !!g && g.graus === x[0], f.chave + '|' + x[0] + '|', function () {
           escolherGiro(f, x[0], null);
@@ -991,7 +1336,7 @@
       if (g && (g.graus === 90 || g.graus === 270)) {
         const sent = el('div', null, 'opcoes-funcao giro-opcoes');
         sent.setAttribute('role', 'group');
-        sent.setAttribute('aria-label', 'Sentido do giro de ' + f.id);
+        sent.setAttribute('aria-label', 'Sentido do giro de ' + (f.digitado ? dimensao(f.largura, f.altura) : f.id));
         sent.appendChild(el('span', 'Sentido', 'giro-rotulo'));
         SENTIDOS.forEach(function (x) {
           sent.appendChild(botaoGiro(x[1], g.sentido === x[0], f.chave + '|' + g.graus + '|' + x[0], function () {
@@ -1143,7 +1488,15 @@
     } else if (usavel) {
       no.appendChild(el('p', 'A biblioteca da agência ainda não tem marca. Crie a primeira abaixo, ou siga sem marca.', 'vazio-calmo modo-nota'));
     } else {
-      no.appendChild(el('p', (m.biblioteca && m.biblioteca.o_que_fazer) || 'A biblioteca da agência não está configurada. O job segue sem marca.', 'nota modo-nota'));
+      // 0.9.2 (M7): uma linha a vista; o caminho da configuracao fica dentro de "Como configurar"
+      no.appendChild(el('p', 'A biblioteca de marcas da agência não está pronta para este job. O job segue sem marca.', 'nota modo-nota'));
+      const como = m.biblioteca && m.biblioteca.o_que_fazer;
+      if (como) {
+        const d = el('details', null, 'saiba-mais');
+        d.appendChild(el('summary', 'Como configurar'));
+        d.appendChild(el('p', como, 'nota'));
+        no.appendChild(d);
+      }
     }
     const sem = el('div', null, 'modos marca-sem');
     sem.appendChild(linhaMarca('Sem marca', 'O job segue sem padrão de marca.', { escolha: 'sem_marca' }, !!e && e.escolha === 'sem_marca'));
@@ -1226,7 +1579,7 @@
     }
   };
   function montarLido(l) {
-    montarBloqueios(l);
+    montarFaixaDoLido(l, montarBloqueios(l));
     montarLinkados(l.linkados);
     const s = l.specs;
     const sp = document.getElementById('lido-specs');
@@ -1240,6 +1593,12 @@
       n.appendChild(numero(s.registros, 'só registro'));
       sp.appendChild(n);
     }
+    montarDigitados(s.digitados);
+    // 0.9.2 (A3): sem formato nenhum, o bloco dos formatos escritos e o primeiro passo; com a folha, fica discreto
+    const blocoDig = document.getElementById('digitados');
+    const soDaFolha = s.formatos.length > 0 && !s.formatos.some(function (f) { return f.digitado; });
+    blocoDig.classList.toggle('em-destaque', !s.formatos.length && !s.folhas);
+    blocoDig.classList.toggle('secundario', soDaFolha);
     montarSpecs(s);
     montarFormatos(s);
     montarQuadros(l.quadros || []);
@@ -1255,13 +1614,31 @@
       if (f.nome_ps) c.appendChild(el('p', f.nome_ps, 'rotulo-fonte'));
       const p = el('p', AMOSTRA, 'amostra');
       p.id = 'amostra-' + f.id;
-      p.style.fontFamily = '"' + f.familia_css + '"';
+      // 0.9.2 (M10): a letra que a fonte nao tem cai numa sem serifa do sistema, nunca na serifada do navegador
+      p.style.fontFamily = '"' + f.familia_css + '", sans-serif';
       c.appendChild(p);
       fo.appendChild(c);
     });
     return Promise.all(l.fontes.map(function (f) {
       return document.fonts.load('22px "' + f.familia_css + '"').catch(function () { return null; });
-    }));
+    })).then(function (r) {
+      l.fontes.forEach(avisarLetraQueFalta);
+      return r;
+    });
+  }
+  /* 0.9.2 (M10): a amostra que mistura a fonte do job com a do sistema leva a nota. A conta: a mesma frase medida com
+     duas quedas diferentes so da larguras diferentes quando alguma letra cai fora da fonte */
+  function avisarLetraQueFalta(f) {
+    const p = document.getElementById('amostra-' + f.id);
+    if (!p || !regua) return;
+    const largura = function (queda) {
+      regua.font = '40px "' + f.familia_css + '", ' + queda;
+      return regua.measureText(AMOSTRA).width;
+    };
+    const falta = Math.abs(largura('monospace') - largura('serif')) > 0.5;
+    const velha = p.parentNode.querySelector('.amostra-nota');
+    if (velha) velha.remove();
+    if (falta) p.parentNode.appendChild(el('p', 'Algumas letras desta amostra não estão na fonte e aparecem numa fonte do sistema.', 'amostra-nota'));
   }
 
   /* ---------------------------------------------------------------- passo 2: funcoes (fatia 3) */
@@ -1448,9 +1825,13 @@
     const b = document.getElementById('salvar-seguir');
     const dica = document.getElementById('dica-acoes');
     const aviso = document.getElementById('salvo');
+    const irDica = document.getElementById('dica-ir');
     aviso.hidden = !salvoNaTela;
     aviso.textContent = salvoNaTela ? AVISO_SALVO : '';
-    dica.classList.remove('pronta');
+    dica.classList.remove('pronta', 'bloqueia');
+    irDica.hidden = true;
+    b.removeAttribute('title');
+    if (estado) marcarAbas(ultimaFaltam);
     if (!escrita || !estado) { b.disabled = true; dica.textContent = DICA_SO_VER; return; }
     b.dataset.ato = 'salvar';
     b.dataset.dados = '{}';
@@ -1468,15 +1849,31 @@
     const semGiro = lido.specs.formatos.some(function (f) { return !giroCompleto(giroDe(f)); });
     /* o formato da folha com duas medidas, sem a escolha do DA: o servidor recusa salvar (formato_sem_medida) */
     const semMedida = (lido.specs.sem_medida || []).length > 0;
-    if (semFormatos) dica.textContent = DICA_SEM_FORMATOS;
-    else if (semMedida) dica.textContent = DICA_MEDIDA;
-    else if (semModo) dica.textContent = DICA_MODO;
-    else if (semQuadro) dica.textContent = DICA_QUADRO;
-    else if (semGiro) dica.textContent = DICA_GIRO;
-    else if (p2falta) dica.textContent = DICA_P2;
-    else if (semConfirmar) dica.textContent = dicaDasFamilias(semConfirmar);
-    else { dica.textContent = DICA_PRONTA; dica.classList.add('pronta'); }
+    /* 0.9.2 (A6): o motivo em tinta, junto do botao, e o "Ir até lá" leva ao lugar onde ele se resolve */
+    let destino = null;
+    if (semFormatos) {
+      dica.textContent = DICA_SEM_FORMATOS;
+      destino = lido.specs.folhas ? { passo: 'lido', alvo: 'bloco-specs' } : { passo: 'lido', alvo: 'digitados', foco: 'digitados-campo' };
+    } else if (semMedida) { dica.textContent = DICA_MEDIDA; destino = { passo: 'lido', alvo: 'bloco-specs' }; }
+    else if (semModo) { dica.textContent = DICA_MODO; destino = { passo: 'lido', alvo: 'lido-modo' }; }
+    else if (semQuadro) { dica.textContent = DICA_QUADRO; destino = { passo: 'lido', alvo: 'bloco-quadros' }; }
+    else if (semGiro) { dica.textContent = DICA_GIRO; destino = { passo: 'lido', alvo: 'lido-formatos' }; }
+    else if (p2falta) { dica.textContent = DICA_P2; destino = pendenciasP2()[0].ir; }
+    else if (semConfirmar) {
+      dica.textContent = dicaDasFamilias(semConfirmar);
+      const gid = idsDasFamilias().find(function (id) { const f = rascunho.familias[id]; return !(f && f.confirmada); });
+      // ja na familia que falta, o botao ao lado (Confirmar família) e o caminho; o "Ir até lá" so leva a outra
+      if (gid && !(vista.familia === gid && !document.getElementById('passo-pecas').hidden)) destino = { passo: 'pecas', familia: gid };
+    } else { dica.textContent = DICA_PRONTA; dica.classList.add('pronta'); }
     b.disabled = !!(semConfirmar || p2falta || semModo || semFormatos || semQuadro || semGiro || semMedida);
+    if (b.disabled) {
+      dica.classList.add('bloqueia');
+      b.title = dica.textContent;
+    }
+    if (destino) {
+      irDica.hidden = false;
+      irDica.onclick = function () { irPara(destino); };
+    }
   }
   /* o passo 2 ou o Design system mudou: as familias confirmadas voltam a pedir confirmacao (o servidor faz o mesmo,
      desdobra.tela.rascunho.gravar), e o passo 3, montado com o passo 2 de quando a tela abriu (desdobra.tela.estado),
@@ -1541,7 +1938,7 @@
     /* setas sobem e descem na lista, como no painel de camadas */
     nav.addEventListener('keydown', function (ev) {
       if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
-      const bs = Array.from(nav.querySelectorAll('button[data-camada]'));
+      const bs = Array.from(nav.querySelectorAll('button[data-camada]')).filter(function (x) { return !x.closest('li[hidden]'); });
       const i = bs.indexOf(document.activeElement);
       if (i < 0) return;
       ev.preventDefault();
@@ -1564,6 +1961,56 @@
       marca.hidden = !mostrar;
       marca.textContent = mostrar ? 'Sugestão: ' + nomeFuncao(s.funcao) : '';
     });
+    filtrarArvore();
+  }
+  /* 0.9.2 (M5): a busca pelo nome e o filtro das camadas sem funcao so escondem linhas; a pasta fica a vista enquanto
+     alguma camada dentro dela passa. A contagem diz quantas faltam no PSD inteiro */
+  const filtroArvore = { texto: '', soFalta: false };
+  function semAcento(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  function filtrarArvore() {
+    const nav = document.getElementById('arvore');
+    const busca = semAcento(filtroArvore.texto.trim());
+    const ativo = !!busca || filtroArvore.soFalta;
+    let visiveis = 0;
+    function passa(li) {
+      const b = li.querySelector(':scope > button');
+      const n = b ? p2idx.por.get(Number(b.dataset.camada)) : null;
+      let algum = false;
+      li.querySelectorAll(':scope > ul > li').forEach(function (f) { if (passa(f)) algum = true; });
+      const proprio = !!n && n.folha && (!busca || semAcento(n.nome).indexOf(busca) >= 0) && (!filtroArvore.soFalta || falta(n));
+      const pastaPassa = !!n && !n.folha && !!busca && semAcento(n.nome).indexOf(busca) >= 0 && !filtroArvore.soFalta;
+      const sim = !ativo || proprio || algum || pastaPassa;
+      li.hidden = !sim;
+      if (sim && n && n.folha) visiveis += 1;
+      return sim;
+    }
+    nav.querySelectorAll(':scope > ul > li').forEach(passa);
+    const total = p2idx.nos.filter(function (n) { return n.folha; }).length;
+    const faltam = p2idx.nos.filter(function (n) { return falta(n); }).length;
+    const conta = document.getElementById('arvore-conta');
+    if (conta) conta.textContent = faltam ? faltam + ' de ' + total + ' sem função' : 'Todas com função';
+    let vazio = nav.querySelector('.arvore-vazia');
+    if (ativo && !visiveis) {
+      if (!vazio) { vazio = el('p', '', 'arvore-vazia'); nav.appendChild(vazio); }
+      vazio.textContent = filtroArvore.soFalta && !busca ? 'Todas as camadas têm função.' : 'Nenhuma camada com esse nome.';
+    } else if (vazio) vazio.remove();
+  }
+  function ligarFiltroDaArvore() {
+    const campo = document.getElementById('arvore-busca');
+    const so = document.getElementById('arvore-so-falta');
+    if (!campo || !so) return;
+    campo.addEventListener('input', function () { filtroArvore.texto = campo.value; filtrarArvore(); });
+    campo.addEventListener('keydown', function (ev) {
+      // seta para baixo leva a primeira camada que ficou a vista
+      if (ev.key !== 'ArrowDown') return;
+      const b = Array.from(document.querySelectorAll('#arvore button[data-camada]')).find(function (x) { return x.offsetParent; });
+      if (b) { ev.preventDefault(); b.focus(); }
+    });
+    so.addEventListener('click', function () {
+      filtroArvore.soFalta = !filtroArvore.soFalta;
+      so.setAttribute('aria-pressed', filtroArvore.soFalta ? 'true' : 'false');
+      filtrarArvore();
+    });
   }
   function escolherNo(lid) {
     p2idx.atual = lid;
@@ -1576,6 +2023,14 @@
     mostrarPasso('funcoes');
     escolherNo(lid);
     const b = document.querySelector('#arvore button[data-camada="' + lid + '"]');
+    // a camada escondida pela busca ou pelo filtro volta a vista: o "Ir até aqui" nunca leva a uma linha invisivel
+    if (b && b.closest('li[hidden]')) {
+      filtroArvore.texto = '';
+      filtroArvore.soFalta = false;
+      document.getElementById('arvore-busca').value = '';
+      document.getElementById('arvore-so-falta').setAttribute('aria-pressed', 'false');
+      filtrarArvore();
+    }
     if (b) { b.scrollIntoView({ block: 'nearest' }); b.focus(); }
   }
   function camadasDentro(n) {
@@ -1943,7 +2398,7 @@
     if (!s || !p2idx.opcoes) return;
     const rolagem = s.scrollTop;
     limpar(s);
-    s.appendChild(el('p', 'Passo 4', 'sobretitulo'));
+    s.appendChild(el('p', 'Passo ' + PASSOS.design, 'sobretitulo'));
     s.appendChild(el('h1', 'Design system'));
     s.appendChild(el('p', 'Para cada função, escolha como o tamanho muda de uma peça para outra e onde ela se prende. ' +
       'O elemento escolhido fica marcado no KV ao lado.', 'nota'));
@@ -2015,6 +2470,21 @@
       art.appendChild(corpo);
       s.appendChild(art);
     });
+    // 0.9.2 (A2): com tudo escolhido aqui e no passo 2, o proximo passo e o das familias
+    const prontas = vistas.every(function (v) { const d = designDe(v.chave) || {}; return d.regra && d.x && d.y && !padraoVencido(v); });
+    const semFuncao = pendenciasP2().some(function (x) { return x.tipo === 'funcao' || x.tipo === 'coberta'; });
+    if (prontas) {
+      const fim = el('div', null, 'design-fim');
+      fim.appendChild(el('p', semFuncao ? 'Tudo escolhido aqui. Ainda falta função em alguma camada, no passo 2.' :
+        'Tudo escolhido. As famílias usam estas regras no próximo passo.', 'nota'));
+      const ir = botao(semFuncao ? 'Ir para Funções' : 'Ir para Famílias', 'botao botao-primario');
+      ir.addEventListener('click', function () {
+        const p = semFuncao ? pendenciasP2().find(function (x) { return x.tipo === 'funcao' || x.tipo === 'coberta'; }) : null;
+        if (p) irPara(p.ir); else mostrarPasso('pecas');
+      });
+      fim.appendChild(ir);
+      s.appendChild(fim);
+    }
     s.scrollTop = rolagem;
     marcarDesign();
   }
@@ -2061,6 +2531,12 @@
     mostrarPasso('pecas');
     iniciarPecas(onde(fid));
   }
+  function irParaFamilia(gid) {
+    mostrarPasso('pecas');
+    const o = (estado.orientacoes || []).find(function (x) { return x.grupos.some(function (g) { return g.id === gid; }); });
+    if (o) iniciarPecas({ orientacao: o.id, grupo: gid, formato: null });
+    atualizarSalvar();
+  }
   function selecionar(lista, b) {
     Array.from(lista.querySelectorAll('[role=tab]')).forEach(function (x) {
       x.setAttribute('aria-selected', x === b ? 'true' : 'false');
@@ -2082,8 +2558,11 @@
       document.getElementById('confirmar-familia').disabled = true;
       const espera = estado.passo_3 && estado.passo_3.aguarda_passo_2;
       document.getElementById('nome-palco').textContent = espera ? estado.passo_3.texto : 'O briefing não tem formato.';
+      mostrarEspera(espera ? estado.passo_3.texto : 'O briefing não tem formato.');
       return;
     }
+    document.getElementById('passo-pecas').classList.remove('esperando');
+    document.getElementById('espera-familias').hidden = true;
     let inicial = null;
     estado.orientacoes.forEach(function (o, i) {
       const b = botao();
@@ -2099,6 +2578,74 @@
     if (!inicial) inicial = [no.firstChild, estado.orientacoes[0]];
     selecionar(no, inicial[0]);
     orientacao(inicial[1], alvo);
+  }
+  /* 0.9.2 (A1): o passo das familias sem familia nenhuma. O texto do servidor diz por que; a lista mostra o que as
+     familias pedem, cada condicao feita ou faltando, pelo que a pagina ja sabe (os formatos do passo 1, o passo 2 e o
+     Design system como estao na tela); o botao leva a primeira que falta. Trilho, controles e palco saem */
+  function condicoesDasFamilias() {
+    const l = estado.lido || { specs: { formatos: [] }, quadros: [] };
+    const pend = p2idx.opcoes ? pendenciasP2() : [];
+    const funcoes = pend.filter(function (x) { return x.tipo === 'funcao' || x.tipo === 'coberta'; });
+    const design = pend.filter(function (x) { return x.tipo === 'regra' || x.tipo === 'ancora' || x.tipo === 'padrao'; });
+    const nFormatos = l.specs.formatos.length;
+    const lista = [{ nome: 'Formatos com medida em pixels', feito: nFormatos > 0,
+      estado: nFormatos ? plural(nFormatos, 'formato no job', 'formatos no job') :
+        (l.specs.folhas ? 'As folhas não trazem medida em pixels. Veja Valores de spec, no passo 1.' :
+          'Escreva os formatos no passo 1, em Valores de spec.'),
+      botao: l.specs.folhas ? 'Ir para Valores de spec' : 'Escrever os formatos',
+      ir: l.specs.folhas ? { passo: 'lido', alvo: 'bloco-specs' } : { passo: 'lido', alvo: 'digitados', foco: 'digitados-campo' } }];
+    if ((l.quadros || []).length) {
+      const temQuadro = !!p1.quadro || l.quadros.some(function (q) { return q.escolhido; });
+      lista.push({ nome: 'Prancheta da peça', feito: temQuadro, estado: temQuadro ? 'Escolhida' : 'Escolha no passo 1 de qual prancheta a peça sai.',
+        botao: 'Escolher a prancheta', ir: { passo: 'lido', alvo: 'bloco-quadros' } });
+    }
+    lista.push({ nome: 'Função de cada camada', feito: !funcoes.length,
+      estado: funcoes.length ? (funcoes.length === 1 ? '1 camada sem função, no passo 2' : funcoes.length + ' camadas sem função, no passo 2') : 'Todas as camadas têm função',
+      botao: 'Ir para Funções', ir: funcoes.length ? funcoes[0].ir : { passo: 'funcoes' } });
+    const nDesign = vistasDoDesign().filter(function (v) { return design.some(function (x) { return x.ir.chave === v.chave; }); }).length;
+    lista.push({ nome: 'Tamanho e âncora de cada função', feito: !design.length && !funcoes.length,
+      estado: design.length ? (nDesign === 1 ? '1 função sem tamanho ou âncora, no passo 3' : nDesign + ' funções sem tamanho ou âncora, no passo 3') :
+        (funcoes.length ? 'Depois das funções, no passo 3' : 'Todas as funções têm tamanho e âncora'),
+      botao: 'Ir para o Design system', ir: design.length ? design[0].ir : { passo: 'design' } });
+    return lista;
+  }
+  function mostrarEspera(texto) {
+    document.getElementById('passo-pecas').classList.add('esperando');
+    const caixa = document.getElementById('espera-familias');
+    caixa.hidden = false;
+    document.getElementById('espera-texto').textContent = texto;
+    const ol = document.getElementById('espera-checklist');
+    limpar(ol);
+    const lista = condicoesDasFamilias();
+    lista.forEach(function (c, i) {
+      const li = el('li', null, 'espera-item ' + (c.feito ? 'feito' : 'falta'));
+      const marca = el('span', c.feito ? '✓' : String(i + 1), 'espera-marca');
+      marca.setAttribute('aria-hidden', 'true');
+      li.appendChild(marca);
+      const t = el('span', null, 'espera-item-textos');
+      t.appendChild(el('span', c.nome, 'espera-item-nome'));
+      t.appendChild(el('span', (c.feito ? 'Feito. ' : 'Falta. ') + c.estado, 'espera-item-estado'));
+      li.appendChild(t);
+      ol.appendChild(li);
+    });
+    const ir = document.getElementById('espera-ir');
+    const primeira = lista.find(function (c) { return !c.feito; });
+    ir.hidden = !primeira;
+    if (primeira) {
+      ir.textContent = primeira.botao;
+      ir.onclick = function () { irPara(primeira.ir); };
+    } else if (p2Mudou || raiz.dataset.rascunho === 'pendente' || raiz.dataset.rascunho === 'salvando') {
+      // tudo feito na tela e o rascunho ainda gravando: as familias chegam sozinhas quando ele grava
+      ir.hidden = true;
+      document.getElementById('espera-texto').textContent = 'Tudo pronto. As famílias aparecem aqui assim que as suas escolhas forem salvas.';
+    } else {
+      // tudo feito e o desdobra ainda recusa: o texto do servidor diz o motivo concreto, e o botao leva ao passo dele
+      // (revisao do 0.9.2: o botao ficava escondido, e o DA sem saida)
+      const destino = (estado.passo_3 && estado.passo_3.ir) === 'design' ? 'design' : 'funcoes';
+      ir.hidden = false;
+      ir.textContent = destino === 'design' ? 'Ir para o Design system' : 'Ir para Funções';
+      ir.onclick = function () { mostrarPasso(destino); };
+    }
   }
   function orientacao(o, alvo) {
     const no = document.getElementById('composicoes');
@@ -2344,6 +2891,13 @@
     if (e.fantasma) { if (!e.regra) partes.push(SEM_REGRA); } else if (e.regra) partes.push(nomeRegra(e.regra));
     return partes.join(' · ');
   }
+  /* 0.9.2 (M2): a etiqueta no palco fica curta, so a funcao e o nome da camada; a regra vai no title e na linha do
+     escolhido, embaixo do palco. Menos texto por cima da peca e menos etiqueta encavalada */
+  function etiquetaElemento(e) {
+    const partes = [maiuscula(nomeFuncao(e.funcao))];
+    if (e.nome) partes.push(e.nome);
+    return partes.join(' · ');
+  }
   /* opcoes.miniatura: o mesmo modelo, so o quadro (sem rotulos nem sangria), no tamanho da caixa da aba */
   function desenharPalco(area, m, opcoes) {
     limpar(area);
@@ -2399,7 +2953,8 @@
           if (e.id === ed.selecionado) r.classList.add('selecionado');
         }
         if (e.raiz !== null && e.raiz !== undefined) r.dataset.raiz = String(e.raiz);
-        const et = el('span', rotuloElemento(e), 'etiqueta');
+        const et = el('span', etiquetaElemento(e), 'etiqueta');
+        et.title = rotuloElemento(e);
         /* 0.9.1: o elemento com texto como imagem por decisao do DA leva o selo na etiqueta */
         if (m.pecas.some(function (p) { return p.elemento === e.id && p.como_imagem; })) {
           et.appendChild(el('span', 'Texto como imagem', 'selo-texto-imagem'));
@@ -2449,9 +3004,11 @@
         et.classList.toggle('pela-direita', direita);
         et.style.transform = 'scale(' + (1 / k) + ') translateY(-100%)';
       });
+      separarEtiquetas(etiquetas.map(function (par) { return par[0]; }));
       if (opcoes.usarVista && medida) {
         medida.textContent = dimensao(m.largura, m.altura) + ' px, exibição em ' + Math.round(k * 100) + '%' +
           (opcoes.usarVista && vista.k ? '' : ', ajustada');
+        medida.title = medida.textContent; // 0.9.2 (M4): na janela estreita a frase termina em reticencias
         area.dataset.vista = opcoes.usarVista && vista.k ? 'zoom' : 'ajustar';
       }
     }
@@ -2465,6 +3022,48 @@
     });
   }
   function reajustar(area) { const f = ajustes.get(area); if (f) f(); }
+  /* revisao do 0.9.2 (M2): as etiquetas que se cobrem no palco. A do escolhido, a destacada e a do grupo ficam
+     primeiro; cada outra tenta o outro lado da caixa e, se ainda cobre uma etiqueta ja posta, sai da vista (o nome
+     volta quando o DA escolhe o elemento). Assim o palco nunca mostra texto encavalado */
+  function separarEtiquetas(lista) {
+    const postas = [];
+    function prioridade(et) {
+      const r = et.closest('.rotulo');
+      return r && (r.classList.contains('selecionado') || r.classList.contains('destaque') ||
+        r.classList.contains('no-grupo')) ? 1 : 0;
+    }
+    function bate(c) {
+      return postas.some(function (p) {
+        return Math.min(c.right, p.right) - Math.max(c.left, p.left) > 2 &&
+          Math.min(c.bottom, p.bottom) - Math.max(c.top, p.top) > 2;
+      });
+    }
+    lista.forEach(function (et) { et.classList.remove('etiqueta-encoberta'); });
+    lista.filter(function (et) { return et.getClientRects().length > 0; })
+      .sort(function (a, b) { return prioridade(b) - prioridade(a); })
+      .forEach(function (et) {
+        et.dataset.lado = et.classList.contains('pela-direita') ? '1' : '';
+        let c = et.getBoundingClientRect();
+        if (bate(c) && !prioridade(et)) {
+          // primeiro o outro lado da caixa, depois uma ou duas linhas acima; so entao sai da vista
+          const base = et.style.transform;
+          const tentativas = [['lado', 0], ['', 1], ['lado', 1], ['', 2], ['lado', 2]];
+          const achou = tentativas.some(function (t) {
+            et.classList.toggle('pela-direita', t[0] === 'lado' ? !et.dataset.lado : !!et.dataset.lado);
+            et.style.transform = base + (t[1] ? ' translateY(-' + (t[1] * 100) + '%)' : '');
+            c = et.getBoundingClientRect();
+            return !bate(c);
+          });
+          if (!achou) {
+            et.style.transform = base;
+            et.classList.toggle('pela-direita', !!et.dataset.lado);
+            et.classList.add('etiqueta-encoberta');
+            return;
+          }
+        }
+        postas.push(c);
+      });
+  }
   function criarPeca(p, textos) {
     const [cx0, cy0, cx1, cy1] = p.caixa;
     function dentro(no, c) {
@@ -3164,6 +3763,8 @@
     const ids = escolhidos();
     if (ed.selecionado && ids.indexOf(ed.selecionado) < 0) ed.selecionado = ids.length ? ids[ids.length - 1] : null;
     ed.selecao = ids;
+    // 0.9.2 (M3): sem escolha, os botoes do elemento saem da vista (guardando o lugar); a frase do palco fica em tinta
+    document.getElementById('barra-edicao').classList.toggle('sem-escolha', !ids.length);
     const e = ids.length === 1 ? elementoDoPalco(ids[0]) : null;
     const no = document.getElementById('elemento-escolhido');
     if (ids.length > 1) {
@@ -3770,7 +4371,7 @@
       r.classList.toggle('quebra-proposta', sim);
       const rotulo = rotuloElemento(e) + (sim ? ' · ' + MARCA_QUEBRA : '');
       r.setAttribute('aria-label', 'Mexer em ' + rotulo);
-      if (et) et.textContent = rotulo;
+      if (et) { et.textContent = etiquetaElemento(e) + (sim ? ' · ' + MARCA_QUEBRA : ''); et.title = rotulo; }
     });
     reajustar(area);
   }
@@ -4012,9 +4613,17 @@
     const lista = document.getElementById('lista-formatos');
     limpar(lista);
     document.getElementById('painel-resumo').textContent = !escrita ? PAINEL_SO_VER : (fs.length ? contagens(fs) : '');
+    // 0.9.2 (M8): sem formato, o passo e um estado normal: sem os botoes do render, com o caminho para as familias
+    document.querySelector('.painel-acoes').hidden = !fs.length;
+    document.querySelector('.lista-formatos-topo').hidden = !fs.length;
     if (!fs.length) {
       const vazio = el('div', null, 'painel-vazio');
       vazio.appendChild(el('p', PAINEL_VAZIO, 'vazio-titulo'));
+      if (escrita) {
+        const ir = botao('Ir para Famílias', 'botao');
+        ir.addEventListener('click', function () { mostrarPasso('pecas'); });
+        vazio.appendChild(ir);
+      }
       lista.appendChild(vazio);
     }
     fs.forEach(function (f, i) { lista.appendChild(linhaDoFormato(f, i)); });
@@ -4078,6 +4687,12 @@
     linha.appendChild(marcas);
     return linha;
   }
+  const PAINEL_OCUPADO = 'Espere o trabalho em andamento terminar.';
+  const PAINEL_SEM_AFETADOS = 'Nenhum formato pede render agora. O formato que espera uma decisão em Famílias ' +
+    'aparece aqui depois dela.';
+  const PAINEL_MARQUE = 'Marque na lista os formatos que você quer aprovar.';
+  const PAINEL_NADA_A_APROVAR = 'Nenhum formato está pronto para aprovar. Renderize os formatos primeiro.';
+  const PAINEL_FORMATO_SEM_APROVAR = 'Este formato ainda não pode ser aprovado. Veja o motivo ao lado.';
   function atualizarBotoesDoPainel() {
     const fs = formatosDoPainel();
     const ocupado = pn.ocupado || tarefaViva(estado && estado.tarefa);
@@ -4094,10 +4709,16 @@
     rotular(a, 'Aprovar', pn.marcados.size, 'formato marcado', 'formatos marcados');
     r.disabled = !escrita || ocupado || !afetados.length;
     a.disabled = !escrita || ocupado || !pn.marcados.size;
+    // revisao do 0.9.2: o botao desligado diz por que, no title (o mesmo texto vale para o leitor de tela)
+    const algumAprova = fs.some(function (f) { return f.pode_aprovar; });
+    r.title = !r.disabled ? '' : (!escrita ? PAINEL_SO_VER : (ocupado ? PAINEL_OCUPADO : PAINEL_SEM_AFETADOS));
+    a.title = !a.disabled ? '' : (!escrita ? PAINEL_SO_VER : (ocupado ? PAINEL_OCUPADO :
+      (algumAprova ? PAINEL_MARQUE : PAINEL_NADA_A_APROVAR)));
     document.getElementById('registro-guardar').disabled = !escrita || ocupado;
     document.querySelectorAll('#lista-formatos .linha-marca').forEach(function (c) {
       const f = formatoDoPainel(c.closest('.linha-formato').dataset.formato);
       c.disabled = !escrita || ocupado || !(f && f.pode_aprovar);
+      c.title = !c.disabled ? '' : (!escrita ? PAINEL_SO_VER : (ocupado ? PAINEL_OCUPADO : PAINEL_FORMATO_SEM_APROVAR));
     });
     raiz.dataset.painel = fs.length ? 'pronto' : 'vazio';
   }
@@ -4267,7 +4888,11 @@
     limpar(aside);
     const f = fid ? formatoDoPainel(fid) : null;
     aside.dataset.formato = f ? f.id : '';
-    if (!f) { aside.appendChild(el('p', formatosDoPainel().length ? ESCOLHA_UM_FORMATO : PAINEL_VAZIO, 'nota')); return; }
+    if (!f) {
+      // 0.9.2 (M8): sem formato, o detalhe e so o quadro tracejado; a frase ja esta na lista ao lado
+      aside.appendChild(el('p', formatosDoPainel().length ? ESCOLHA_UM_FORMATO : 'O formato escolhido aparece aqui.', 'detalhe-vazio'));
+      return;
+    }
     const topo = el('header', null, 'detalhe-formato-topo');
     topo.appendChild(el('h2', f.nome, 'detalhe-formato-nome'));
     topo.appendChild(el('span', f.rotulo, 'chip chip-' + f.situacao));
@@ -4591,6 +5216,8 @@
   /* ---------------------------------------------------------------- partida */
   ligarControles();
   ligarAtos();
+  ligarDigitados();
+  ligarFiltroDaArvore();
   ligarEdicao();
   ligarFaltam();
   ligarPainel();

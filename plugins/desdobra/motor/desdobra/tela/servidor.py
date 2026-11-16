@@ -238,6 +238,12 @@ def _job_do_da(pasta):
     if ci is None or any(not isinstance(x, dict) or x.get('origem') != modelo.ORIGEM_FIXTURE
                          for x in (ci.get('faces') or []) + (ci.get('historico') or [])):
         return True
+    # 0.9.2: os formatos digitados pelo DA na tela (ou o arquivo ilegivel) tambem contam
+    from desdobra.specs import digitados
+    fd = ler(digitados.ARQUIVO)
+    if fd is None or any(not isinstance(x, dict) or x.get('origem') != modelo.ORIGEM_FIXTURE
+                         for x in (fd.get('formatos') or []) + (fd.get('historico') or [])):
+        return True
     return rascunho.origem_gravada(pasta) == modelo.ORIGEM_RASCUNHO
 
 
