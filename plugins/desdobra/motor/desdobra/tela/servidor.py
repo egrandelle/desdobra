@@ -232,6 +232,12 @@ def _job_do_da(pasta):
         return True
     if md and md.get('origem') != modelo.ORIGEM_FIXTURE:
         return True
+    # 0.9.1: a declaracao de texto como imagem feita pelo DA (ou ilegivel) tambem conta
+    from desdobra.fontes import como_imagem
+    ci = ler(como_imagem.ARQUIVO)
+    if ci is None or any(not isinstance(x, dict) or x.get('origem') != modelo.ORIGEM_FIXTURE
+                         for x in (ci.get('faces') or []) + (ci.get('historico') or [])):
+        return True
     return rascunho.origem_gravada(pasta) == modelo.ORIGEM_RASCUNHO
 
 

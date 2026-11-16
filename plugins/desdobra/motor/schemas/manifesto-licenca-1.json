@@ -14,6 +14,21 @@
     "motor_versao": {"type": "string"},
     "conferencia_fontes_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
     "responsabilidade": {"type": "string", "minLength": 1},
+    "textos_como_imagem": {
+      "description": "0.9.1, aditivo e so registro: as faces sem arquivo cujas camadas de texto foram como imagem por decisao do DA na tela (briefing/texto-como-imagem.json), com quem decidiu e quando.",
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["nome_ps", "camadas", "decidido_por"],
+        "properties": {
+          "nome_ps": {"type": "string", "minLength": 1},
+          "camadas": {"type": "array", "items": {"type": "integer"}},
+          "decidido_por": {"type": "object", "additionalProperties": false,
+                           "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                                          "meio": {"enum": ["tela", "medicao"]}, "quando": {"type": "string"},
+                                          "origem": {"enum": ["da", "fixture_de_teste", null]}}}
+        }
+      }
+    },
     "arquivos": {
       "type": "array",
       "items": {

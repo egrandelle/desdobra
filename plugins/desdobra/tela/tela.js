@@ -601,8 +601,10 @@
       });
     }).then(function (p) {
       // M7c, M5: a janela do registro do padrao da marca mostra o que vai ao perfil
-      const extra = nome === 'marca_registrar' ? extraDoRegistro() : null;
-      return confirmarNaJanela(extra ? Object.assign({}, p, { extra: extra, larga: true }) : p).then(function (sim) {
+      // 0.9.1: a janela do texto como imagem lista as camadas atingidas
+      const extra = nome === 'marca_registrar' ? extraDoRegistro() :
+        (nome === 'texto_como_imagem' ? extraDoTextoComoImagem(dados) : null);
+      return confirmarNaJanela(extra ? Object.assign({}, p, { extra: extra, larga: nome === 'marca_registrar' }) : p).then(function (sim) {
         if (!sim) return enviar('/api/ato/cancelar', { pedido: p.pedido }).then(function () { raiz.dataset.estadoAto = 'cancelado'; });
         const chave = JSON.stringify(dados || {});
         return enviar('/api/ato/confirmar', { pedido: p.pedido, resposta: 'confirmar' })
@@ -760,6 +762,70 @@
     b.dataset.dados = JSON.stringify(dados);
     if (!escrita) b.disabled = true;
     return b;
+  }
+  /* 0.9.1, texto como imagem: a fonte que falta pode ir como imagem por decisao do DA (os pixels do PSD, sem editar o
+     texto nem quebrar a linha). O botao pede a confirmacao na janela, que lista as camadas atingidas (nomes so por
+     textContent). A declarada vira um cartao com "Desfazer"; a que um arquivo enviado derrubou mostra o aviso e
+     "Tirar a declaração" */
+  const COMO_IMAGEM_BOTAO = 'Não tenho esta fonte: usar o texto como imagem';
+  /* a nota antes do clique: o que acontece se o DA decidir, no numero certo de camadas (revisao do 0.9.1) */
+  function efeitoComoImagem(n) {
+    return 'Se você usar o texto como imagem, ' +
+      (n === 1 ? 'a camada vai pelos pixels do PSD e escala' : 'as ' + n + ' camadas vão pelos pixels do PSD e escalam') +
+      ' como imagem, sem editar o texto nem quebrar linha.';
+  }
+  function montarTextoComoImagem(fo, l) {
+    l.fontes_que_faltam.forEach(function (f) {
+      const art = el('article', null, 'fonte-falta');
+      art.appendChild(el('p', 'Falta ou não confere: ' + f.fonte_ps + ', ' + plural(f.camadas, 'camada', 'camadas'), 'fonte-falta-texto'));
+      if (f.declaravel) {
+        const inicio = f.situacao === 'divergente' ? 'O arquivo desta fonte não confere com o PSD, e o job espera aqui. ' :
+          'Sem o arquivo desta fonte, o job espera aqui. ';
+        art.appendChild(el('p', inicio + efeitoComoImagem(f.camadas), 'nota'));
+        const b = botaoAto(COMO_IMAGEM_BOTAO, 'texto_como_imagem', { nome_ps: f.fonte_ps, acao: 'declarar' }, 'botao botao-como-imagem');
+        b.dataset.camadas = JSON.stringify(f.camadas_nomes || []);
+        art.appendChild(b);
+      }
+      fo.appendChild(art);
+    });
+    (l.textos_como_imagem || []).forEach(function (t) {
+      const art = el('article', null, 'fonte-como-imagem');
+      const topo = el('div', null, 'decisao-topo');
+      topo.appendChild(el('span', t.fonte_ps, 'decisao-nome'));
+      topo.appendChild(el('span', 'Texto como imagem, por decisão sua', 'selo-texto-imagem'));
+      art.appendChild(topo);
+      art.appendChild(el('p', plural(t.camadas.length, 'camada vai', 'camadas vão') + ' pelos pixels do PSD: ' +
+        t.camadas.join(', '), 'nota'));
+      art.appendChild(botaoAto('Desfazer', 'texto_como_imagem', { nome_ps: t.fonte_ps, acao: 'desfazer' }));
+      fo.appendChild(art);
+    });
+    (l.declaracoes_caidas || []).forEach(function (c) {
+      const art = el('article', null, 'fonte-falta');
+      art.appendChild(el('p', c.texto, 'fonte-falta-texto'));
+      art.appendChild(botaoAto('Tirar a declaração', 'texto_como_imagem', { nome_ps: c.fonte_ps, acao: 'desfazer' }));
+      fo.appendChild(art);
+    });
+  }
+  /* o que a janela do texto como imagem mostra: as camadas atingidas, pelo nome do PSD (so textContent) */
+  function extraDoTextoComoImagem(dados) {
+    if (!dados || dados.acao !== 'declarar') return null;
+    const b = Array.from(document.querySelectorAll('button[data-ato="texto_como_imagem"]')).find(function (x) {
+      return x.dataset.dados === JSON.stringify(dados);
+    });
+    let nomes = [];
+    try { nomes = b && b.dataset.camadas ? JSON.parse(b.dataset.camadas) : []; } catch (e) { nomes = []; }
+    if (!nomes.length) return null;
+    const corpo = el('div', null, 'registro-extra');
+    const bloco = el('section', null, 'registro-grupo');
+    const topo = el('div', null, 'registro-grupo-topo');
+    topo.appendChild(el('h3', 'Camadas que vão como imagem'));
+    topo.appendChild(el('span', String(nomes.length), 'registro-conta'));
+    bloco.appendChild(topo);
+    const ul = el('ul', null, 'formatos-do-ato');
+    nomes.forEach(function (n) { ul.appendChild(el('li', n || 'Camada sem nome', 'chip chip-neutro')); });
+    bloco.appendChild(ul);
+    corpo.appendChild(bloco);
+    return corpo;
   }
   function montarBloqueios(l) {
     const no = document.getElementById('lido-bloqueios');
@@ -1182,9 +1248,7 @@
     const fo = document.getElementById('fontes');
     limpar(fo);
     if (!l.fontes.length) fo.appendChild(el('p', 'O job não tem fonte enviada.', 'vazio-calmo'));
-    l.fontes_que_faltam.forEach(function (f) {
-      fo.appendChild(el('p', 'Falta ou não confere: ' + f.fonte_ps + ', ' + plural(f.camadas, 'camada', 'camadas'), 'fonte-falta'));
-    });
+    montarTextoComoImagem(fo, l);
     l.fontes.forEach(function (f) {
       const c = el('article', null, 'especime');
       c.appendChild(el('p', [f.familia, f.estilo].filter(Boolean).join(' ') || f.nome_ps || 'Fonte enviada', 'nome-fonte'));
@@ -2336,6 +2400,10 @@
         }
         if (e.raiz !== null && e.raiz !== undefined) r.dataset.raiz = String(e.raiz);
         const et = el('span', rotuloElemento(e), 'etiqueta');
+        /* 0.9.1: o elemento com texto como imagem por decisao do DA leva o selo na etiqueta */
+        if (m.pecas.some(function (p) { return p.elemento === e.id && p.como_imagem; })) {
+          et.appendChild(el('span', 'Texto como imagem', 'selo-texto-imagem'));
+        }
         r.appendChild(et);
         etiquetas.push([et, e.caixa]);
         mundo.appendChild(r);
@@ -2413,7 +2481,16 @@
       img.draggable = false;
       img.src = '/asset/' + encodeURIComponent(p.asset);
       dentro(img, [cx0, cy0, cx1, cy1]);
-      return img;
+      if (!p.como_imagem) return img;
+      /* 0.9.1: o texto que vai como imagem por decisao do DA leva o selo, e o palco nao edita nem quebra o texto */
+      const caixa = el('div', null, 'peca como-imagem');
+      dentro(caixa, [cx0, cy0, cx1, cy1]);
+      img.className = 'como-imagem-pixels';
+      img.style.left = img.style.top = '0px';
+      caixa.appendChild(img);
+      /* o selo vai na etiqueta do elemento (revisao do 0.9.1): fora dos pixels da camada, e sai no Ver limpo */
+      caixa.title = 'Texto como imagem: o texto e a quebra não se mexem aqui.';
+      return caixa;
     }
     if (p.tipo === 'texto') {
       const t = el('div', null, 'peca texto');
@@ -2521,6 +2598,10 @@
   function elementoDoPalco(id) {
     const m = modeloDoPalco();
     return m ? m.elementos.find(function (e) { return e.id === id; }) || null : null;
+  }
+  function pecasComoImagem(id) {
+    const m = modeloDoPalco();
+    return m ? m.pecas.filter(function (p) { return p.elemento === id && p.como_imagem; }) : [];
   }
   function pecasDeTexto(id) {
     const m = modeloDoPalco();
@@ -3106,6 +3187,11 @@
     botaoApagar.title = ids.length > 1 ? APAGAR_SO_UM : '';
     document.getElementById('ed-texto').disabled = !e || pecasDeTexto(e.id).length !== 1;
     document.getElementById('ed-quebra').disabled = !e || !textoDaQuebra(e.id);
+    // 0.9.1: o texto como imagem diz por que o texto e a quebra ficam desligados
+    const comoImagem = !!(e && pecasComoImagem(e.id).length);
+    ['ed-texto', 'ed-quebra'].forEach(function (i) {
+      document.getElementById(i).title = comoImagem ? 'Texto como imagem: o texto e a quebra não se mexem aqui.' : '';
+    });
     document.getElementById('ed-desfazer').disabled = !edicoesDa().length;
     const varios = document.getElementById('ed-varios');
     varios.setAttribute('aria-pressed', ed.varios ? 'true' : 'false');

@@ -23,6 +23,9 @@ CODIGOS_TECNICOS = ('arquivo_faltando', 'nome_ps_sem_par', 'face_divergente', 'g
                     'face_cdp_divergente', 'face_nao_carregou', 'largura_divergente', 'chromium_nao_conferiu',
                     'colecao_nao_servivel', 'mais_de_um_arquivo', 'cdp_sem_resposta')
 FONTE_CONFERENCIA = {'arquivo': 'arquitetura-v1.md', 'secao': '4.4 e 4.5'}
+# 0.9.1: o par da face declarada pelo DA como "texto como imagem" (desdobra.fontes.como_imagem.DECISAO)
+DECISAO_COMO_IMAGEM = 'texto_como_imagem_do_da'
+FONTE_COMO_IMAGEM = {'arquivo': 'briefing/texto-como-imagem.json', 'secao': 'decisão do DA na tela (0.9.1)'}
 
 
 def _tecnicos(item):
@@ -54,6 +57,14 @@ def aplicar_conferencia(laudo, conferencia, sha_conferencia, sha_laudo):
                                'largura_erro_pct': item.get('largura_erro_pct'), 'face_cdp_confere': item['face_cdp_confere'],
                                'decisao': item.get('decisao')},
                     'limite': lim, 'fonte': regras.REGRAS['B3']['fonte']})
+            elif item.get('decisao') == DECISAO_COMO_IMAGEM:
+                # 0.9.1: o DA declarou na tela que a face nao tem arquivo; a camada vai como imagem
+                if not any(a.get('codigo') == DECISAO_COMO_IMAGEM for a in c['alertas']):
+                    c['alertas'].append({'codigo': DECISAO_COMO_IMAGEM, 'fonte': FONTE_COMO_IMAGEM,
+                                         'descricao': 'O DA decidiu, na tela, que esta camada de texto vai como '
+                                                      'imagem, pelos pixels do PSD: a fonte não tem arquivo no job, ou '
+                                                      'o arquivo não confere.',
+                                         'medida': {'fonte_ps': item['nome_ps']}})
             elif item['situacao'] == 'aviso':
                 c['alertas'].append({'codigo': 'fonte_conferida_com_aviso', 'fonte': FONTE_CONFERENCIA,
                                      'descricao': 'A fonte do trecho passou na conferência com aviso (par fora do name '
@@ -65,6 +76,9 @@ def aplicar_conferencia(laudo, conferencia, sha_conferencia, sha_laudo):
     por_ps = {}
     for item in conferencia.get('camadas') or []:
         por_ps.setdefault(item['nome_ps'], []).append(item)
+    # revisao do 0.9.1: so a face que o DA declarou vira decisao dele; a outra face da mesma camada (que vai inteira
+    # como imagem) continua com a situacao dela
+    declaradas = set((conferencia.get('texto_como_imagem') or {}).get('faces') or [])
     for f in novo['fontes_usadas']:
         itens = por_ps.get(f['fonte_ps'])
         if not itens:
@@ -74,7 +88,11 @@ def aplicar_conferencia(laudo, conferencia, sha_conferencia, sha_laudo):
             # usada so em espaco: sem efeito na peca, mas sem arquivo continua ausente (nunca presente sem arquivo)
             f['so_em_espaco'] = True
         alvo = com_tinta or itens
-        if any(i['face_id'] is None for i in alvo):
+        if com_tinta and f['fonte_ps'] in declaradas and \
+                all(i.get('decisao') == DECISAO_COMO_IMAGEM for i in com_tinta):
+            # 0.9.1: sem arquivo (ou com um que nao confere), mas por decisao do DA o texto vai como imagem
+            f['situacao'] = 'texto_como_imagem'
+        elif any(i['face_id'] is None for i in alvo):
             f['situacao'] = 'ausente'
         elif any(_tecnicos(i) for i in alvo):
             f['situacao'] = 'divergente'

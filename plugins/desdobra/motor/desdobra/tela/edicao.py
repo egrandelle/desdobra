@@ -90,6 +90,8 @@ POR_MS = 1000.0  # numero-neutro: segundos para milissegundos
 CASAS_MS = 1  # numero-neutro: casas do tempo gasto
 # o membro devolvido porque a quebra de linha da familia ficou sem medida (previa igual ao Salvar, M7b): o DA pode
 # tirar a quebra no palco
+# 0.9.1: a camada de texto que vai como imagem, por decisao do DA, nao se edita nem quebra no palco
+TEXTO_COMO_IMAGEM = 'Este texto vai como imagem, por decisão sua. O texto não se edita aqui.'
 TEXTO_QUEBRA_SEM_MEDIDA = ('A quebra de linha desta família ficou sem medida. Sem a medida, o desdobra não monta as '
                            'versões deste arquivo. Tire a quebra ou fale com a Trezion.')
 
@@ -751,6 +753,8 @@ class Editor:
     def _texto(self, eid, texto):
         """(texto aceito, recusa ou None) de uma edicao de texto no elemento."""
         el = self.kv_por_id[eid]
+        if any((self.base.get(lid) or {}).get('como_imagem') for lid in el['layer_ids']):
+            return None, TEXTO_COMO_IMAGEM
         textos = [lid for lid in el['layer_ids'] if (self.base.get(lid) or {}).get('linhas')]
         if len(textos) != 1:
             return None, 'Este elemento não tem um texto só para editar.'

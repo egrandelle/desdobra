@@ -94,7 +94,9 @@ def _fase_ds(anteriores):
 # fases (e as que dependem delas); a leitura do PSD fica como esta.
 FASE_FONTES = Fase(
     id='fontes', tipo='fase', descricao='Conferência das fontes contra os arquivos enviados',
-    entradas=('entrada/fontes',), depende_de=('ler',),
+    # a declaracao do DA de texto como imagem (0.9.1) tambem e entrada: a conferencia a aplica. Sem o arquivo, o hash e
+    # None nos dois lados, e o job de antes nao fica desatualizado
+    entradas=('entrada/fontes', 'briefing/texto-como-imagem.json'), depende_de=('ler',),
     saidas=('fontes/conferencia.json',),
     comando=comando_motor('fontes', 'conferir'),
     # arquivo faltando, nome sem par, glifo faltando e fallback param o job (arquitetura-v1.md, 4.5); divergencia

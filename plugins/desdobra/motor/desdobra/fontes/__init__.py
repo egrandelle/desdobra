@@ -83,6 +83,26 @@ def _uso(comando, texto):
     return Resultado(comando=comando, codigo=int(Codigo.USO), situacao='erro', o_que_fazer=texto)
 
 
+def _contagens(conf):
+    """(ha bloqueio, contagens inteiras) da conferencia gravada: o que o envelope da fase fontes leva."""
+    r = conf['resumo']
+    bloqueio = bool(r['faces_bloqueantes'] or r['camadas_bloqueantes'] or r['arquivos_recusados'])
+    contagens = {k: v for k, v in r.items() if isinstance(v, int) and not isinstance(v, bool)}
+    contagens['chromium_feito'] = int(conf['chromium']['feito'])
+    contagens['fontes_fora_da_entrada'] = conf['varredura']['arquivos_de_fonte_fora_da_entrada']
+    return bloqueio, contagens
+
+
+def bloqueio_da_conferencia(conf):
+    """O bloqueio que a fase fontes grava no estado para esta conferencia (como job.nucleo._bloqueio_do_envelope), ou
+    None sem bloqueio. Usado pelo ato da tela que refaz a conferencia no proprio processo (texto como imagem, 0.9.1)."""
+    from desdobra.fontes import conferencia
+    bloqueio, contagens = _contagens(conf)
+    if not bloqueio:
+        return None
+    return {'situacao': 'ok_com_bloqueio', 'o_que_fazer': conferencia.O_QUE_FAZER_BLOQUEIO, 'contagens': contagens}
+
+
 def _conferir(args):
     from desdobra.fontes import conferencia
     pasta = Path(args.job).resolve()
@@ -91,10 +111,7 @@ def _conferir(args):
                                          'leitura vem antes (/desdobra:continuar).')
     conf = conferencia.conferir(pasta, usar_chromium=not args.sem_chromium)
     r = conf['resumo']
-    bloqueio = r['faces_bloqueantes'] or r['camadas_bloqueantes'] or r['arquivos_recusados']
-    contagens = {k: v for k, v in r.items() if isinstance(v, int)}
-    contagens['chromium_feito'] = int(conf['chromium']['feito'])
-    contagens['fontes_fora_da_entrada'] = conf['varredura']['arquivos_de_fonte_fora_da_entrada']
+    bloqueio, contagens = _contagens(conf)
     linhas = ['Conferência de fontes: %d face(s), %d bloqueante(s); %d par(es) de camada, %d bloqueante(s).' % (
         r['faces'], r['faces_bloqueantes'], r['camadas'], r['camadas_bloqueantes'])]
     if conf['cache']['copias_encontradas'] is not None:

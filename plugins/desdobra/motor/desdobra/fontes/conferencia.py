@@ -68,12 +68,13 @@ DESCRICOES = {
     'largura_nao_medida_faux_bold': 'Faux bold sem emulação no Chromium: a largura não é comparada.',
     'largura_nao_medida_escala': 'Escala horizontal ou vertical do trecho diferente de 100%: a largura não é comparada.',
     'largura_nao_medida_warp': 'Texto com warp: a largura não é comparada.',
+    'texto_como_imagem': 'O DA decidiu, na tela, que esta camada vai como imagem: os pixels do PSD, sem a fonte.',
 }
 O_QUE_FAZER_OK = ('As fontes do job conferem com os arquivos de entrada/fontes/. Peça ao Claude para seguir o job '
                   '(/desdobra:continuar).')
 O_QUE_FAZER_BLOQUEIO = ('A conferência de fontes achou bloqueios: veja fontes/conferencia.json. Para fonte faltando '
                         'ou sem par, o DA traz o arquivo (OTF, TTF, TTC, WOFF ou WOFF2) e pede ao Claude para '
-                        'acrescentá-lo ao job (/desdobra:continuar). Quando dois arquivos têm o mesmo nome PostScript, '
+                        'acrescentá-lo ao job (/desdobra:continuar), ou decide na tela usar o texto como imagem. Quando dois arquivos têm o mesmo nome PostScript, '
                         'o DA escolhe o que não vale, e o Claude o tira do job (/desdobra:continuar). Divergência de '
                         'largura fica para o DA decidir. O bloqueio fica no estado do job até uma conferência nova '
                         'sem ele.')
@@ -358,6 +359,9 @@ def conferir(pasta_job, *, plat=None, usar_chromium=True, cache_control='no-stor
             'arquivos': arqs, 'cache': cache,
             'varredura': {'arquivos_de_fonte_fora_da_entrada': fora, 'arquivos_varridos': varridos},
             'resumo': resumo}
+    # a declaracao do DA na tela (texto como imagem, 0.9.1): os pares sem arquivo da face declarada viram decisao dele
+    from desdobra.fontes import como_imagem
+    conf = como_imagem.aplicar(conf, como_imagem.vigente(pasta_job))
     contratos.gravar(pasta_job / ARQUIVO, conf, ESQUEMA)
     return conf
 

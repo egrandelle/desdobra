@@ -35,7 +35,7 @@ Quando a recusa é de folha de spec, explique só o que o `o_que_fazer` traz: em
 Vale em qualquer modo, só com contagens.
 - `contagens.faces` e `contagens.arquivos`: quantas faces e quantos arquivos de fonte o desdobra leu; `contagens.arquivos_recusados`: arquivos que ficaram de fora.
 - `contagens.camadas`, `contagens.camadas_ok`, `contagens.camadas_aviso` e `contagens.camadas_bloqueantes`: como saiu cada par de camada de texto e fonte.
-- `contagens.sem_par`: camadas de texto sem a face no job. Ou o arquivo da fonte está faltando, ou veio outra face da mesma família, com outro peso. O desdobra nunca põe uma face de outro peso no lugar. O DA traz o arquivo certo (passo 7 da skill).
+- `contagens.sem_par`: camadas de texto sem a face no job. Ou o arquivo da fonte está faltando, ou veio outra face da mesma família, com outro peso. O desdobra nunca põe uma face de outro peso no lugar. O DA traz o arquivo certo (passo 7 da skill). Sem o arquivo, o DA pode decidir na tela, no passo 1, usar o texto dessa fonte como imagem; essa decisão é só dele, por clique, e o Claude não a faz.
 - `contagens.glifos_faltando`: quantos caracteres do texto a fonte enviada não cobre. O DA confere se o arquivo é a versão certa.
 - `contagens.larguras_divergentes`: linhas em que a largura medida passou do limite contra a caixa do PSD (`numeros.largura_erro_max_pct` é a maior diferença, em porcentagem). Pode ser outra versão da fonte ou um ajuste manual no PSD. Quem decide é o DA.
 - `contagens.camadas_bloqueantes` maior que zero também cobre dois arquivos com o mesmo nome PostScript: o desdobra não escolhe qual vale, e o DA tira o que não vale (passo 7 da skill).

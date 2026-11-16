@@ -3,7 +3,7 @@
 
 A versao vem so de .claude-plugin/plugin.json (desdobra.__version__ le de la). O M7c entrega contratos novos
 (pacote-modelo/2, sugestoes/1, perfil-marca/1, marca-job/1, medicoes-sugestao/1), e a versao que os leva e a 0.9.0
-ou uma posterior. A primeira entrada do CHANGELOG e a da versao do manifesto, e o texto dele segue a regra de
+ou uma posterior; o texto como imagem (texto-como-imagem/1) sai na 0.9.1 ou depois. A primeira entrada do CHANGELOG e a da versao do manifesto, e o texto dele segue a regra de
 escrita do projeto (sem travessao nem meia-risca).
 """
 import json
@@ -37,6 +37,16 @@ def test_contratos_do_m7c_saem_na_0_9_0_ou_depois():
     for nome in CONTRATOS_DO_M7C:
         assert (SCHEMAS / nome).is_file(), nome
     assert _tupla(_versao_do_manifesto()) >= (0, 9, 0)
+
+
+# 0.9.1: o texto como imagem por decisao do DA traz um contrato novo (a declaracao dele na tela)
+CONTRATOS_DO_0_9_1 = ('texto-como-imagem-1.json',)
+
+
+def test_contrato_do_texto_como_imagem_sai_na_0_9_1_ou_depois():
+    for nome in CONTRATOS_DO_0_9_1:
+        assert (SCHEMAS / nome).is_file(), nome
+    assert _tupla(_versao_do_manifesto()) >= (0, 9, 1)
 
 
 def test_primeira_entrada_do_changelog_e_a_versao_do_manifesto():

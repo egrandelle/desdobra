@@ -192,7 +192,8 @@ def test_ato_de_render_usa_o_comando_render_sem_ato_novo_da_tela(job):
     assert ato.comando == 'render' and ato.longo and ato.selo_por_formato and callable(ato.preparar)
     # M7c, M3 e M5: a marca do job e o registro do padrao dela sao os atos da tela novos depois do render
     assert 'render' in humano.COMANDOS and \
-        humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher', 'marca registrar')
+        humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher', 'marca registrar',
+                                'fonte como imagem')  # 0.9.1: o texto como imagem
 
 
 # ------------------------------------------------------------------ o pedido

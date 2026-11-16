@@ -1001,6 +1001,10 @@ def _elementos(cf, v):
                       'corpo_px': None if e.get('corpo_px') is None else round(e['corpo_px'] * s, 4),  # numero-neutro: casas do corpo
                       'quebras': e.get('quebras') or ('congeladas_da_mestre' if e['texto'] else None),
                       'origem_funcao': origem})
+        if e.get('texto_como_imagem'):
+            saida[-1]['texto_como_imagem'] = list(e['texto_como_imagem'])  # 0.9.1, como em derivacao.nucleo
+            saida[-1]['caixas_texto_como_imagem'] = mod_nucleo._caixas_como_imagem(ctx, e['texto_como_imagem'],
+                                                                                  doc, c, s)
     return saida
 
 

@@ -2,6 +2,18 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.9.1 (16/11/2026): texto como imagem
+
+Para o KV que tem texto vivo no PSD, mas cuja fonte a agência nunca recebeu em arquivo. Tudo foi conferido em arquivos sintéticos.
+
+- No passo 1 da tela, em "Fontes do job", cada fonte que falta ganha o botão "Não tenho esta fonte: usar o texto como imagem". A janela de confirmação mostra as camadas atingidas e o efeito, e a decisão fica gravada com quem decidiu e quando. O Claude não faz essa declaração.
+- Com a decisão, o job deixa de parar nessa fonte. As camadas dela vão pelos pixels do próprio PSD e escalam como imagem, pela regra da função que o DA escolheu. Ampliar acima do tamanho do KV avisa, como em qualquer imagem.
+- No palco, essas camadas aparecem com o selo "Texto como imagem": o texto não se edita e a linha não quebra ali.
+- O botão também aparece quando o arquivo da fonte chegou, mas não confere com o PSD (outra versão da fonte, por exemplo).
+- Se chegar depois o arquivo da fonte que confere, o texto volta a ser texto vivo, e a tela avisa. Um arquivo que não confere deixa a decisão valendo. O botão "Desfazer" (ou "Tirar a declaração") desfaz a decisão com um clique.
+- Para o que vai ao Claude nada muda: a camada continua sendo texto e nunca vira miniatura no modo (a).
+- O manifesto e o relatório da entrega registram a camada como texto como imagem por decisão do DA, sem recusar a entrega.
+
 ## 0.9.0 (13/11/2026): marca, sugestão de função e skills (M7c)
 
 Com esta versão, o Claude pode sugerir a função de cada camada quando o diretor de arte pede, o desdobra guarda o padrão de cada marca da agência e as skills levam o DA da criação do job até a tela sem nenhum comando. Tudo foi conferido em arquivos sintéticos; a rodada com os KVs reais fica para quando o Duda decidir. Antes de usar, veja também "O que ainda não funciona nesta versão", no fim desta entrada.

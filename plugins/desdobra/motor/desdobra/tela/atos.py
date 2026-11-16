@@ -18,7 +18,9 @@ confere os dados antes do dialogo (validar), monta o texto do dialogo com o que 
   - marca: a marca do job, entre as marcas da biblioteca da agencia, a "Marca nova" e "Sem marca", opcional
     (desdobra.marca.job; M7c, M3; decisoes-v1.md, 190, Q5);
   - marca_registrar: guardar o padrao da marca no perfil da biblioteca da agencia, so com a marca escolhida e todos os
-    formatos aprovados pelo DA (desdobra.marca.registrar; M7c, M5; decisoes-v1.md, 190, Q2).
+    formatos aprovados pelo DA (desdobra.marca.registrar; M7c, M5; decisoes-v1.md, 190, Q2);
+  - texto_como_imagem: o DA nao tem o arquivo de uma fonte do PSD e decide usar o texto das camadas dela como imagem,
+    ou desfaz a decisao (desdobra.fontes.como_imagem; 0.9.1).
 Os textos sao do motor, em portugues para o DA, sem comando nem identificador; o que vem do cliente (nome de camada,
 nome de arquivo, texto da folha) a pagina poe so por textContent.
 """
@@ -139,7 +141,8 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         acao = confirmar.confirmar_da_tela(pasta, d['valor_id'], d.get('leitura'), disparo=disparo)
         return {'spec': acao is not None}
 
-    atos = {'marca': _ato_da_marca(pasta, conteudo), 'marca_registrar': _ato_de_registrar(pasta, conteudo)}
+    atos = {'marca': _ato_da_marca(pasta, conteudo), 'marca_registrar': _ato_de_registrar(pasta, conteudo),
+            'texto_como_imagem': _ato_texto_como_imagem(pasta)}
     if conteudo is not None:
         # as familias sao lidas do conteudo a cada pedido: no job novo elas nascem depois do passo 2, quando o servidor
         # monta o passo 3 de novo no mesmo dicionario (desdobra.tela.servidor, _atualizar)
@@ -158,6 +161,49 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         # a aprovacao dos formatos marcados, com o sentido do giro que falta (M7b, B4): ato longo, com preparo
         'aprovar': ato_aprovar.ato_de_aprovar(pasta),
     })
+
+
+def _ato_texto_como_imagem(pasta):
+    """O ato "texto_como_imagem" do passo 1 (0.9.1): o DA nao tem o arquivo de uma fonte do PSD e decide usar o texto
+    das camadas dela como imagem, pelos pixels do PSD (desdobra.fontes.como_imagem). Dados: {'nome_ps', 'acao'}, com
+    acao 'declarar' (so a face que falta agora, com os pixels de toda camada atingida) ou 'desfazer' (so a face
+    declarada). O dialogo diz quantas camadas mudam e o efeito; a pagina mostra o nome de cada uma so por textContent."""
+    from desdobra.fontes import como_imagem
+    from desdobra.tela.servidor import Ato
+
+    def alvo(d):
+        if not _chaves(d, 'nome_ps', 'acao') or not isinstance(d['nome_ps'], str) or d['acao'] not in como_imagem.ACOES:
+            return None
+        if d['acao'] == 'declarar':
+            return next((x for x in como_imagem.declaraveis(pasta) if x['nome_ps'] == d['nome_ps'] and x['declaravel']),
+                        None)
+        return {'nome_ps': d['nome_ps'], 'camadas': []} if como_imagem.declarada(pasta, d['nome_ps']) else None
+
+    def quantas(n):
+        return 'A camada que usa' if n == 1 else 'As %d camadas que usam' % n
+
+    def texto(d):
+        a = alvo(d)
+        if d['acao'] == 'declarar':
+            n = len(a['camadas'])
+            falta = ('O arquivo da fonte %s não confere com o PSD.' if a.get('com_arquivo') else
+                     'A fonte %s não tem arquivo no job.') % d['nome_ps']
+            return ('%s %s esta fonte %s pelos pixels do PSD: %s como imagem, sem editar o texto nem quebrar linha na '
+                    'tela. Se chegar o arquivo da fonte que confere, o texto volta a ser texto vivo. Você pode desfazer '
+                    'aqui mesmo, depois.'
+                    % (falta, quantas(n), 'vai' if n == 1 else 'vão', 'escala' if n == 1 else 'escalam'))
+        if d['nome_ps'] in ((como_imagem.bloco(pasta) or {}).get('caidas') or []):
+            # revisao do 0.9.1: o arquivo que confere ja chegou, e a declaracao so sai do registro
+            return ('O arquivo da fonte %s já chegou e confere, e o texto já é texto vivo. A sua decisão de usar o '
+                    'texto como imagem sai do registro do job, e nada muda nas peças.' % d['nome_ps'])
+        return ('As camadas com a fonte %s voltam a esperar o arquivo da fonte, e o job fica parado nesse ponto até ele '
+                'chegar ou até você decidir de novo.' % d['nome_ps'])
+
+    def executar(disparo, d):
+        como_imagem.gravar(pasta, d['nome_ps'], d['acao'], disparo=disparo)
+        return {'texto_como_imagem': d['acao']}
+    return Ato(comando=como_imagem.COMANDO, titulo='Texto como imagem', texto=texto, sim=SIM, nao=NAO,
+               executar=executar, validar=lambda d: alvo(d) is not None)
 
 
 MARCA_TROCA = 'Você pode trocar a marca aqui mesmo, depois.'

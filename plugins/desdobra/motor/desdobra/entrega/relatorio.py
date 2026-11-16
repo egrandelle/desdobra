@@ -207,8 +207,29 @@ def manifesto(pasta, job_id, quando):
     man = {'esquema': ESQUEMA_MANIFESTO, 'job_id': job_id, 'gerado_em': quando.isoformat(timespec='seconds'),
            'motor_versao': __version__, 'conferencia_fontes_sha256': conferencia.sha256(pasta),
            'responsabilidade': FRASE_RESPONSABILIDADE, 'arquivos': lista}
+    textos = textos_como_imagem(pasta, conf)
+    if textos:
+        man['textos_como_imagem'] = textos
     contratos.validar(man, ESQUEMA_MANIFESTO)
     return man
+
+
+def textos_como_imagem(pasta, conf):
+    """0.9.1: [{'nome_ps', 'camadas', 'decidido_por'}] das faces sem arquivo cujas camadas de texto foram como imagem
+    por decisao do DA (o bloco texto_como_imagem da conferencia e a declaracao dele, briefing/texto-como-imagem.json).
+    So registro."""
+    from desdobra.fontes import como_imagem
+    b = (conf or {}).get('texto_como_imagem') or {}
+    if not b.get('faces'):
+        return []
+    decl = {f['nome_ps']: f for f in (como_imagem.ler(pasta) or {}).get('faces') or []}
+    camadas = set(b.get('camadas') or [])
+    saida = []
+    for ps in b['faces']:
+        f = decl.get(ps) or {}
+        saida.append({'nome_ps': ps, 'camadas': sorted(x for x in f.get('camadas') or [] if x in camadas),
+                      'decidido_por': dict(f.get('decidido_por') or {}, origem=f.get('origem'))})
+    return saida
 
 
 def selo_manifesto(man):

@@ -406,7 +406,10 @@ def test_gravar_a_aprovacao_nao_desatualiza_o_briefing_nem_invalida_fase(tmp_pat
     assert mb.hashes_atuais(tmp_path) == antes
     assert arquivos.sha256_arquivo(tmp_path / mb.ARQUIVO) == briefing_antes
     assert {f.id: nucleo.hashes_da_fase(tmp_path, f, por_id) for f in mod_fases.ESTEIRA} == fases_antes
-    assert not any(p.startswith('briefing') for f in mod_fases.ESTEIRA for p in nucleo.padroes_da_fase(f, por_id))
+    # a unica entrada de fase em briefing/ e a declaracao do texto como imagem (0.9.1, entrada da fase fontes): um
+    # arquivo so, nunca a pasta, e nunca o da aprovacao
+    assert not any(p.startswith('briefing') and p != 'briefing/texto-como-imagem.json'
+                   for f in mod_fases.ESTEIRA for p in nucleo.padroes_da_fase(f, por_id))
 
 
 def test_handler_aprovar_recusa_formato_que_o_briefing_nao_tem(tmp_path, pessoa, monkeypatch):

@@ -288,17 +288,26 @@ def fase_valida(pasta, fase_id, fases=ESTEIRA):
     return bool(avaliacao.get(fase_id, (False, None))[0])
 
 
-def renovar_fase(pasta, fase_id, fases=ESTEIRA):
+_MANTER = object()
+
+
+def renovar_fase(pasta, fase_id, fases=ESTEIRA, bloqueio=_MANTER):
     """Grava a fase como concluida com as entradas e as saidas de agora. So para a fase que o motor acabou de rodar no
     proprio processo, a partir de um ato do DA na tela (desdobra.specs.confirmar.confirmar_da_tela refaz a fase specs
     com a acao nova): sem isto, a fase ficaria desatualizada e a tela so voltaria depois de um passo no terminal
-    (revisao do M7a). Quem chama segura a trava do job e so renova a fase que estava valida antes do ato."""
+    (revisao do M7a). Quem chama segura a trava do job e so renova a fase que estava valida antes do ato.
+    bloqueio (0.9.1, o ato do texto como imagem refaz a conferencia de fontes): sem o argumento, o bloqueio gravado
+    fica como esta; None tira o bloqueio; um dict (job.nucleo._bloqueio_do_envelope) grava o bloqueio de agora."""
     por_id = {f.id: f for f in fases}
     alvo = por_id[fase_id]
     estado = ler_estado(pasta)
     reg = estado['fases'].setdefault(fase_id, _registro_vazio())
     reg.update(situacao='concluida', hash_entradas=hashes_da_fase(pasta, alvo, por_id),
                hash_saidas=hashes_das_saidas(pasta, alvo), fim=agora(), codigo=0, motivo=None)
+    if bloqueio is None:
+        reg.pop('bloqueio', None)
+    elif bloqueio is not _MANTER:
+        reg['bloqueio'] = dict(bloqueio)
     avaliacao, _ = avaliar(pasta, estado, fases)
     estado['proxima'] = calcular_proxima(estado, avaliacao, fases)
     gravar_estado(pasta, estado)

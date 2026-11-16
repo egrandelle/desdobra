@@ -239,9 +239,10 @@
               "presente",
               "ausente",
               "divergente",
-              "nao_conferida"
+              "nao_conferida",
+              "texto_como_imagem"
             ],
-            "description": "Primeira passada (desdobra ler): nao_conferida. Segunda passada (fase laudo-fontes, contra o arquivo enviado em entrada/fontes/): presente (a conferencia passou), ausente (sem arquivo ou sem par de nome PostScript) ou divergente (ha par, mas glifo, face no Chromium ou largura nao conferem)"
+            "description": "Primeira passada (desdobra ler): nao_conferida. Segunda passada (fase laudo-fontes, contra o arquivo enviado em entrada/fontes/): presente (a conferencia passou), ausente (sem arquivo ou sem par de nome PostScript) ou divergente (ha par, mas glifo, face no Chromium ou largura nao conferem). texto_como_imagem (0.9.1, aditivo): sem arquivo, mas o DA decidiu na tela que as camadas com esta fonte vao como imagem"
           },
           "face_id": {
             "type": [

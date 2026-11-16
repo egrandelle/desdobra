@@ -121,6 +121,46 @@ def _portao_fontes(pasta):
     return 'decisao_do_da' if codigos else 'passa'
 
 
+def vista_como_imagem(laudo, como_imagem):
+    """O laudo como a derivacao o ve com o texto como imagem por decisao do DA (0.9.1; desdobra.fontes.como_imagem):
+    cada camada de texto da lista passa a tipo pixel, com a marca texto_como_imagem, e guarda o bloco texto (o corpo
+    continua valendo para o piso de legibilidade). Assim a quebra, a medida no Chromium e a separacao da pilha pulam a
+    camada, e o elemento escala como imagem. So em memoria: laudo/laudo.json nao muda (a classificacao de dados segue
+    vendo texto, decisao 192)."""
+    if not como_imagem:
+        return laudo
+    novo = dict(laudo, camadas=[])
+    for c in laudo['camadas']:
+        if c.get('tipo') == 'texto' and c['identidade']['layer_id'] in como_imagem:
+            c = dict(c, tipo='pixel', texto_como_imagem=True)
+        novo['camadas'].append(c)
+    return novo
+
+
+def _caixas_como_imagem(ctx, lids, doc, caixa, s):
+    """[{'layer_id', 'caixa'}] das camadas de texto como imagem do elemento, na composicao: a caixa da tinta da camada
+    no documento levada pela transformacao do elemento (origem doc[0:2], destino caixa[0:2], escala s), cortada pela
+    caixa do elemento."""
+    cam = {c['identidade']['layer_id']: c for c in ctx['laudo']['camadas']}
+    saida = []
+    for lid in lids:
+        geo = (cam.get(lid) or {}).get('geometria') or {}
+        g = geo.get('caixa_tinta') or geo.get('caixa')
+        if not g:
+            continue
+        x = [caixa[0] + (g[0] - doc[0]) * s, caixa[1] + (g[1] - doc[1]) * s,
+             caixa[0] + (g[2] - doc[0]) * s, caixa[1] + (g[3] - doc[1]) * s]
+        x = [max(x[0], caixa[0]), max(x[1], caixa[1]), min(x[2], caixa[2]), min(x[3], caixa[3])]
+        saida.append({'layer_id': lid, 'caixa': [_q(v, CASAS_PX) for v in x]})
+    return saida
+
+
+def _laudo_da_derivacao(pasta):
+    from desdobra.fontes import como_imagem
+    laudo = contratos.ler(Path(pasta) / mb.ARQUIVO_LAUDO, 'laudo/1')
+    return laudo, vista_como_imagem(laudo, como_imagem.camadas(pasta))
+
+
 def preparar(pasta, partida=False, briefing=None):
     """Le e confere o que a derivacao precisa. Devolve o contexto, ou ErroDerivacao.
     partida: so para a tela (desdobra.tela.estado.montar). No job sem briefing confirmado (ou com o rascunho do motor
@@ -151,7 +191,7 @@ def preparar(pasta, partida=False, briefing=None):
                     mb.desatualizado(pasta, briefing)):
         # o gravado de outra versao dos arquivos do job: a tela parte da retomada (mb.base_da_tela), com o aviso do que
         # mudou, e nunca do gravado velho (revisao do M7a)
-        laudo = contratos.ler(pasta / mb.ARQUIVO_LAUDO, 'laudo/1')
+        _laudo, laudo = _laudo_da_derivacao(pasta)
         ds_arq = pasta / mb.ARQUIVO_DS
         return contexto(laudo, mb.base_da_tela(pasta), ds=arquivos.ler_json(ds_arq) if ds_arq.is_file() else None,
                         job_id=estado['job_id'], pasta=pasta, portao_fontes=_portao_fontes(pasta), da_tela=True)
@@ -163,8 +203,8 @@ def preparar(pasta, partida=False, briefing=None):
     if velhos:
         raise ErroDerivacao('O briefing é de outra versão do laudo, das specs, do design system ou das fontes.',
                             'briefing_desatualizado', {'campos': velhos})
-    laudo = contratos.ler(pasta / mb.ARQUIVO_LAUDO, 'laudo/1')
-    erros = mb.conferir(laudo, briefing, estado['job_id'])
+    laudo_arquivo, laudo = _laudo_da_derivacao(pasta)
+    erros = mb.conferir(laudo_arquivo, briefing, estado['job_id'])
     if erros:
         raise ErroDerivacao('O briefing tem problema: %s.' % ', '.join(sorted({e['codigo'] for e in erros})),
                             'briefing_com_problema', {'erros': erros})
@@ -595,6 +635,13 @@ def _fechar(ctx, saida, kv, m, formato, areas, caixas, escalas, base, regras=Non
                 'origem_geometria': ORIGEM_GEOMETRIA[saida['caminho']]}
         if e.get('quebras_camada') is not None:
             item['quebras_camada'] = e['quebras_camada']
+        if e.get('texto_como_imagem'):
+            # 0.9.1: as camadas de texto que vao como imagem por decisao do DA (campo aditivo do derivacao/1)
+            item['texto_como_imagem'] = list(e['texto_como_imagem'])
+            # revisao do 0.9.1: a caixa de cada camada como imagem na composicao (a tinta dela no documento, pela
+            # mesma transformacao do elemento), para a area segura da entrega conferir o texto e nao o elemento
+            # inteiro (a faixa que sangra com o texto dentro)
+            item['caixas_texto_como_imagem'] = _caixas_como_imagem(ctx, e['texto_como_imagem'], doc, c, s_total)
         if e.get('quebras_origem') is not None:
             # a quebra da familia da tela (M7b, C2): a origem dela, e a caixa e do DA quando a quebra e decisao dele
             item['quebras_origem'] = e['quebras_origem']

@@ -13,6 +13,8 @@ Entradas, de baixo para cima, na ordem de desenho do PSD:
   - linkado: um smart object linkado, desenhado com o arquivo de entrada/campanha/ que o DA confirmou, pela
     caixa de colocacao da camada (arquitetura-v1.md, 7.2).
 Camada com funcao "fora da peca" (funcoes, quando vem da derivacao ou do briefing) nao entra em nenhuma entrada.
+A camada de texto que o DA declarou na tela como imagem (0.9.1, desdobra.fontes.como_imagem) entra na pilha como
+camada de pixel, com o registro texto_como_imagem_por_decisao_do_da; a declaracao do modo de teste bloqueia.
 
 Bloqueios (o render recusa enquanto houver): composicao do documento acima do orcamento no laudo, modo de cor fora
 da v1, conferencia de fontes ausente ou de outro laudo, fonte com bloqueio tecnico, linkado visivel sem confirmacao.
@@ -57,6 +59,8 @@ DESCRICOES_BLOQUEIO = {
     'linkado_confirmado_no_modo_de_teste': 'O linkado foi confirmado no modo de teste da tela, ou antes de a '
                                            'confirmação gravar quem confirmou. Confirme o arquivo do linkado de novo '
                                            'na tela de briefing.',
+    'texto_como_imagem_no_modo_de_teste': 'O texto como imagem foi declarado no modo de teste da tela. Declare de novo '
+                                          'na tela de briefing, no passo do que o desdobra leu.',
     'spec_confirmada_no_modo_de_teste': 'Um valor de spec foi confirmado no modo de teste da tela. Confirme o valor '
                                         'de novo na tela de briefing.',
     'largura_divergente': 'A conferência de fontes achou divergência de largura numa camada de texto. É decisão do DA, '
@@ -337,8 +341,16 @@ def montar(pasta_job, *, funcoes=None, formato=FORMATO_ORIGEM):
     # so os textos que este render desenha: a camada fora da peca (no formato derivado, a que nao tem elemento, como a
     # de outra tela) nao entra na conferencia das fontes nem na decisao de largura
     fora_do_render = {int(k) for k, v in (funcoes or {}).items() if v == FUNCAO_FORA}
+    # 0.9.1: a camada de texto que o DA declarou na tela como imagem (a face sem arquivo) vai na pilha, pelos pixels do
+    # PSD, e sai da conferencia das fontes do render. A lista e a da conferencia deste laudo (fontes.como_imagem)
+    como_imagem = set()
+    if conf is not None and conf['laudo_sha256'] == arquivos.sha256_arquivo(laudo_arq):
+        bloco_ci = conf.get('texto_como_imagem') or {}
+        como_imagem = {int(x) for x in bloco_ci.get('camadas') or []} - fora_do_render
+        if como_imagem and bloco_ci.get('origem') != ORIGEM_DA:
+            bloqueios.append(_bloqueio('texto_como_imagem_no_modo_de_teste', camadas=sorted(como_imagem)))
     textos = [r for r in _folhas(regs) if r.get('kind') == 'type' and (r.get('texto') or {}).get('runs')
-              and r['layer_id'] not in fora_do_render]
+              and r['layer_id'] not in fora_do_render and r['layer_id'] not in como_imagem]
     faces = faces_do_job(pasta_job, estado)
     pares = {}
     if textos:
@@ -411,6 +423,14 @@ def montar(pasta_job, *, funcoes=None, formato=FORMATO_ORIGEM):
                 tipo_por_indice[i] = 'dividida'
                 continue
         so = reg.get('smart_object') or {}
+        if lid in como_imagem:
+            # a camada inteira pelos pixels dela no PSD, composta na pilha como camada de pixel (0.9.1)
+            registros.append(_registro('texto_como_imagem_por_decisao_do_da', lid,
+                                       faces=sorted({r.get('fonte_ps') for r in (reg.get('texto') or {}).get('runs') or []
+                                                     if r.get('fonte_ps')})))
+            tipo_por_indice[i] = 'pilha'
+            pilha.append(i)
+            continue
         if reg.get('kind') == 'type' and (reg.get('texto') or {}).get('runs'):
             fechar_pilha()
             e = _entrada_texto(reg, 'e%02d' % (len(entradas) + 1), por_id, pares, doc, registros)

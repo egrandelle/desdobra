@@ -70,7 +70,27 @@
         "arquivos_varridos": {"type": "integer", "minimum": 0}
       }
     },
-    "resumo": {"type": "object", "additionalProperties": {"type": ["integer", "number", "null"]}}
+    "resumo": {"type": "object", "additionalProperties": {"type": ["integer", "number", "null"]}},
+    "texto_como_imagem": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "0.9.1, aditivo: a declaracao do DA na tela (briefing/texto-como-imagem.json) aplicada. faces: as declaradas que valem; caidas: as declaradas que um arquivo de entrada/fontes/ passou a casar; camadas: as camadas de texto que vao como imagem (a fonte unica para derivacao, render, tela e entrega); rebaixados: o que a declaracao rebaixou de bloqueante para aviso, para desfazer sem rodar o Chromium.",
+      "required": ["arquivo", "origem", "faces", "caidas", "camadas", "rebaixados"],
+      "properties": {
+        "arquivo": {"const": "briefing/texto-como-imagem.json"},
+        "origem": {"enum": ["da", "fixture_de_teste"]},
+        "faces": {"type": "array", "items": {"type": "string"}},
+        "caidas": {"type": "array", "items": {"type": "string"}},
+        "camadas": {"type": "array", "items": {"type": "integer"}},
+        "rebaixados": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": false, "required": ["layer_id", "nome_ps", "indices", "decisao"],
+                    "properties": {"layer_id": {"type": "integer"}, "nome_ps": {"type": "string"},
+                                   "indices": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                                   "decisao": {"enum": ["pede_decisao_do_da", null]}}}
+        }
+      }
+    }
   },
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
@@ -149,7 +169,7 @@
         "largura_erro_pct": {"type": ["number", "null"], "description": "O mesmo erro com sinal (negativo: mais estreita no Chromium)"},
         "face_cdp_confere": {"type": ["boolean", "null"]},
         "situacao": {"$ref": "#/$defs/situacao"},
-        "decisao": {"enum": ["pede_decisao_do_da", null]},
+        "decisao": {"enum": ["pede_decisao_do_da", "texto_como_imagem_do_da", null], "description": "texto_como_imagem_do_da (0.9.1): o DA declarou na tela que a face nao tem arquivo e a camada vai como imagem"},
         "motivos": {"type": "array", "items": {"$ref": "#/$defs/motivo"}}
       }
     }

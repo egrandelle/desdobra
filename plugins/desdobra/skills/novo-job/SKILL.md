@@ -45,7 +45,7 @@ Antes de começar, leia as três referências desta skill com a ferramenta Read:
    O que pedir:
    - o PSD ou PSB do KV (pode vir como primeiro argumento: $0);
    - a pasta nova do job, vazia ou ainda inexistente (pode vir como segundo argumento: $1). Peça o caminho absoluto da pasta nova; nunca peça nem aceite um caminho relativo da pasta do job. Se o DA mandar um caminho que não começa no disco, peça de novo com a dica acima;
-   - as fontes usadas no PSD, chamadas de FONTES: um ou mais arquivos, ou pastas com os arquivos. Sem fontes agora, o job pode ser criado mesmo assim, e as camadas de texto ficam marcadas como fonte faltando até o DA mandar os arquivos;
+   - as fontes usadas no PSD, chamadas de FONTES: um ou mais arquivos, ou pastas com os arquivos. Sem fontes agora, o job pode ser criado mesmo assim, e as camadas de texto ficam marcadas como fonte faltando até o DA mandar os arquivos. Se a agência não tem o arquivo de uma fonte, o DA pode decidir na tela, no passo 1, usar o texto dessa fonte como imagem;
    - as folhas de spec do veiculador, chamadas de SPECS: uma pasta com uma subpasta por veiculador. Sem folhas agora, o job pode ser criado mesmo assim.
 
    Não explique formato de fonte de antemão. Só se o motor recusar um arquivo, explique o motivo a partir do `o_que_fazer` do envelope (veja `fluxo.md`, "Recusa na criação"). O desdobra trata toda fonte enviada como fonte com direito de uso, e a responsabilidade pela licença é da agência ou do usuário: não pergunte nada sobre licença.

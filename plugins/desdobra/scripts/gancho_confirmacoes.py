@@ -162,6 +162,11 @@ CODIGO = re.compile(r'renderizar\s*\(|linkados\s*\.\s*(confirmar|sessao)|confirm
                     r'from\s+desdobra\s*\.\s*tela\s+import\s+[^\n;]*\b(?:rascunho|atos)\b|'
                     r'desdobra\s*\.\s*job\s*\.\s*modo_dados\b|from\s+desdobra\s*\.\s*job\s+import\s+[^\n;]*\bmodo_dados\b|'
                     r'gravar_com_historico|confirmar_familia|confirmar_da_tela|'
+                    # a declaracao do DA de texto como imagem (0.9.1, desdobra.fontes.como_imagem): o modulo, a importacao
+                    # dele e as funcoes que aplicam a declaracao na conferencia de fontes
+                    r'desdobra\s*\.\s*fontes\s*\.\s*como_imagem\b|'
+                    r'from\s+desdobra\s*\.\s*fontes\s+import\s+[^\n;]*\bcomo_imagem\b|'
+                    r'\bcomo_imagem\s*\.\s*(?:gravar|reaplicar|aplicar|remover)\b|'
                     # a fase gravada em dia no proprio processo (desdobra.job.nucleo.renovar_fase, so do ato de spec da
                     # tela) e o estado.json pelo codigo (gravar_estado): carimbariam como em dia uma saida de fase escrita
                     # a mao, como specs/formatos-do-job.json (revisao do M7a)
@@ -190,6 +195,8 @@ ARQUIVOS_DO_DA = re.compile(r'(^|[\\/])((?<!skills[\\/])(?:(?<!desdobra[\\/])bri
                             r'(master\.png|render\.json|contrato\.json)|linkados-confirmados\.json|'
                             r'(?<!desdobra[\\/])entrega[\\/]|entrega[\\/](?!%(f)s)|manifesto-licenca\.json|relatorio-entrega\.json|'
                             r'parametros[\\/]entrega\.json|aval-chromium-janela\.json|'
+                            # a declaracao do texto como imagem (0.9.1) tambem so pelo nome, com o cwd em briefing
+                            r'texto-como-imagem\.json\b|'
                             # o perfil de marca (M7c, M2): marcas/<id>/perfil-marca.json, ou so o nome, com o cwd na
                             # pasta da marca
                             r'(?:marcas[\\/][^\\/]+[\\/])?perfil-marca\.json\b)' % {'f': FONTE_DO_PACOTE},
@@ -1137,7 +1144,7 @@ def decidir_com_motivo(evento):
         bruto = str(entrada.get('command') or '')
         if decidir_marca_por_comando(bruto, cwd) == 'deny':
             return ('deny', MOTIVO_MARCA)
-        if _decidir_comando(bruto) == 'deny':
+        if _decidir_comando(bruto) == 'deny' or decidir_pasta_do_da_por_comando(bruto, cwd) == 'deny':
             return ('deny', MOTIVO)
         if decidir_leitura_por_comando(bruto, cwd) == 'deny':
             return ('deny', MOTIVO_LEITURA)
@@ -1153,6 +1160,40 @@ def decidir_com_motivo(evento):
         if decidir_escrito_do_motor_por_arquivo(caminho, cwd) == 'deny':
             return ('deny', MOTIVO_SUGESTOES)
     return (None, None)
+
+
+# revisao de seguranca do 0.9.1: as pastas inteiras do DA (briefing, derivacao, entrega) num comando que grava, pelo
+# cwd do evento ou por um caminho que termina nelas, sem a barra do fim (cd <job>/briefing && echo > x.json, cp x.json
+# <job>/briefing, Copy-Item -Destination <job>\briefing). O codigo-fonte do pacote (desdobra/<pasta>) e as skills ficam
+# de fora, como em ARQUIVOS_DO_DA
+PASTA_INTEIRA_DO_DA = re.compile(r'(?:^|/)(?<!desdobra/)(?<!skills/)(?:briefing|derivacao|entrega)[.\s]*(?:/|$)',
+                                 re.IGNORECASE)
+MUDA_DE_PASTA = re.compile(r'(?<![\w-])(?:cd|chdir|pushd|sl|Set-Location|Push-Location)(?![\w-])', re.IGNORECASE)
+
+
+def _na_pasta_do_da(caminho):
+    return bool(PASTA_INTEIRA_DO_DA.search(caminho.replace('\\', '/')))
+
+
+def decidir_pasta_do_da_por_comando(comando, cwd):
+    """'deny' quando um comando grava com o cwd do evento dentro de uma pasta do DA, ou cita uma pasta do DA (o caminho
+    resolvido pelo cwd) junto com uma escrita. A palavra solta (cd briefing, cp x briefing) conta so com uma escrita
+    forte ou uma troca de pasta, para o texto comum (echo o briefing > notas.txt) seguir."""
+    if not (ESCRITA.search(comando) or ESCRITA_FORTE.search(comando)):
+        return None
+    if cwd and (_na_pasta_do_da(cwd) or _na_pasta_do_da(_real(cwd))):
+        return 'deny'
+    forte = bool(ESCRITA_FORTE.search(comando) or MUDA_DE_PASTA.search(comando))
+    for c in candidatos(comando)[:LIMITE_DE_CANDIDATOS]:
+        t = c.strip().strip('\'"')
+        if not t or not re.search(r'(?i)(?:briefing|derivacao|entrega)', t):
+            continue
+        if not forte and not re.search(r'[\\/]', t):
+            continue
+        alvo = _absoluto(t, cwd)
+        if _na_pasta_do_da(alvo) or _na_pasta_do_da(_real(alvo)):
+            return 'deny'
+    return None
 
 
 def _decidir_comando(bruto):

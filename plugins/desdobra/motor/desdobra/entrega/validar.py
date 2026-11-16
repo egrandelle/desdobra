@@ -110,6 +110,8 @@ DESCRICOES = {
     'borda_sem_condicao_declarada': 'A folha tem borda condicional e o DA não declarou a condição do formato: nada foi '
                                     'desenhado (o motor não detecta sozinho o fundo da página).',
     'fora_da_area_segura': 'Texto (tinta medida) ou logo (caixa do layout) entra na área segura da folha.',
+    'texto_como_imagem_por_decisao_do_da': 'Texto como imagem por decisão do DA: a camada de texto foi desenhada pelos '
+                                           'pixels do PSD, sem a fonte, e escalou como imagem.',
     'fora_da_area_util': 'Texto (tinta medida) ou logo (caixa do layout) sai da área útil da folha.',
     'dentro_da_faixa': 'Texto (tinta medida) ou logo (caixa do layout) entra numa faixa reservada da folha.',
     'logo_pela_caixa_do_layout': 'O logo é conferido pela caixa dele no layout: o motor não tem a caixa do logo no '
@@ -450,10 +452,36 @@ def caixas_de_conteudo(ctx):
     caixas = [('texto:%s' % e['id'], [float(v) for v in e['tinta']], {})
               for e in ctx['render'].get('entradas') or [] if e.get('tipo') == 'texto' and e.get('tinta')]
     for e in (ctx['derivacao'] or {}).get('elementos') or []:
+        if e.get('texto_como_imagem'):
+            # 0.9.1: o texto como imagem nao tem tinta medida no render (vai na pilha): vale a caixa de cada camada
+            # de texto na composicao (derivacao, caixas_texto_como_imagem), nunca a do elemento inteiro, que pode ter
+            # uma faixa que sangra (revisao do 0.9.1). Texto nunca sangra. A derivacao sem o campo cai na caixa do
+            # elemento
+            por_camada = e.get('caixas_texto_como_imagem')
+            if por_camada:
+                caixas += [('texto_como_imagem:%s:%d' % (e['id'], x['layer_id']), [float(v) for v in x['caixa']], {})
+                           for x in por_camada]
+            else:
+                caixas.append(('texto_como_imagem:%s' % e['id'], [float(v) for v in e['caixa']], {}))
         if e.get('classe') == 'marca':
             caixas.append(('marca:%s' % e['id'], [float(v) for v in e['caixa']],
                            (e.get('transformacao') or {}).get('sangra') or {}))
     return caixas
+
+
+REGRA_TEXTO_COMO_IMAGEM = 'texto_como_imagem_por_decisao_do_da'
+FONTE_TEXTO_COMO_IMAGEM = {'tipo': 'decisao_do_da', 'arquivo': 'briefing/texto-como-imagem.json'}
+
+
+def texto_como_imagem(ctx):
+    """0.9.1: a verificacao que so registra as camadas de texto que o render desenhou como imagem por decisao do DA
+    (os registros do render.json). Nunca reprova: a entrega segue."""
+    camadas = sorted({r['layer_id'] for r in ctx['render'].get('registros') or []
+                      if r.get('codigo') == REGRA_TEXTO_COMO_IMAGEM and isinstance(r.get('layer_id'), int)})
+    if not camadas:
+        return []
+    return [_item('texto_como_imagem', REGRA_TEXTO_COMO_IMAGEM, FONTE_TEXTO_COMO_IMAGEM, situacao='registra',
+                  camadas=camadas)]
 
 
 def _areas(ctx):
@@ -514,6 +542,7 @@ def validar(final, nome, ctx):
     itens += i_master
     itens += _borda(borda, provado, ctx)
     itens += _areas(ctx)
+    itens += texto_como_imagem(ctx)
     # a comparacao com a peca aprovada (entrada/aprovadas/, tolerancia de borda do M4) ainda nao foi portada
     itens.append(_item('comparacao_com_aprovada', 'comparacao_com_aprovada_pendente',
                        {'tipo': 'limite', 'limites': [limites.obter('render.tolerancia_borda_smooth').citacao(),

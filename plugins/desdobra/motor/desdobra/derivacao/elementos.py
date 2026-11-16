@@ -204,6 +204,14 @@ def montar(laudo, resolvidas, quadro, ds=None):
             corpo = _corpo(c)
             if corpo is not None:
                 el['corpo_px'] = max(el['corpo_px'] or 0.0, corpo)
+        elif c.get('texto_como_imagem'):
+            # 0.9.1: texto como imagem por decisao do DA (derivacao.nucleo.vista_como_imagem): escala como raster,
+            # pelos pixels do documento (folga 1: acima de 100% avisa), e o corpo segue para o piso de legibilidade
+            el.setdefault('texto_como_imagem', []).append(lid)
+            corpo = _corpo(c)
+            if corpo is not None:
+                el['corpo_px'] = max(el['corpo_px'] or 0.0, corpo)
+            el['folga_resolucao'] = min(el['folga_resolucao'], 1.0) if el['folga_resolucao'] else 1.0
         if lid in folgas:
             el['folga_resolucao'] = min(el['folga_resolucao'], folgas[lid]) if el['folga_resolucao'] else folgas[lid]
         if atua:
@@ -379,6 +387,10 @@ def _juntar(membros, canvas, tol):
     corpos = [m['corpo_px'] for m in membros if m.get('corpo_px')]
     el['corpo_px'] = max(corpos) if corpos else None
     el['texto'] = any(m['texto'] for m in membros)
+    como_imagem = sorted({x for m in membros for x in m.get('texto_como_imagem') or ()})
+    el.pop('texto_como_imagem', None)
+    if como_imagem:
+        el['texto_como_imagem'] = como_imagem
     zs = [z for m in membros for z in m['_zs']]
     el['z'] = [min(zs), max(zs)]
     el['opaco'] = de_cena(el) and any(m['_opaco'] for m in com)

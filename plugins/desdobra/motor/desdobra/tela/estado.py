@@ -464,6 +464,10 @@ def pecas_base(laudo, asset_por_camada, face_de):
             peca['modo'] = 'texto' if not faltando else ('imagem' if peca['asset'] else 'texto')
         else:
             peca['tipo'] = 'imagem' if peca['asset'] else 'sem_imagem'
+            if c.get('texto_como_imagem'):
+                # 0.9.1: texto como imagem por decisao do DA (o laudo da derivacao, nd.vista_como_imagem): sem linhas,
+                # o palco nao edita o texto nem quebra a linha, e a pagina poe o selo
+                peca['como_imagem'] = True
         base[lid] = peca
     return base
 
@@ -880,12 +884,23 @@ def paradas(pasta, laudo):
 
 
 BLOQUEIO_DE_FASE = 'O desdobra parou nesta etapa, e a próxima versão da tela traz o que fazer aqui.'
+# 0.9.1: o bloqueio das fontes leva ao que o DA faz na propria tela (o arquivo da fonte, ou o texto como imagem)
+BLOQUEIO_DAS_FONTES = ('O desdobra parou nas fontes. Em Fontes do job, veja o que falta: mande o arquivo da fonte ao '
+                       'Claude ou, sem ele, use o texto como imagem.')
+# revisao do 0.9.1: sem face que o DA possa declarar (nenhum botao na tela), o bloqueio nao manda usar o texto como
+# imagem
+BLOQUEIO_DAS_FONTES_SEM_BOTAO = ('O desdobra parou nas fontes. Em Fontes do job, veja o que falta e mande ao Claude o '
+                                 'arquivo da fonte que confere com o PSD.')
 
 
-def bloqueio_na_tela(fid, bloqueio):
+def bloqueio_na_tela(fid, bloqueio, declaravel=False):
     """O bloqueio de uma fase em texto para o DA: o nome da etapa e uma frase fixa, nunca o o_que_fazer do motor, que
-    cita comando de terminal."""
-    return {'fase': fid, 'descricao': descricao_da_fase(fid), 'texto': BLOQUEIO_DE_FASE}
+    cita comando de terminal. declaravel: ha face que o DA pode mandar como imagem agora (o botao do passo 1)."""
+    if fid == 'fontes':
+        texto = BLOQUEIO_DAS_FONTES if declaravel else BLOQUEIO_DAS_FONTES_SEM_BOTAO
+    else:
+        texto = BLOQUEIO_DE_FASE
+    return {'fase': fid, 'descricao': descricao_da_fase(fid), 'texto': texto}
 
 
 def giro_da_folha(doc, chave):
@@ -924,8 +939,10 @@ def lido(pasta, estado_job, laudo, briefing, formatos, faces_servidas, teto=None
     from desdobra.specs import modelo as mod_specs
     pasta = Path(pasta)
     avaliacao, _d = nucleo.avaliar(pasta, estado_job, mod_fases.ESTEIRA)
-    bloqueios = [bloqueio_na_tela(fid, b) for fid, b in nucleo.bloqueios_pendentes(estado_job, avaliacao,
-                                                                                 mod_fases.ESTEIRA)]
+    como = textos_como_imagem_na_tela(pasta, laudo)
+    declaraveis = {d['nome_ps'] for d in como['declaraveis'] if d['declaravel']}
+    bloqueios = [bloqueio_na_tela(fid, b, declaravel=bool(declaraveis))
+                 for fid, b in nucleo.bloqueios_pendentes(estado_job, avaliacao, mod_fases.ESTEIRA)]
     camadas_bloqueadas = [{'camada': c['identidade']['layer_id'], 'nome': c.get('nome') or '',
                            'motivos': [m.get('descricao') or m.get('regra') for m in c.get('motivos') or []]}
                           for c in laudo['camadas'] if c.get('situacao') == 'bloqueante']
@@ -959,12 +976,41 @@ def lido(pasta, estado_job, laudo, briefing, formatos, faces_servidas, teto=None
         (SEM_MEDIDA_EM_PIXELS if specs['folhas'] else SEM_FOLHA_DE_SPEC)
     lf = _ler(pasta / 'laudo' / 'laudo-fontes.json', 'laudo/1')
     usadas = (lf or laudo).get('fontes_usadas') or []
+    nomes = {c['identidade']['layer_id']: c.get('nome') or '' for c in laudo['camadas']}
     return {'bloqueios': bloqueios, 'camadas_bloqueadas': camadas_bloqueadas, 'linkados': linkados, 'specs': specs,
             'quadros': quadros_na_tela(laudo, briefing),
             'modo_dados': modo_na_tela(pasta, teto), 'paradas': paradas(pasta, laudo),
             'fontes': faces_servidas,
-            'fontes_que_faltam': [{'fonte_ps': u['fonte_ps'], 'situacao': u['situacao'], 'camadas': len(u['camadas'])}
-                                  for u in usadas if u.get('situacao') in ('ausente', 'divergente')]}
+            'fontes_que_faltam': [{'fonte_ps': u['fonte_ps'], 'situacao': u['situacao'], 'camadas': len(u['camadas']),
+                                   'camadas_nomes': [nomes.get(x, '') for x in u['camadas']],
+                                   'declaravel': u['fonte_ps'] in declaraveis}
+                                  for u in usadas if u.get('situacao') in ('ausente', 'divergente')],
+            # 0.9.1: o texto como imagem por decisao do DA (desdobra.fontes.como_imagem)
+            'textos_como_imagem': como['declaradas'], 'declaracoes_caidas': como['caidas']}
+
+
+CAIDA = 'Chegou o arquivo da fonte %s. O texto volta a ser texto vivo, e a sua decisão de usar como imagem deixa de valer.'
+
+
+def textos_como_imagem_na_tela(pasta, laudo):
+    """{'declaraveis', 'declaradas', 'caidas'} do passo 1 (0.9.1): as faces sem arquivo que o DA pode declarar (com o
+    nome de cada camada atingida, que a pagina poe so por textContent), as declaradas que valem agora (fontes/
+    conferencia.json, bloco texto_como_imagem) e as declaradas que um arquivo enviado derrubou, com o aviso."""
+    from desdobra.fontes import como_imagem
+    nomes = {c['identidade']['layer_id']: c.get('nome') or '' for c in laudo['camadas']}
+    decl = como_imagem.ler(pasta) or {}
+    por_ps = {f['nome_ps']: f for f in decl.get('faces') or []}
+    b = como_imagem.bloco(pasta) or {}
+    camadas = set(b.get('camadas') or [])
+    declaradas = []
+    for ps in b.get('faces') or []:
+        f = por_ps.get(ps) or {}
+        lids = [x for x in f.get('camadas') or [] if x in camadas]
+        declaradas.append({'fonte_ps': ps, 'camadas': [nomes.get(x, '') for x in lids],
+                           'decidido_em': (f.get('decidido_por') or {}).get('quando'),
+                           'teste': f.get('origem') != como_imagem.ORIGEM_DA})
+    caidas = [{'fonte_ps': ps, 'texto': CAIDA % ps} for ps in b.get('caidas') or [] if ps in por_ps]
+    return {'declaraveis': como_imagem.declaraveis(pasta), 'declaradas': declaradas, 'caidas': caidas}
 
 
 FAMILIA_SEM_CONFIRMACAO = 'Confirme a família quando ela estiver como você quer.'
@@ -1028,6 +1074,10 @@ def faltam(lido_, formatos, variantes=None, familias=None, confirmadas=()):
     if lido_['modo_dados']['escolhido'] is None:
         itens.append({'texto': 'Escolha o modo de dados do job.', 'detalhe': '', 'ir': {'passo': 'lido'}})
     for b in lido_['bloqueios']:
+        if b['fase'] == 'fontes' and lido_['fontes_que_faltam']:
+            # revisao do 0.9.1: o bloqueio das fontes e a fonte que falta sao o mesmo pendente; fica o item da fonte,
+            # com o nome dela
+            continue
         itens.append({'texto': b['texto'], 'detalhe': b['descricao'], 'ir': {'passo': 'lido'}})
     for p in lido_['paradas']:
         itens.append({'texto': p['texto'], 'detalhe': ', '.join(p['camadas']), 'ir': {'passo': 'lido'}})

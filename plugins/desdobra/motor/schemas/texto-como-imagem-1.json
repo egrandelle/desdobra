@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:texto-como-imagem:1",
+  "title": "Texto como imagem por decisao do DA (texto-como-imagem/1)",
+  "description": "briefing/texto-como-imagem.json (0.9.1), gravado so pelo servidor da tela, depois do clique do DA no passo 1 confirmado na propria janela: a face (nome PostScript do PSD) que a agencia nao tem em arquivo, cujas camadas de texto vao como imagem, pelos pixels do PSD. Vale so para o KV de kv_sha256 (o PSD de entrada/kv/; laudo_sha256 fica so como registro, porque o laudo muda a cada leitura) e so enquanto a face nao confere: o arquivo de entrada/fontes/ que casa e confere derruba a declaracao (fontes/conferencia.json, bloco texto_como_imagem). A origem fixture_de_teste (o modo de teste da tela) vale para a tela e a derivacao, nunca para o render. Sem texto de peca nem caminho de arquivo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "job_id", "laudo_sha256", "kv_sha256", "faces", "historico"],
+  "properties": {
+    "esquema": {"const": "texto-como-imagem/1"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "laudo_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "kv_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "faces": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["nome_ps", "camadas", "origem", "decidido_por"],
+        "properties": {
+          "nome_ps": {"type": "string", "minLength": 1},
+          "camadas": {"type": "array", "items": {"type": "integer"}},
+          "origem": {"enum": ["da", "fixture_de_teste"]},
+          "decidido_por": {"$ref": "#/$defs/por"}
+        }
+      }
+    },
+    "historico": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["acao", "nome_ps", "origem", "por"],
+        "properties": {
+          "acao": {"enum": ["declarar", "desfazer"]},
+          "nome_ps": {"type": "string", "minLength": 1},
+          "origem": {"enum": ["da", "fixture_de_teste"]},
+          "por": {"$ref": "#/$defs/por"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "por": {
+      "type": "object", "additionalProperties": false, "required": ["meio", "quando"],
+      "properties": {"usuario": {"type": ["string", "null"]}, "maquina": {"type": ["string", "null"]},
+                     "meio": {"enum": ["tela", "medicao"]}, "quando": {"type": "string"}}
+    }
+  }
+}
