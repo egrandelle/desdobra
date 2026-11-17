@@ -10,10 +10,10 @@ transformacao do elemento a que a camada pertence (escala uniforme e deslocament
     mestre, so o tamanho muda); a regiao da pagina e a da origem transformada, com a margem do render;
   - texto editado pelo DA no palco (decisoes-v1.md, 169 e 171; M7b, A7): o texto novo num trecho so, com o estilo do
     primeiro trecho com tinta e so as linhas do DA (Linhas do DA, 0.9.4: nunca quebra na largura da caixa); a caixa
-    validada e a tinta medida na derivacao (caixa_texto_editado), e o texto que passa da borda do formato e recusado
-    antes de desenhar (texto_editado_passa_do_formato). Sem a medida, a pagina cobre o formato inteiro. O cmap da face
-    do job e conferido como na edicao, e a tinta e conferida depois de compor: a que encosta na borda da pagina e
-    corte (nada e cortado calado);
+    validada e a tinta medida na derivacao (caixa_texto_editado). O texto que passa da borda do formato sai cortado
+    na borda, como o palco mostrou ao DA que confirmou a familia (0.9.6, aprovacao soberana), com o registro
+    texto_editado_cortado_pelo_da (nunca calado). Sem a medida, a pagina cobre o formato inteiro. O cmap da face
+    do job e conferido como na edicao, e a tinta e conferida depois de compor;
   - quebra de linha da familia da tela (M7b, C2): junta as quebras gravadas e insere quebra nos espacos (a mesma
     insercao por posicao da mestre propria), no texto do KV ou no texto editado pelo DA na familia;
   - linkado: o quadrilatero de colocacao e a caixa recebem a transformacao.
@@ -37,14 +37,13 @@ from desdobra.derivacao import impressao as mi
 from desdobra.derivacao import nucleo as nd
 from desdobra.render import contrato as mc
 
+# 0.9.6: o texto editado que passa da borda do formato, na familia que o DA confirmou: o render corta na borda
+CORTADO_PELO_DA = 'texto_editado_cortado_pelo_da'
 DESCRICOES = {
     'formato_sem_derivacao': 'O formato não tem derivacao/<formato>.json. O "Salvar e seguir" do DA, na tela, '
                              'deriva os formatos.',
     'formato_devolvido': 'A derivação devolveu este formato ao DA (veja derivacao/devolucoes.json): não há layout '
                          'para renderizar.',
-    'texto_editado_passa_do_formato': 'O texto editado na tela, com as linhas do DA e o mesmo corpo, passa da borda '
-                                      'deste formato e sairia cortado. Mude as linhas ou o tamanho do texto na família '
-                                      'antes do render.',
     'texto_editado_fora_da_fonte': 'O texto editado na tela tem caractere que a fonte do job não tem, e o render não '
                                    'desenha o texto sem ele. Troque o caractere na tela ou envie a fonte que o tenha.',
     'derivacao_desatualizada': 'A derivação gravada não é a que o briefing, as specs, os parâmetros e os limites de agora '
@@ -401,7 +400,8 @@ def montar(pasta_job, formato):
                 medida = el.get('caixa_texto_editado')
                 if medida is not None:
                     # Linhas do DA (0.9.4): a caixa validada e a tinta medida das linhas do DA, com o mesmo corpo. O
-                    # texto que passa da borda do formato sairia cortado: o formato e recusado antes de desenhar
+                    # texto que passa da borda do formato sai cortado nessa borda, com o registro (0.9.6: a aprovacao
+                    # do DA e soberana; nada recusa o formato por isso)
                     cv = [float(v) for v in medida]
                     from desdobra.derivacao import proposta as mp
                     lados = mp.lados_fora(cv, W, H, float(limites.valor('derivacao.enquadramento_tolerancia_px')))
@@ -450,7 +450,9 @@ def montar(pasta_job, formato):
         return None, [_bloqueio('texto_editado_fora_da_fonte', elementos=sorted(fora_da_fonte),
                                 caracteres=[c for k in sorted(fora_da_fonte) for c in fora_da_fonte[k]])], []
     if passa:
-        return None, [_bloqueio('texto_editado_passa_do_formato', textos=passa)], []
+        # a aprovacao do DA e soberana (0.9.6): o texto que passa da borda sai cortado nela, como o palco mostrou na
+        # familia que ele confirmou. O corte fica registrado, a vista no master e no passo 5
+        registros.append({'codigo': CORTADO_PELO_DA, 'medidas': {'textos': passa}})
     partidos = _efeitos_partidos(entradas, regs)
     if partidos:
         return None, [_bloqueio('elemento_partido_no_render', camadas=partidos)], []

@@ -321,6 +321,21 @@ def mesma_vista(pasta, vista):
     return all((vista.get(k) or {}) == (dados.get(k) or {}) for k in CAMPOS_DAS_ESCOLHAS)
 
 
+def _vale_pela_regra_de_antes(f, conf, antes):
+    """A confirmacao feita pela regra de uma previa de antes que mostra a mesma familia: a de antes da decisao 185
+    para a familia sem edicao, e a de antes da 0.9.6 para a familia sem texto editado (a caixa do texto editado passou
+    a ser a das linhas do DA, e a previa dele muda: a confirmacao cai uma vez)."""
+    if antes is None:
+        return False
+    if not isinstance(antes, dict):
+        antes = {'sem_edicao': antes}
+    edicoes = f.get('edicoes') or []
+    if not edicoes and antes.get('sem_edicao') is not None and conf.get('pecas') == antes['sem_edicao']:
+        return True
+    sem_texto = not any(isinstance(e, dict) and e.get('acao') == 'texto' for e in edicoes)
+    return sem_texto and antes.get('sem_texto') is not None and conf.get('pecas') == antes['sem_texto']
+
+
 def confirmada_para(familia, formatos, pecas=None, sem_edicao=None):
     """A familia do rascunho esta confirmada para estes formatos: a confirmacao guarda os formatos que o DA viu
     (revisao do M7a), e a familia de mesmo id que ganhou ou perdeu formatos (desdobra.tela.estado.abas) pede a
@@ -330,11 +345,12 @@ def confirmada_para(familia, formatos, pecas=None, sem_edicao=None):
     spec_por_confirmar). O formato que outra familia levou depois da confirmacao (cedidos) e voltou tambem pede a
     confirmacao de novo: no meio tempo o DA mexeu nele la (revisao do M7b, fase A). sem_edicao: a impressao das
     mesmas pecas pela regra da previa de antes da decisao 185 (estado.REGRA_SEM_EDICAO); vale tambem, so para a
-    familia sem edicao do DA, cuja previa e a mesma pelas duas regras."""
+    familia sem edicao do DA, cuja previa e a mesma pelas duas regras. sem_edicao pode ser tambem {'sem_edicao',
+    'sem_texto'} (0.9.6): 'sem_texto' e a impressao pela regra de antes das linhas do DA
+    (estado.REGRA_SEM_TEXTO_EDITADO), que vale so para a familia sem texto editado, cuja previa nao muda."""
     f = familia or {}
     conf = f.get('confirmacao') or {}
-    if pecas is not None and conf.get('pecas') != pecas and \
-            (sem_edicao is None or f.get('edicoes') or conf.get('pecas') != sem_edicao):
+    if pecas is not None and conf.get('pecas') != pecas and not _vale_pela_regra_de_antes(f, conf, sem_edicao):
         return False
     if set(f.get('cedidos') or ()) & set(formatos):
         return False

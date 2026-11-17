@@ -206,8 +206,12 @@ def test_tamanho_no_elemento_cortado_no_kv_vale_igual_em_todo_membro(fator):
         assert [(f['elementos'], f['texto']) for f in corte] == [([C], FRASE_CORTE)], (fid, lay['falhas'])
         # a frase do corte fica no lugar da conferencia generica do motor
         assert not [f for f in lay['falhas'] if f['codigo'] == 'validacao_reprova' and f['elementos'] == [C]]
-    # o mesmo resultado em todo membro: o corte a vista devolve o formato pela validacao obrigatoria
-    assert situacoes == {('devolvido', 'validacao_obrigatoria_reprovou')}, situacoes
+    # o mesmo resultado em todo membro. 0.9.6 (aprovacao soberana): na familia confirmada, o corte a vista fica como
+    # aviso aceito pelo DA (registro aprovado_pelo_da_com_aviso); antes, a validacao obrigatoria devolvia o formato
+    assert situacoes == {('derivado', None)}, situacoes
+    for fid, _w, _h in HORIZONTAIS:
+        aviso = next(r for r in depois[fid]['registros'] if r['codigo'] == 'aprovado_pelo_da_com_aviso')
+        assert 'corte_a_mostra' in {f['codigo'] for f in aviso['medidas']['falhas']}, aviso
 
 
 @pytest.mark.parametrize('eds', [

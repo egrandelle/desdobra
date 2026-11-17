@@ -223,11 +223,14 @@ def test_derivacao_registra_a_decisao_do_da_no_lugar_da_falha():
             assert dec[0]['medidas']['distancia_px'] < dec[0]['medidas']['minimo_px']
 
 
-def test_validacao_obrigatoria_continua_devolvendo_o_formato_com_decisao_do_da(monkeypatch):
+def test_validacao_obrigatoria_na_familia_confirmada_vira_aviso_aceito_com_decisao_do_da(monkeypatch):
+    # 0.9.6 (aprovacao soberana; antes: "a validacao obrigatoria continua devolvendo o formato"): a familia confirmada
+    # pelo DA fica derivada; a validacao que reprova vai ao registro aprovado_pelo_da_com_aviso, ao lado da decisao do
+    # DA, com o nome e os elementos
     real = mg.validacoes_do_layout
 
-    def reprova(cf, caixas, sangra, apagados=()):
-        vs = real(cf, caixas, sangra, apagados)
+    def reprova(cf, caixas, sangra, apagados=(), geometria=None):
+        vs = real(cf, caixas, sangra, apagados, geometria=geometria)
         return vs + [{'nome': 'colisao_nova_contra_a_origem', 'situacao': 'reprova',
                       'fonte': {'tipo': 'mestre', 'ref': None}, 'elementos': [A]}]
     monkeypatch.setattr(mg, 'validacoes_do_layout', reprova)
@@ -235,8 +238,10 @@ def test_validacao_obrigatoria_continua_devolvendo_o_formato_com_decisao_do_da(m
     for fs in FAMILIAS.values():
         for fid, _w, _h in fs:
             d = depois[fid]
-            assert d['situacao'] == 'devolvido', fid
-            assert d['devolucao']['motivo'] == 'validacao_obrigatoria_reprovou', d['devolucao']
+            assert d['situacao'] == 'derivado', (fid, d.get('devolucao'))
+            aviso = next(r for r in d['registros'] if r['codigo'] == proposta.CODIGO_APROVADO_COM_AVISO)
+            assert [v['nome'] for v in aviso['medidas']['validacoes']] == ['colisao_nova_contra_a_origem']
+            assert any(r['codigo'] == 'decisao_do_da' for r in d['registros']), d['registros']
 
 
 def test_derivacao_com_decisao_do_da_e_deterministica():

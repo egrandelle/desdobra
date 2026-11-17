@@ -173,7 +173,9 @@ def _mover_o_grupo(j):
     (_mover, ['apoio'], []),
     (_apagar, [], ['apoio']),
     (_alinhar, ['apoio'], []),
-    (_texto, [], []),
+    # 0.9.6 (decisao 196): o titulo com texto editado tem a caixa das linhas do DA, entao a caixa dele muda com o texto
+    # (antes ficava a de 4 linhas); ele conta como mexido, e os outros continuam parados
+    (_texto, ['titulo'], []),
     (_mover_o_grupo, ['titulo', 'apoio'], []),
 ], ids=['mover', 'apagar', 'alinhar', 'texto', 'mover_o_grupo'])
 def test_cada_edicao_deixa_os_nao_mexidos_parados(job95, conteudo95, edicoes, mexidos, apagados):

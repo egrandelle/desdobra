@@ -209,6 +209,42 @@ def pendencias_gravadas(pasta):
     return pendencias(doc)
 
 
+def confirmar_lote_da_tela(pasta, valor_ids, *, disparo):
+    """0.9.6: o DA confirma de uma vez os valores de spec que marcou no passo 1 (decisoes-v1.md, 31, 159 e 174; a
+    proposta de decisao 198). Nada vem marcado na tela, e a janela lista cada valor antes do Confirmar. Um Disparo
+    so, gasto aqui. Cada valor vira uma acao 'confirmar' propria em specs/confirmacoes.json, igual a do botao de um
+    valor (valor_id, impressao, por, meio, em), com a mesma hora. So valor em rascunho com valor entra: o divergente
+    e o formato com duas medidas ficam fora do lote (escolha do DA, um por um). Quando algum valor deixou de ser
+    pendencia simples (a folha mudou entre o pedido e o Confirmar), nada e gravado e devolve None: o DA confirma de
+    novo sobre o que a tela mostra. A fase specs segue a regra de confirmar_da_tela. Devolve as acoes gravadas."""
+    from desdobra import humano
+    from desdobra.job import nucleo
+    humano.conferir(disparo, COMANDO, consumir=True)
+    pasta = Path(pasta).resolve()
+    ids = list(valor_ids or [])
+    if not ids or len(set(ids)) != len(ids):
+        return None
+    with nucleo.Trava(pasta):
+        em_dia = nucleo.fase_valida(pasta, 'specs')
+        rascunho, _formatos, _info = importar.importar(pasta)
+        if em_dia:
+            nucleo.renovar_fase(pasta, 'specs')
+        simples = {v['id']: v for _r, _c, v in pendencias(rascunho)
+                   if not (v.get('leituras') and v['valor'] is None) and v['valor'] is not None}
+        if any(i not in simples for i in ids):
+            return None
+        em = _agora()
+        acoes = [{'valor_id': i, 'impressao': modelo.impressao(simples[i]), 'por': disparo.origem,
+                  'meio': disparo.meio, 'em': em, 'acao': 'confirmar'} for i in ids]
+        gravar_acoes(pasta, acoes)
+        rascunho, _formatos, _info = importar.importar(pasta)
+        if em_dia:
+            nucleo.renovar_fase(pasta, 'specs')
+        nucleo.registrar_evento(pasta, 'specs_confirmadas', n_acoes=len(acoes), lote=True,
+                                n_confirmados=rascunho['resumo']['valores_confirmados'])
+    return acoes
+
+
 def confirmar_da_tela(pasta, valor_id, leitura=None, *, disparo):
     """O botao do passo 1 da tela (decisoes-v1.md, 159): confirma um valor em rascunho (leitura None) ou escolhe uma
     leitura de um campo com fontes divergentes. disparo: o da tela (humano.exigir_tela com o comando da confirmacao de

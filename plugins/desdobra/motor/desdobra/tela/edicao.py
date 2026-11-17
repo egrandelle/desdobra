@@ -263,11 +263,28 @@ def intencoes(edicoes):
     return saida
 
 
-def firmar(caixas, intencoes_, quadros, W, H, borda=()):
+def vistas(caixas, visivel=None, editados=()):
+    """As caixas como o DA as ve (0.9.6; decisao 196): o elemento com texto editado (editados) fica com a caixa das
+    linhas dele, a tinta medida em volta da ancora (visivel(id, caixa) -> caixa visivel, ou None sem a medida). A
+    caixa de geometria (a que da a escala) continua nas caixas; alinhar, o ponto fixo do Tamanho, o encaixe e a
+    conferencia usam esta. Sem visivel, as proprias caixas."""
+    if visivel is None or not editados:
+        return caixas
+    saida = dict(caixas)
+    for k in editados:
+        if k in caixas:
+            v = visivel(k, caixas[k])
+            if v is not None:
+                saida[k] = [float(x) for x in v]
+    return saida
+
+
+def firmar(caixas, intencoes_, quadros, W, H, borda=(), visivel=None, editados=()):
     """Os alinhamentos no quadro (intencoes) de novo, no layout de cada membro depois das edicoes (M7b, D2): cada
     intencao leva os elementos dela que o formato tem, juntos, ate a linha do quadro do membro; nada tira o bloco do
     lugar que o DA pediu. A linha do grupo e a de caixa_da_linha (borda: {(id, lado)} do asset cortado na borda do
-    KV). Devolve (caixas, no_quadro [{'elementos', 'eixo', 'alvo', 'referencia', 'valor'}])."""
+    KV), sobre a caixa que o DA ve (vistas, 0.9.6). Devolve (caixas, no_quadro [{'elementos', 'eixo', 'alvo',
+    'referencia', 'valor'}])."""
     caixas = {k: list(v) for k, v in caixas.items()}
     feitos = []
     for i in intencoes_:
@@ -275,7 +292,8 @@ def firmar(caixas, intencoes_, quadros, W, H, borda=()):
         if not ids:
             continue
         q = quadro_da_referencia(quadros, i['referencia'], W, H)
-        eixo, d, valor = no_quadro(caixa_da_linha(caixas, ids, i['alvo'], W, H, borda), i['alvo'], q)
+        eixo, d, valor = no_quadro(caixa_da_linha(vistas(caixas, visivel, editados), ids, i['alvo'], W, H, borda),
+                                   i['alvo'], q)
         if abs(d) > IGUAL:
             for k in ids:
                 caixas[k] = _deslocar(caixas[k], eixo, d)
@@ -323,7 +341,7 @@ def no_quadro(u, alvo, quadro):
     return eixo, valor - _linha(u, eixo, nome), valor
 
 
-def aplicar(caixas, edicoes, W, H, quadros=None, borda=()):
+def aplicar(caixas, edicoes, W, H, quadros=None, borda=(), visivel=None, editados=()):
     """As edicoes do DA no formato W x H. caixas: {id: [x0, y0, x1, y1]}. Mover anda dx x W e dy x H; escalar multiplica
     a caixa pelo fator em volta do ponto fixo (fx, fy, fracoes da caixa; o meio sem eles). No grupo (elementos, M7b,
     D1), todos andam igual, e o ponto fixo e a fracao da caixa que junta o grupo no formato (sem o elemento apagado nem
@@ -332,9 +350,11 @@ def aplicar(caixas, edicoes, W, H, quadros=None, borda=()):
     formato; sem ele, a peca inteira); o tamanho nao muda. No alvo de borda, o elemento preso a borda da peca daquele
     lado fica fora da linha e anda junto (caixa_da_linha; borda: {(id, lado)} do asset cortado na borda do KV, revisao
     1 da fase D). Devolve (caixas, apagados, textos {id: texto}, mexidos na
-    ordem, o ultimo por ultimo)."""
+    ordem, o ultimo por ultimo). visivel, editados (0.9.6): a linha do alinhar e o ponto fixo do escalar saem da caixa
+    que o DA ve (vistas: o texto editado nas linhas dele); o deslocamento e o fator vao a caixa de geometria."""
     caixas = {k: [float(x) for x in v] for k, v in caixas.items()}
     apagados, textos, mexidos = [], {}, []
+    editados = set(editados)
     for ed in edicoes:
         eid, acao = ed['elemento'], ed['acao']
         if acao in ('apagar', 'texto'):
@@ -344,6 +364,7 @@ def aplicar(caixas, edicoes, W, H, quadros=None, borda=()):
                 apagados.append(eid)
             else:
                 textos[eid] = ed['texto']
+                editados.add(eid)
             continue
         ids = [k for k in membros(ed) if k in caixas and k not in apagados]
         if not ids:
@@ -355,12 +376,14 @@ def aplicar(caixas, edicoes, W, H, quadros=None, borda=()):
                 caixas[k] = [c[0] + dx, c[1] + dy, c[2] + dx, c[3] + dy]
         elif acao == 'alinhar':
             q = quadro_da_referencia(quadros, ed['referencia'], W, H)
-            eixo, d, _v = no_quadro(caixa_da_linha(caixas, ids, ed['alvo'], W, H, borda), ed['alvo'], q)
+            vis = vistas(caixas, visivel, editados)
+            eixo, d, _v = no_quadro(caixa_da_linha(vis, ids, ed['alvo'], W, H, borda), ed['alvo'], q)
             for k in ids:
                 caixas[k] = _deslocar(caixas[k], eixo, d)
         else:
             f = float(ed['fator'])
-            u = _uniao([caixas[k] for k in ids])
+            vis = vistas(caixas, visivel, editados)
+            u = _uniao([vis[k] for k in ids])
             px = u[0] + float(ed.get('fx', METADE)) * (u[2] - u[0])
             py = u[1] + float(ed.get('fy', METADE)) * (u[3] - u[1])
             for k in ids:
@@ -525,7 +548,8 @@ def normalizar(caixas, mexidos, W, H, kv_caixas=None, kv_tamanho=None, grupos=()
     return caixas, alinhados
 
 
-def editar(caixas, edicoes, W, H, quadros=None, borda=(), conteudo=None, kv_caixas=None, kv_tamanho=None):
+def editar(caixas, edicoes, W, H, quadros=None, borda=(), conteudo=None, kv_caixas=None, kv_tamanho=None,
+           visivel=None):
     """As edicoes do DA no formato W x H, uma a uma, cada uma com a intencao de alinhamento na hora dela (decisao
     185): aplicar a edicao e normalizar so o que ela mexeu (o elemento ou o grupo dele), com os grupos e os
     alinhamentos no quadro que valem ate ela. Cada edicao parte das caixas que a tela mostra depois da edicao de
@@ -537,12 +561,14 @@ def editar(caixas, edicoes, W, H, quadros=None, borda=(), conteudo=None, kv_caix
     ele nao andou nao muda. A edicao de texto e a de apagar nao alinham nada. conteudo: os ids que entram na conta do
     alinhamento (os de conteudo; None: todos); o elemento do grupo fora dela anda junto com o grupo. Devolve (caixas,
     apagados, textos {id: texto}, mexidos na ordem, o ultimo por ultimo, alinhados da ultima edicao: vazio quando
-    ela nao mexeu em caixa)."""
+    ela nao mexeu em caixa). visivel (0.9.6; decisao 196): visivel(id, caixa) da a caixa das linhas do DA do texto
+    editado (vistas). Depois da edicao de texto, o alinhar, o Tamanho e o encaixe medem essa caixa, como a tela, e o
+    deslocamento vai a caixa de geometria; antes dela, vale a caixa do KV."""
     atual = {k: [float(x) for x in v] for k, v in caixas.items()}
     apagados, textos, mexidos, alinhados = [], {}, [], []
     for n, uma in enumerate(edicoes):
         antes = atual
-        atual, ap, tx, mx = aplicar(atual, [uma], W, H, quadros, borda)
+        atual, ap, tx, mx = aplicar(atual, [uma], W, H, quadros, borda, visivel=visivel, editados=set(textos))
         textos.update(tx)
         for k in ap:
             apagados.append(k)
@@ -561,9 +587,24 @@ def editar(caixas, edicoes, W, H, quadros=None, borda=(), conteudo=None, kv_caix
         so = {k: v for k, v in atual.items() if conteudo is None or k in conteudo}
         junto = {k: atual[k] for g in gs for k in g if k in atual and k not in so}
         presos = {(k, i['eixo']) for i in intencoes(ate_aqui) for k in i['elementos']}
-        norm, alinhados = normalizar(so, mx, W, H, kv_caixas, kv_tamanho, grupos=gs, acompanham=junto, presos=presos,
-                                     antes={k: antes[k] for k in mx if k in antes})
-        atual.update(norm)
+        if visivel is None or not textos:
+            norm, alinhados = normalizar(so, mx, W, H, kv_caixas, kv_tamanho, grupos=gs, acompanham=junto,
+                                         presos=presos, antes={k: antes[k] for k in mx if k in antes})
+            atual.update(norm)
+            continue
+        # 0.9.6: o encaixe mede a caixa que o DA ve (o texto editado nas linhas dele); o deslocamento de cada um vai a
+        # caixa de geometria dele (normalizar so desloca)
+        so_v, junto_v = vistas(so, visivel, textos), vistas(junto, visivel, textos)
+        antes_v = vistas({k: antes[k] for k in mx if k in antes}, visivel, textos)
+        norm, alinhados = normalizar(so_v, mx, W, H, kv_caixas, kv_tamanho, grupos=gs, acompanham=junto_v,
+                                     presos=presos, antes=antes_v)
+        for k, c in norm.items():
+            ref = so_v.get(k) or junto_v.get(k)
+            if ref is None or k not in atual:
+                continue
+            dx, dy = c[0] - ref[0], c[1] - ref[1]
+            g = atual[k]
+            atual[k] = [g[0] + dx, g[1] + dy, g[2] + dx, g[3] + dy]
     return atual, apagados, textos, mexidos, alinhados
 
 
@@ -839,6 +880,11 @@ class Editor:
         # o texto editado no palco sai nas linhas da quebra da familia (M7b, C4)
         quebras_por_elemento = {q['elemento']: q for q in quebras}
         membros, apagados_fam, textos_fam, alinhados_fam, no_quadro_fam = [], [], {}, [], []
+        # a tinta das linhas do DA do texto editado (0.9.6; decisao 196), a mesma medida do "Salvar e seguir": a
+        # caixa do texto encolhe e cresce com as linhas dele no palco e na conferencia
+        fids = list(self.familias[gid])
+        tintas = proposta.tintas_editadas(viva['ctx'] if viva else self.ctx, self.kv, aceitas, fids[0]) \
+            if fids and any(e['acao'] == 'texto' for e in aceitas) else {}
         for fid in self.familias[gid]:
             elementos = self.partida(fid, versao, viva)
             if elementos is None:
@@ -849,13 +895,20 @@ class Editor:
             W, H = cf['W'], cf['H']
             # a mesma conta da derivacao da familia confirmada (desdobra.derivacao.proposta)
             lay = proposta.layout_do_membro(cf, elementos, aceitas, kv_por_id=self.kv_por_id, conteudo=self.conteudo,
-                                            kv_caixas=self.kv_caixas, kv_tamanho=self.kv_tamanho)
+                                            kv_caixas=self.kv_caixas, kv_tamanho=self.kv_tamanho, tintas=tintas)
             apagados, textos, alinhados = lay['apagados'], lay['textos'], lay['alinhados']
             falhas, avisos, reprovadas = lay['falhas'], lay['avisos'], lay['reprovadas']
             els = lay['elementos']
             palco = estado.palco_da_variante(fid, W, H, {'elementos': els}, self.laudo, self.base)
             for eid, texto in textos.items():
                 trocar_texto(palco, eid, texto, quebras_por_elemento.get(eid))
+            # o rotulo do texto editado (moldura, alcas e etiqueta) fica na caixa das linhas do DA (0.9.6): encolhe
+            # quando o texto perde linhas
+            vis = lay.get('caixas_visiveis') or {}
+            for e in palco.get('elementos') or []:
+                if e.get('id') in textos and e['id'] in tintas and e['id'] in vis:
+                    e['caixa'] = [round(float(v), 4) for v in vis[e['id']]]  # numero-neutro: casas do px
+                    e['caixa_das_linhas'] = True
             # os quadros do membro para alinhar (M7b, D2): a margem dele e a area segura da folha, None sem ela
             seg = ((cf.get('areas') or {}).get('area_segura') or {}).get('caixa')
             membros.append({'formato': fid, 'palco': palco,

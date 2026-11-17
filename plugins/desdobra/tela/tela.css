@@ -550,6 +550,49 @@ main { flex: 1; min-height: 0; display: flex; }
 .opcao-em-uso { color: var(--acento); font-weight: 600; flex: none; }
 .opcao-linha .botao { flex: none; height: 28px; padding: 0 12px; font-size: 12px; }
 .pendentes:not(:empty) { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--linha); }
+/* 0.9.6: os valores de spec em lote. Um cartao por formato, com a caixa de marcar no topo e a lista dos valores; a
+   barra fica presa no alto do bloco enquanto o DA rola a lista */
+.spec-escolha { margin-bottom: 14px; }
+.spec-grupo-titulo { font-size: 12px; font-weight: 600; color: var(--suave); margin: 0 0 2px; }
+.spec-lote { display: grid; gap: 8px; }
+.spec-lote-barra {
+  position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;
+  padding: 8px 0; background: var(--superficie);
+}
+.spec-lote-barra .botao { min-height: 32px; }
+.spec-cartao {
+  border: 1px solid var(--linha); border-radius: var(--raio-p); background: var(--superficie);
+  transition: border-color 0.18s var(--curva), background-color 0.18s var(--curva);
+  animation: entrar 0.28s var(--curva) both;
+}
+.spec-cartao.marcado { border-color: var(--linha-forte); background: var(--superficie-2); }
+.spec-cartao-topo {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--linha);
+}
+.spec-cartao-nome { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.spec-cartao-conta { margin-left: auto; color: var(--mais-suave); font-size: 12px; white-space: nowrap; }
+.spec-valores { list-style: none; margin: 0; padding: 4px 0; display: grid; }
+.bloco .spec-valores li { padding: 0; }
+.spec-valor-rotulo { display: flex; align-items: flex-start; gap: 10px; padding: 6px 12px 6px 46px; cursor: pointer; }
+.spec-valor-rotulo:hover { background: var(--superficie-2); }
+.spec-valor-marca { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--tinta); cursor: pointer; }
+.spec-valor-linha { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.spec-valor-campo { color: var(--suave); font-size: 12px; }
+.spec-lista-janela { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; overflow-wrap: anywhere; }
+.spec-vazio { margin: 0; }
+#confirmacao-extra:has(.spec-lista-janela) { max-height: 50vh; overflow-y: auto; }
+@media (max-width: 640px) {
+  .spec-valor-rotulo { padding-left: 12px; }
+  .spec-lote-barra { justify-content: stretch; }
+  .spec-lote-barra .botao { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) { .spec-cartao { animation: none; transition: none; } }
+/* 0.9.6: o giro em lote, acima dos cartoes de giro: o botao e a nota do que fica um por um */
+.giro-lote { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 10px; }
+.giro-lote .botao { min-height: 32px; }
+.giro-lote .nota { margin: 0; }
+@media (max-width: 640px) { .giro-lote .botao { flex: 1 1 auto; } }
 .subtitulo { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .bloco .paradas { display: grid; gap: 8px; }
 .bloco .parada { display: grid; gap: 2px; padding: 10px 12px; border-left: 2px solid var(--aviso); background: var(--aviso-fundo); border-radius: 0 var(--raio-p) var(--raio-p) 0; }
@@ -1084,6 +1127,8 @@ main { flex: 1; min-height: 0; display: flex; }
 .var-palco-aviso.forte { color: var(--aviso); }
 /* M7b, D5: a decisao do DA e informacao, nunca alerta: a tinta neutra, com o valor a vista */
 .var-palco-aviso.do-da { color: var(--suave); }
+/* 0.9.6: o aviso que o DA aceitou ao confirmar a familia: tinta neutra, nunca o vermelho de erro */
+.var-palco-aviso.aceito { color: var(--suave); }
 .galeria {
   width: 300px;
   display: flex;
@@ -1145,6 +1190,8 @@ main { flex: 1; min-height: 0; display: flex; }
 }
 .marca-aviso.forte { border-color: #ecd2cd; background: var(--aviso-fundo); color: var(--aviso); }
 .marca-aviso.do-da { border-color: var(--linha-forte); background: var(--superficie-2); color: var(--tinta); }
+/* 0.9.6: o aviso aceito pelo DA na familia confirmada, sem cor de erro */
+.marca-aviso.aceito { border-color: var(--linha-forte); background: transparent; color: var(--suave); font-weight: 500; }
 
 /* selos: discretos, texto em minuscula, um so acento para a proposta */
 .selo {
@@ -1787,6 +1834,12 @@ img.peca { user-select: none; pointer-events: none; }
 .linha-medida { font-weight: 600; font-variant-numeric: tabular-nums; }
 .linha-giro { color: var(--mais-suave); font-size: 12px; white-space: nowrap; }
 .linha-motivo { color: var(--suave); font-size: 12px; overflow-wrap: anywhere; }
+/* 0.9.6 (aprovacao soberana): o aviso que o DA aceitou, discreto e sem cor de erro */
+.linha-aviso-aceito, .detalhe-aviso-aceito {
+  display: block; padding-left: 8px; border-left: 2px solid var(--linha-forte); color: var(--suave);
+  font-size: 12px; overflow-wrap: anywhere;
+}
+.detalhe-aviso-aceito { max-width: 60ch; margin: 0; }
 .conta-mudancas { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--acento-fundo); color: var(--acento); font-size: var(--t-12); font-weight: 600; white-space: nowrap; }
 .linha-marcas { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 /* 0.9.2 (M8): sem formato no passo 5 e um estado normal: a frase em tinta, o quadro tracejado e o botao para as familias */

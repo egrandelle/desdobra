@@ -490,11 +490,15 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
         fora_da_caixa = mod_derivado.tinta_fora_da_caixa(contrato['entradas'], saida.get('entradas') or [],
                                                          contrato['formato']['largura'], contrato['formato']['altura'])
         editados = {e['layer_id'] for e in contrato['entradas'] if e['tipo'] == 'texto' and e.get('texto_editado')}
-        if motivo_da_tinta_fora(fora_da_caixa, editados) == 'texto_editado_cortado':
-            raise ErroRender('A tinta de um texto editado pelo DA passou da borda do formato e seria cortada.',
-                             'texto_editado_cortado', medidas={'textos': fora_da_caixa},
-                             o_que_fazer='Para a Trezion: compare a caixa_texto_editado da derivacao com a tinta '
-                                         'medida no render.json.')
+        # a aprovacao do DA e soberana (0.9.6): o texto editado pelo DA, na familia que ele confirmou olhando o palco,
+        # nunca para o render. O corte na borda e a tinta que difere da medida ficam registrados no render.json (o DA
+        # confere no master, que e o que ele aprova). A tinta fora da caixa de um texto do KV continua parando: e
+        # defeito de medida do motor
+        do_da = [x for x in fora_da_caixa if x['layer_id'] in editados]
+        fora_da_caixa = [x for x in fora_da_caixa if x['layer_id'] not in editados]
+        if do_da:
+            contrato['registros'].append({'codigo': motivo_da_tinta_fora(do_da, editados) + '_registrado',
+                                          'medidas': {'textos': do_da}})
         if fora_da_caixa:
             raise ErroRender('A tinta de um texto passou da caixa que a derivação validou (ou foi cortada na página).',
                              'tinta_fora_da_caixa_validada', medidas={'textos': fora_da_caixa},

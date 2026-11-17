@@ -2,6 +2,28 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.9.6 (17/11/2026): a sua aprovação vale
+
+Correção do teste da 0.9.5 num job real. A família confirmada com "Pede ajuste" deixava os formatos "Sem layout" no passo 5, a caixa do texto editado continuava com a altura antiga, e cada valor de spec pedia dois cliques. Tudo foi conferido em arquivos sintéticos.
+
+- Quando você confirma uma família, o layout dela vale, mesmo com "Pede ajuste". O desdobra guarda o aviso e segue. Os formatos chegam ao passo 5 com "Layout pronto".
+- No passo 5, o formato que você aprovou com aviso mostra uma linha discreta "Aviso aceito por você", com o que o desdobra achou.
+- Antes de confirmar, a família continua mostrando "Pede ajuste" e os motivos. Depois de confirmar, a marca vira "Aprovado por você", sem a cor de erro.
+- O texto que você editou e que passa da borda de um arquivo não trava mais "Confirmar família". A tela avisa, e o render corta o texto na borda, como o palco mostra.
+- O desdobra só para quando não dá para fazer a peça: falta uma letra na fonte, falta um arquivo ou há um erro do motor. Nesses casos, a tela diz o motivo.
+- Se o "Salvar e seguir" grava o briefing e não consegue montar os layouts, a tela diz isso, e o botão volta ligado. O aviso fica no rodapé até os layouts serem montados. No passo 5, o formato sem layout de uma família confirmada mostra o motivo real.
+- O job salvo na 0.9.5 com formatos "Sem layout": abra a tela e clique em "Salvar e seguir". O desdobra monta os layouts de novo.
+- A família com texto editado que você confirmou antes da 0.9.6 pede a confirmação de novo, uma vez, porque a caixa do texto mudou. As outras continuam confirmadas.
+- O arquivo que o desdobra não consegue montar, como o da quebra de linha sem medida, continua com "Pede ajuste" na família. A tela diz que ele fica sem layout, mesmo com a família confirmada.
+- Depois de confirmar, a frase do aviso no palco deixa o vermelho de erro. No passo 5, o aviso aceito diz o que acontece, por exemplo "Uma parte do fundo fica fora do formato, na base."
+- Quando o texto editado perde linhas, a caixa tracejada diminui junto. Ela tem a altura das linhas que você escreveu. Assim o desdobra não acusa mais sobreposição que não existe.
+- Alinhar e mudar o tamanho de um texto editado usam a caixa das linhas que você escreveu.
+- No passo 1, os valores de spec de cada formato ficam num cartão com caixas de marcar. "Marcar todos" marca tudo, e "Confirmar os marcados" confirma de uma vez, com uma janela que lista cada valor. Nada vem marcado.
+- O valor em que as folhas discordam e o formato com duas medidas continuam pedindo a sua escolha, um por um.
+- O cartão de cada formato mostra a medida, sem o código interno da folha. A janela de confirmar diz quantos valores entram, e a lista mostra cada um.
+- No giro, o botão "Sem giro nos formatos que faltam" escolhe o giro de todos de uma vez. O formato em que a folha fala de giro fica para você escolher. Nada vem marcado.
+- Na entrega, a peça que você aprovou com aviso e que passa da área segura da folha vai para os aprovados, com o aviso no relatório. Peso, tamanho e tipo do arquivo continuam reprovando.
+
 ## 0.9.5 (17/11/2026): o que você não mexeu fica parado
 
 Correção do teste do KV A na 0.9.4, no passo das Famílias. No 970x250, aumentar só o texto de apoio fazia o título e a barra do fundo subirem juntos, até o título sair do formato. Tudo foi conferido em arquivos sintéticos.

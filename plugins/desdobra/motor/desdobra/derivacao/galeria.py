@@ -700,10 +700,12 @@ def contexto_do_formato(ctx, kv, formato, *, specs=None, arquivo_specs=None, par
     return cf
 
 
-def conferir_edicao(cf, caixas, sangra, apagados=()):
+def conferir_edicao(cf, caixas, sangra, apagados=(), geometria=None):
     """(falhas, avisos, validacoes reprovadas) do layout editado pelo DA, contra a mestre verdadeira; o elemento
-    apagado sai da conta e o inventario o registra."""
-    return _conferir(sem_elementos(cf, apagados), caixas, sangra, apagados=apagados, com_validacoes=True)
+    apagado sai da conta e o inventario o registra. geometria (0.9.6): as caixas que dao a escala de cada elemento,
+    quando caixas leva a caixa visivel do texto editado (as linhas do DA, decisao 196). Sem ela, as proprias caixas."""
+    return _conferir(sem_elementos(cf, apagados), caixas, sangra, apagados=apagados, com_validacoes=True,
+                     geometria=geometria)
 
 
 def decisoes_do_da(cf, falhas, do_da, da_partida=()):
@@ -782,9 +784,10 @@ def elementos_do_layout(cf, caixas, sangra, apagados=()):
     return _elementos(sem_elementos(cf, apagados), {'caixas': caixas, 'sangra': sangra})
 
 
-def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False):
+def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False, geometria=None):
     """Falhas obrigatorias contra a mestre verdadeira e avisos de elemento. Devolve (falhas, avisos); com_validacoes,
-    (falhas, avisos, nomes das validacoes do motor que reprovam)."""
+    (falhas, avisos, nomes das validacoes do motor que reprovam). geometria: as caixas que dao a escala (0.9.6; sem
+    ela, caixas); a posicao, a sobreposicao e o enquadramento usam caixas, a caixa que o DA ve."""
     kv, W, H, areas = cf['kv'], cf['W'], cf['H'], cf['areas']
     els = kv['elementos']
     tol = limites.valor('derivacao.enquadramento_tolerancia_px')
@@ -792,7 +795,7 @@ def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False):
     seg = (areas.get('area_segura') or {}).get('caixa')
     piso = limites.valor('derivacao.escala_conteudo_min_da_regra')
     piso_d = limites.valor('derivacao.distancia_entre_linhas_min')
-    esc, regra = _escalas(kv, caixas), cf['regras']
+    esc, regra = _escalas(kv, caixas if geometria is None else geometria), cf['regras']
     cont = [e for e in els if mod_solver.conteudo(e)]
     fora, fora_seg, abaixo, sobre, perto = [], [], [], [], []
     for e in cont:
@@ -887,11 +890,12 @@ def _validacoes(cf, caixas, sangra, esc, apagados=()):
                                  origem, cf['esperado'], apagados=apagados)
 
 
-def validacoes_do_layout(cf, caixas, sangra, apagados=()):
+def validacoes_do_layout(cf, caixas, sangra, apagados=(), geometria=None):
     """As validacoes do motor do layout editado pelo DA, na forma de derivacao/<formato>.json (para a derivacao gravar
-    a proposta confirmada; desdobra.derivacao.proposta)."""
+    a proposta confirmada; desdobra.derivacao.proposta). geometria: as caixas que dao a escala (0.9.6), como em
+    conferir_edicao."""
     cf = sem_elementos(cf, apagados)
-    return _validacoes(cf, caixas, sangra, _escalas(cf['kv'], caixas), apagados)
+    return _validacoes(cf, caixas, sangra, _escalas(cf['kv'], caixas if geometria is None else geometria), apagados)
 
 
 def _avisos_de_elemento(cf, caixas, sangra, esc):

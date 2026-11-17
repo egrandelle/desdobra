@@ -161,7 +161,9 @@ def test_sem_render_render_parado_e_sem_layout(job):
     p = te.painel_dos_formatos(job)
     perto = next(f for f in p['formatos'] if f['id'] == 'perto')
     assert perto['situacao'] == 'sem_derivacao' and perto['pede_render'] is False and perto['pode_aprovar'] is False
-    assert perto['motivo'] == te.MOTIVOS_DO_PAINEL['sem_derivacao']
+    # 0.9.6: a familia do formato esta confirmada; sem o arquivo da derivacao, o motivo e o real (o layout nao foi
+    # gravado), nunca "espera uma decisao sua em Familias" (antes: MOTIVOS_DO_PAINEL['sem_derivacao'])
+    assert perto['motivo'] == te.SEM_LAYOUT_GRAVADO
     assert p['afetados'] == ['mesma', 'giro']
 
 

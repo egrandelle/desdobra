@@ -62,7 +62,12 @@ POR = {'camada': 'camada', 'grupo': 'grupo', 'decisao_10': 'decisao_10'}
 # muda quando a previa passa a mostrar outra coisa para a mesma familia, e a confirmacao de antes cai. Esta e a da
 # previa igual ao Salvar (M7b), com o alinhamento so do mexido (decisao 185): a galeria pela regra da derivacao, as
 # falhas da conferencia do motor e a edicao que so move o que o DA acabou de mexer
-REGRA_DA_PREVIA = 'alinha_so_o_mexido'
+# 0.9.6 (decisao 196, proposta da 198): o texto editado vale nas linhas do DA (caixa_visivel) para alinhar, para o
+# Tamanho e para a conferencia. A previa da familia com texto editado muda, e a confirmacao feita antes dela cai
+REGRA_DA_PREVIA = 'linhas_do_da'
+# a regra de antes da 0.9.6: a familia sem texto editado mostra a mesma previa pelas duas, e a confirmacao dela
+# continua valendo (rascunho.confirmada_para, sem_texto)
+REGRA_SEM_TEXTO_EDITADO = 'alinha_so_o_mexido'
 # a regra de antes da decisao 185: a previa da familia sem edicao do DA e a mesma pelas duas (sem edicao nao ha o que
 # alinhar), e a familia vista por ela sem nenhuma edicao continua valendo (rascunho.confirmada_para, sem_edicao)
 REGRA_SEM_EDICAO = 'previa_igual_ao_salvar'
@@ -820,10 +825,52 @@ def specs_pendentes(pasta):
         else:
             onde = r.get('chave') or r['id']
             na_frase = 'formato %s' % onde
+        # 0.9.6: o cartao do lote, por formato (a medida da chave) ou "Valores gerais da folha"; o divergente e o
+        # formato com duas medidas ficam fora do lote (em_lote False), com a escolha um por um
+        if r.get('chave'):
+            grupo, grupo_nome = 'f:%s' % r['chave'], medida_da_chave(r['chave'])
+        elif r['id'] in sem_medida:
+            grupo, grupo_nome = 'm:%s' % r['id'], onde
+        else:
+            grupo, grupo_nome = 'geral', GRUPO_GERAL
         out.append({'valor_id': v['id'], 'onde': onde, 'na_frase': na_frase, 'campo': nome_do_campo(campo),
                     'descricao': descricao_do_valor(v) if not divergente else 'as folhas trazem valores diferentes',
-                    'trecho': v.get('texto_original') or '', 'leituras': leituras})
+                    'trecho': v.get('texto_original') or '', 'leituras': leituras, 'grupo': grupo,
+                    'grupo_nome': grupo_nome,
+                    'em_lote': not divergente and r['id'] not in sem_medida and v.get('valor') is not None})
     return out
+
+
+GRUPO_GERAL = 'Valores gerais da folha'
+
+
+def medida_da_chave(chave):
+    """O nome legivel de uma chave de formato da folha para o cartao do lote (0.9.6): a medida primeiro, com espacos
+    ('1080x1920' vira '1080 x 1920'), e o circuito da folha entre parenteses, sem hifens ('pme|sao-paulo|1080x1920'
+    vira '1080 x 1920 (sao paulo)'). A chave sem medida fica como esta. O id interno da folha nunca chega ao DA
+    (revisao adversarial da 0.9.6): a folha sem circuito ('f9c478bf8|geral|1080x1920', ou o circuito com o id da
+    folha na frente, 'f9c478bf8|f9c478bf8-geral|...') fica so com a medida."""
+    partes = str(chave).split('#', 1)[0].split('|')
+    m = re.match(r'^(\d+(?:[.,]\d+)?)x(\d+(?:[.,]\d+)?)([a-z]*)$', partes[-1])
+    medida = ('%s x %s%s' % (m.group(1), m.group(2), (' ' + m.group(3)) if m.group(3) else '')) if m else partes[-1]
+    onde = partes[-2].strip() if len(partes) > 1 else ''
+    folha = partes[0].strip() if len(partes) > 2 else ''  # numero-neutro: folha, circuito e medida
+    if folha:
+        for sep in (':', '-', '_'):
+            if onde.startswith(folha + sep):
+                onde = onde[len(folha) + 1:]
+                break
+    onde = '' if onde in ('', folha, CIRCUITO_PADRAO) else onde.replace('-', ' ').strip()
+    # o veiculador com o nome da folha na frente ('portalteste-f9c478bf8|f9c478bf8-geral|...'): as partes do id do
+    # veiculador e o circuito padrao saem do nome do circuito
+    if onde and folha:
+        do_veiculador = set(re.split(r'[-_: ]+', folha)) | {CIRCUITO_PADRAO}
+        onde = ' '.join(p for p in onde.split() if p not in do_veiculador)
+    return '%s (%s)' % (medida, onde) if onde else medida
+
+
+# o circuito que a folha sem circuito recebe (desdobra.specs.modelo.Montagem.circuito): nao vai ao nome do cartao
+CIRCUITO_PADRAO = 'geral'
 
 
 # as paradas que ainda nao tem botao na tela, em texto para o DA (decisoes-v1.md, 24, 41, 57 e 79; a 159 manda que o
@@ -1676,6 +1723,38 @@ MOTIVOS_DO_PAINEL = {
     'aprovado': 'O arquivo final está aprovado.',
     'aprovacao_caida': 'A aprovação deste formato caiu.',
 }
+# 0.9.6: o formato sem layout cuja familia o DA ja confirmou, com o motivo real
+SEM_LAYOUT_GRAVADO = ('A família deste formato está confirmada, mas o layout dele não foi gravado. Clique em Salvar e '
+                      'seguir de novo. Se continuar, fale com a Trezion.')
+SEM_LAYOUT_ERRO = ('A família deste formato está confirmada, mas o desdobra teve um erro ao montar o layout dele. '
+                   'Fale com a Trezion.')
+SEM_LAYOUT_QUEBRA = ('A família deste formato está confirmada, mas a quebra de linha dela ficou sem medida. Tire a '
+                     'quebra em Famílias ou fale com a Trezion.')
+SEM_LAYOUT_MOTIVO_DO_MOTOR = ('A família deste formato está confirmada, mas o desdobra não monta o layout dele. Fale '
+                              'com a Trezion.')
+# 0.9.6: o aviso que o DA aceitou ao confirmar a familia (aprovacao soberana)
+AVISO_ACEITO = 'Aviso aceito por você'
+AVISO_VALIDACAO_ACEITA = 'A conferência do motor pediu ajuste nesta versão.'
+# a falha da conferencia que so diz "a conferencia do motor reprova" (desdobra.derivacao.galeria): no aviso aceito, a
+# frase concreta de cada validacao toma o lugar dela
+CODIGO_VALIDACAO_GENERICA = 'validacao_reprova'
+# a frase de cada validacao do motor no aviso aceito (frase_da_validacao): %(elemento)s e o rotulo do elemento ("o
+# fundo"), %(onde)s o lado (", na base"), vazio sem ele
+FRASES_DA_VALIDACAO = {
+    'enquadramento': 'uma parte d%(elemento)s fica fora do formato%(onde)s.',
+    'membro_dentro_do_canvas': 'uma parte d%(elemento)s fica fora do formato%(onde)s.',
+    'area_util_e_faixa': 'uma parte d%(elemento)s passa da área útil da folha%(onde)s.',
+    'membro_dentro_da_area_util': 'uma parte d%(elemento)s passa da área útil da folha%(onde)s.',
+    'area_segura': 'uma parte d%(elemento)s passa da área segura%(onde)s.',
+    'membro_dentro_da_area_segura': 'uma parte d%(elemento)s passa da área segura%(onde)s.',
+    'colisao_nova_contra_a_origem': '%(elemento)s e outro elemento passam a se encostar.',
+    'cena_cobre_conteudo': 'parte do fundo cobre %(elemento)s.',
+    'corpo_minimo_do_legal': 'o corpo d%(elemento)s fica abaixo do mínimo do legal.',
+    'escala_longe_da_regra': 'a escala d%(elemento)s fica longe da prevista.',
+    'residuo_da_regra': 'a escala d%(elemento)s fica longe da prevista.',
+    'folga_de_resolucao': 'a imagem d%(elemento)s fica ampliada além da resolução dela.',
+}
+AVISO_TEXTO_CORTADO = 'O texto que você editou sai cortado na borda do formato.'
 PEDE_RENDER_DEPOIS_DA_QUEDA = 'Ele pede render antes de uma nova aprovação.'
 APROVE_DE_NOVO = 'Confira o arquivo final e aprove de novo.'
 RENDER_PAROU_POR_PROBLEMA = 'O último render deste formato parou por um problema. Ele pede render de novo.'
@@ -1806,10 +1885,79 @@ def _render_do_formato(pasta, fid, job_id, impressao, atual):
     return em_dia, rel is not None, parada
 
 
-def _situacao_do_formato(derivado, aprov, em_dia, tem_render, parada):
-    """(situacao, pede_render, motivo) de um formato (a ordem da decisao: sem layout, aprovacao, render)."""
+def motivo_sem_layout(d, confirmada):
+    """0.9.6: a frase do formato sem layout no passo 5, com o motivo real. d: a derivacao gravada (None sem arquivo);
+    confirmada: a familia do formato esta confirmada no briefing. Nunca diz "espera uma decisao sua em Familias" do
+    formato cuja familia o DA ja confirmou."""
+    from desdobra.derivacao import nucleo as nd
+    motivo = ((d or {}).get('devolucao') or {}).get('motivo')
+    if motivo in (nd.MOTIVO_SPEC_POR_CONFIRMAR, nd.MOTIVO_MESTRE_POR_CONFIRMAR):
+        return texto_da_devolucao(motivo)
+    if not confirmada:
+        return MOTIVOS_DO_PAINEL['sem_derivacao']
+    if d is None:
+        return SEM_LAYOUT_GRAVADO
+    from desdobra import __version__
+    if d.get('motor_versao') != __version__:
+        # a derivacao gravada por uma versao de antes (a devolucao da familia confirmada antes da aprovacao soberana):
+        # o "Salvar e seguir" volta ligado (briefing.salvar.situacao_na_tela) e monta o layout de novo
+        return SEM_LAYOUT_GRAVADO
+    codigos = {r.get('codigo') for r in d.get('registros') or []}
+    if codigos & {'erro_na_proposta', 'erro_na_galeria'}:
+        return SEM_LAYOUT_ERRO
+    if 'quebra_sem_medida' in codigos:
+        return SEM_LAYOUT_QUEBRA
+    return SEM_LAYOUT_MOTIVO_DO_MOTOR
+
+
+def frase_da_validacao(v, funcoes=None):
+    """A frase concreta de uma validacao do motor que reprova ({'nome', 'elementos', 'medidas'}), para o aviso que o
+    DA aceitou (0.9.6): o que acontece, com o elemento e o lado quando a validacao os traz. funcoes: {id do elemento:
+    funcao}. A validacao sem frase propria fica com AVISO_VALIDACAO_ACEITA."""
+    from desdobra.derivacao import galeria as mg
+    modelo = FRASES_DA_VALIDACAO.get(v.get('nome'))
+    if modelo is None:
+        return AVISO_VALIDACAO_ACEITA
+    els = list(v.get('elementos') or [])
+    rotulo = mg.ROTULO.get((funcoes or {}).get(els[0]), mg.ROTULO_GERAL) if els else mg.ROTULO_GERAL
+    medidas = v.get('medidas') or {}
+    lados = list(medidas.get('lados') or [])
+    for m in medidas.get('membros') or []:
+        lados += [x for x in m.get('lados') or [] if x not in lados]
+    onde = (', ' + ' e '.join(mg.BORDAS_DO_KV[x] for x in lados if x in mg.BORDAS_DO_KV)) if lados else ''
+    frase = modelo % {'elemento': rotulo, 'onde': onde}
+    return frase[0].upper() + frase[1:]
+
+
+def avisos_aceitos(d):
+    """0.9.6: as frases dos avisos que o DA aceitou ao confirmar a familia (o registro aprovado_pelo_da_com_aviso da
+    derivacao), sem repetir, na ordem. Vazio sem o registro. A falha generica da conferencia ("a conferencia do motor
+    reprova") sai pela frase concreta de cada validacao (frase_da_validacao): o DA le o que aceitou."""
+    from desdobra.derivacao import proposta
+    funcoes = {e.get('id'): e.get('funcao') or (e.get('regra_aplicada') or {}).get('funcao')
+               for e in (d or {}).get('elementos') or []}
+    frases = []
+    for r in (d or {}).get('registros') or []:
+        if r.get('codigo') != proposta.CODIGO_APROVADO_COM_AVISO:
+            continue
+        m = r.get('medidas') or {}
+        frases += [f.get('texto') for f in m.get('falhas') or []
+                   if f.get('texto') and f.get('codigo') != CODIGO_VALIDACAO_GENERICA]
+        frases += [frase_da_validacao(v, funcoes) for v in m.get('validacoes') or []]
+        if m.get('texto_na_borda'):
+            frases.append(AVISO_TEXTO_CORTADO)
+    saida = []
+    for x in frases:
+        if x not in saida:
+            saida.append(x)
+    return saida
+
+
+def _situacao_do_formato(derivado, aprov, em_dia, tem_render, parada, sem_layout=None):
+    """(situacao, pede_render, motivo) de um formato (a ordem da decisao: sem layout, aprovacao, render). sem_layout:
+    a frase do formato sem layout (motivo_sem_layout); sem ela, a de sempre."""
     if not derivado:
-        return 'sem_derivacao', False, MOTIVOS_DO_PAINEL['sem_derivacao']
+        return 'sem_derivacao', False, sem_layout or MOTIVOS_DO_PAINEL['sem_derivacao']
     if aprov.get('situacao') == 'aprovado':
         return 'aprovado', False, MOTIVOS_DO_PAINEL['aprovado']
     if aprov.get('situacao') == 'caiu':
@@ -1898,12 +2046,14 @@ def _painel_e_aprovacoes(pasta, lidas=None):
     entradas = _entradas_do_historico(pasta)
     mudancas = _mudancas_por_formato(pasta, entradas)
     linhas = []
+    confirmados = {x for c in b.get('composicoes') or [] if c.get('confirmada') for x in c.get('formatos') or []}
     for f in fs:
         fid, d, atual = f['id'], derivacoes[f['id']], hashes[f['id']]
         aprov = aprovacoes.get(fid) or {}
         em_dia, tem_render, parada = _render_do_formato(pasta, fid, job_id, atual['impressao_formato'], atual)
         derivado = d is not None and d.get('situacao') == 'derivado'
-        situacao, pede, motivo = _situacao_do_formato(derivado, aprov, em_dia, tem_render, parada)
+        situacao, pede, motivo = _situacao_do_formato(derivado, aprov, em_dia, tem_render, parada,
+                                                      sem_layout=motivo_sem_layout(d, fid in confirmados))
         comp = ((d or {}).get('formato') or {}).get('composicao')
         if not (isinstance(comp, list) and len(comp) == 2):  # numero-neutro: [largura, altura]
             comp = [f.get('largura'), f.get('altura')]
@@ -1921,7 +2071,9 @@ def _painel_e_aprovacoes(pasta, lidas=None):
                        'composicao': comp, 'giro': giro, 'sentido': sentido, 'situacao': situacao,
                        'rotulo': ROTULOS_DA_SITUACAO[situacao], 'motivo': motivo, 'pede_render': pede,
                        'pode_aprovar': situacao in ('renderizado', 'aprovacao_caida') and em_dia,
-                       'render_em_dia': em_dia, 'mudou': mudou, 'layout': _marca_do_layout(d)})
+                       'render_em_dia': em_dia, 'mudou': mudou, 'layout': _marca_do_layout(d),
+                       # 0.9.6: os avisos que o DA aceitou ao confirmar a familia (aviso discreto no passo 5)
+                       'avisos_aceitos': avisos_aceitos(d) if derivado else []})
     painel = {'formatos': linhas, 'historico': _historico_na_tela(entradas, nomes),
               'afetados': [x['id'] for x in linhas if x['pede_render']]}
     return painel, aprovacoes
@@ -2109,8 +2261,11 @@ def montar(pasta, teto=None, biblioteca=None):
                                params=params)
     versoes = {gid: sorted(editor.versoes(gid)) if editor else [] for gid in familias}
     pecas = {gid: impressao_das_pecas(fids, r['formatos'], versoes[gid]) for gid, fids in familias.items()}
-    # a familia sem edicao vista pela regra de antes da 185 continua valendo: a previa dela e a mesma
-    sem_edicao = {gid: impressao_das_pecas(fids, r['formatos'], versoes[gid], regra=REGRA_SEM_EDICAO)
+    # a familia sem edicao vista pela regra de antes da 185 continua valendo: a previa dela e a mesma. A familia sem
+    # texto editado vista pela regra de antes da 0.9.6 tambem (rascunho.confirmada_para, 'sem_texto')
+    sem_edicao = {gid: {'sem_edicao': impressao_das_pecas(fids, r['formatos'], versoes[gid], regra=REGRA_SEM_EDICAO),
+                        'sem_texto': impressao_das_pecas(fids, r['formatos'], versoes[gid],
+                                                         regra=REGRA_SEM_TEXTO_EDITADO)}
                   for gid, fids in familias.items()}
     estado['faltam'] = faltam(lido_, r['formatos'], n_variantes, familias,
                               familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao))

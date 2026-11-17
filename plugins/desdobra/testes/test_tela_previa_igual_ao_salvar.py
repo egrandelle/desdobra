@@ -117,11 +117,14 @@ def _confere_igual(m, d):
     assert sorted({f['codigo'] for f in m['falhas']}) == gravadas, (m['falhas'], d['registros'])
     reprovadas = sorted({v['nome'] for v in mv.reprovadas(d['validacoes'])})
     assert sorted(m['validacoes_reprovadas']) == reprovadas, (m['validacoes_reprovadas'], reprovadas)
+    # 0.9.6 (aprovacao soberana): a familia confirmada pelo DA fica derivada mesmo quando a validacao do motor
+    # reprova; a reprovacao vai ao registro aprovado_pelo_da_com_aviso, com o nome da validacao. Antes, o formato
+    # voltava devolvido (validacao_obrigatoria_reprovou) e o passo 5 o mostrava "Sem layout"
+    assert d['situacao'] == 'derivado', d.get('devolucao')
     if reprovadas:
-        assert d['situacao'] == 'devolvido' and d['devolucao']['motivo'] == 'validacao_obrigatoria_reprovou'
         assert [f for f in m['falhas'] if f['codigo'] == 'validacao_reprova'], m['falhas']
-    else:
-        assert d['situacao'] == 'derivado', d.get('devolucao')
+        aviso = next(r for r in d['registros'] if r['codigo'] == proposta.CODIGO_APROVADO_COM_AVISO)
+        assert sorted({v['nome'] for v in aviso['medidas']['validacoes']}) == reprovadas
 
 
 # ------------------------------------------------------------------ a regra

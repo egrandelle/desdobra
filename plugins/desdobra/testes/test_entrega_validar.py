@@ -178,6 +178,35 @@ def test_um_pixel_dentro_da_area_segura_reprova(lado, textos, logos):
     assert validar.destino(itens) == validar.REPROVADOS
 
 
+def _aprovado_com_aviso(derivacao):
+    from desdobra.derivacao import proposta
+    return dict(derivacao, registros=[{'codigo': proposta.CODIGO_APROVADO_COM_AVISO, 'medidas': {}}])
+
+
+def test_formato_aprovado_pelo_da_com_aviso_leva_a_area_como_aviso_e_vai_para_aprovados():
+    # 0.9.6 (aprovacao soberana; revisao adversarial): a peca fora da area segura, da area util e na faixa, no formato
+    # que o DA aprovou com aviso na familia, sai "avisa" e vai para aprovados; o peso acima do teto continua reprovando
+    ctx = _globo(textos=[(100, SEGURA_PX - 1, 980, 400)])
+    ctx = dict(ctx, derivacao=_aprovado_com_aviso(ctx['derivacao']))
+    itens = _validar(_final(ctx), ctx)
+    seg = next(i for i in itens if i['nome'] == 'area_segura')
+    assert seg['situacao'] == 'avisa' and seg['regra'] == 'fora_da_area_segura' and seg['medidas']['fora']
+    assert _reprovas(itens) == [] and validar.destino(itens) == validar.APROVADOS
+    master = _arte(400, 300)
+    dentro = _ctx(master, _spec(faixa=40), render=_render([(10, 10, 200, 261)]),
+                  derivacao=_aprovado_com_aviso(_derivacao()))
+    itens = _validar(_final(dentro), dentro)
+    assert {i['regra'] for i in itens if i['situacao'] == 'avisa'} >= {'dentro_da_faixa', 'fora_da_area_util'}
+    assert validar.destino(itens) == validar.APROVADOS
+    # peso, dimensao e tipo continuam reprovando
+    pesado = _ctx(_arte(300, 600), _spec(), derivacao=_aprovado_com_aviso(_derivacao()))
+    final = _final(pesado)
+    acima = dict(pesado, spec=_spec(alvo=len(final.dados) - 1))
+    assert _reprovas(_validar(final, acima)) == ['acima_do_teto_estrito']
+    larga = dict(pesado, formato=dict(pesado['formato'], largura=301))
+    assert _reprovas(_validar(final, larga)) and validar.destino(_validar(final, larga)) == validar.REPROVADOS
+
+
 def test_faixa_e_area_util_com_tolerancia_zero():
     master = _arte(400, 300)
     spec = _spec(faixa=40)

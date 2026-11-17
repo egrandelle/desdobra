@@ -7,8 +7,8 @@ Criterios de pronto cobertos aqui:
     (derivacao.quebras.caixa_do_editado; derivacao.medida_quebras.medir_editados, com o cache);
   - o rascunho de antes, com a quebra proposta num texto editado, nao trava a familia: a proposta sai na leitura da
     familia nao confirmada, e "Confirmar familia" passa;
-  - o texto editado que passa da borda do formato: a derivacao registra, o contrato do render recusa o formato antes
-    de desenhar, e o preparo do ato de render para com o motivo texto_passa_da_borda e o nome do formato;
+  - o texto editado que passa da borda do formato: a derivacao registra, e desde a 0.9.6 (aprovacao soberana) o
+    render corta na borda, com registro; o preparo do ato de render nao para mais por isso;
   - sem a medida, o render que corta o texto editado na borda para com o motivo texto_editado_cortado, e a tela diz o
     motivo com o nome do formato (nunca o "parou por um problema" generico);
   - na pagina: o membro em que o texto editado passa da borda fica marcado, a faixa diz o formato e "Confirmar
@@ -131,8 +131,9 @@ def test_motivo_do_render_parado_vira_texto_com_o_formato():
     assert texto.startswith('O render do formato 970x250 parou porque um texto passou da borda dele.')
     dois = dict(r, pararam={'a1': 'texto_editado_cortado', 'b2': 'texto_editado_cortado'}, nomes={'a1': '1x2'})
     assert 'dos formatos 1x2 e b2' in tarefas.texto_do_motivo('texto_editado_cortado', dois)
-    assert 'formato 970x250' in tarefas.texto_do_motivo('texto_passa_da_borda',
-                                                        {'formatos': [{'id': 'f', 'nome': '970x250'}]})
+    # 0.9.6 (aprovacao soberana): o preparo nao para mais com texto_passa_da_borda, e o texto dele saiu
+    assert 'texto_passa_da_borda' not in tarefas.TEXTOS_POR_MOTIVO
+    assert 'texto_passa_da_borda' not in tarefas.TEXTOS_POR_MOTIVO_COM_FORMATO
     # sem o nome, o texto do motivo; o motivo sem texto fica com o texto da situacao
     assert tarefas.texto_do_motivo('tinta_fora_da_caixa_validada', None) == \
         tarefas.TEXTOS_POR_MOTIVO['tinta_fora_da_caixa_validada']
@@ -146,28 +147,12 @@ def test_motivo_do_render_parado_vira_texto_com_o_formato():
         assert '—' not in x and '–' not in x
 
 
-def test_preparo_para_com_o_texto_que_passa_da_borda(tmp_path, monkeypatch):
-    def montar(pasta, f):
-        if f == 'f970x250':
-            return None, [{'codigo': ato_render.BLOQUEIO_BORDA, 'descricao': '', 'medidas': {}}], []
-        return {'formato': f}, [], []
-    monkeypatch.setattr(execucao, 'montar_contrato', montar)
-    monkeypatch.setattr(ato_render, '_formatos_do_briefing', lambda p: {'f970x250': '970x250', 'f1080x1080': '1080x1080'})
-
-    class Tarefa:
-        def parar(self):
-            return False
-
-        def progresso(self, *a):
-            return None
-    ato = ato_render.ato_de_render(tmp_path)
-    with pytest.raises(ato_render.ErroAtoRender) as e:
-        ato.preparar({'formatos': ['f1080x1080', 'f970x250']}, Tarefa())
-    assert e.value.motivo == 'texto_passa_da_borda'
-    assert e.value.resposta == {'formatos': [{'id': 'f970x250', 'nome': '970x250'}]}
-    assert tarefas.texto_do_motivo(e.value.motivo, e.value.resposta) == (
-        'O texto que você editou passa da borda do formato 970x250. Ajuste o texto ou o tamanho dele na família '
-        'antes do render. Nada mudou no job.')
+def test_preparo_nao_tem_mais_o_bloqueio_da_borda():
+    # 0.9.6 (aprovacao soberana; revisao adversarial): o contrato do texto que passa da borda sai cortado, com o
+    # registro; o ramo do preparo e o texto do bloqueio saem. O contrato do formato na borda vai ao render como os outros
+    from desdobra.render import derivado as rd
+    assert not hasattr(ato_render, 'BLOQUEIO_BORDA') and not hasattr(ato_render, 'MOTIVO_BORDA')
+    assert 'texto_editado_passa_do_formato' not in rd.DESCRICOES
 
 
 # ------------------------------------------------------------------ o rascunho de antes da 0.9.4
@@ -319,7 +304,10 @@ def test_texto_longo_cresce_com_o_mesmo_corpo_e_renderiza_nas_linhas_do_da(relat
     assert st['tinta'] == pytest.approx(e['caixa_validada'], abs=tol), (st['tinta'], e['caixa_validada'])
 
 
-def test_texto_que_passa_da_borda_para_antes_do_render_com_o_formato(relato, tmp_path, monkeypatch):
+def test_texto_que_passa_da_borda_vai_ao_render_cortado_na_borda(relato, tmp_path, monkeypatch):
+    # 0.9.6 (aprovacao soberana; revisa a 196 neste ponto): o DA confirmou a familia vendo o texto na borda. A derivacao
+    # registra, o contrato sai sem bloqueio com o registro do corte e o preparo do render segue (antes: recusa
+    # texto_editado_passa_do_formato e motivo texto_passa_da_borda)
     job = _copia(relato, tmp_path)
     _gravar(job, ALTO)
     d = _deriv(job, 'f970x250')
@@ -328,9 +316,9 @@ def test_texto_que_passa_da_borda_para_antes_do_render_com_o_formato(relato, tmp
     assert any(r['codigo'] == 'texto_editado_passa_da_borda' and r['medidas']['elemento'] == x['id'] and
                'base' in r['medidas']['lados'] for r in d['registros'])
     contrato, bloqueios, _c = rd.montar(job, 'f970x250')
-    assert contrato is None and [b['codigo'] for b in bloqueios] == ['texto_editado_passa_do_formato']
-    assert bloqueios[0]['medidas']['textos'][0]['lados'] == ['base']
-    assert '—' not in bloqueios[0]['descricao']
+    assert contrato is not None and bloqueios == [], bloqueios
+    corte = next(r for r in contrato['registros'] if r['codigo'] == rd.CORTADO_PELO_DA)
+    assert corte['medidas']['textos'][0]['lados'] == ['base']
     # o formato alto continua sem bloqueio
     assert rd.montar(job, 'f1080x1920')[1] == []
 
@@ -340,15 +328,15 @@ def test_texto_que_passa_da_borda_para_antes_do_render_com_o_formato(relato, tmp
 
         def progresso(self, *a):
             return None
-    with pytest.raises(ato_render.ErroAtoRender) as e:
-        ato_render.ato_de_render(job).preparar({'formatos': ['f1080x1920', 'f970x250']}, Tarefa())
-    assert e.value.motivo == 'texto_passa_da_borda'
-    assert e.value.resposta == {'formatos': [{'id': 'f970x250', 'nome': '970x250'}]}
+    preparado = ato_render.ato_de_render(job).preparar({'formatos': ['f1080x1920', 'f970x250']}, Tarefa())
+    assert [f['id'] for f in preparado['vista']['formatos']] == ['f1080x1920', 'f970x250']
 
 
-def test_sem_a_medida_o_corte_na_borda_para_com_motivo_proprio(relato, tmp_path, pessoa, monkeypatch):
+def test_sem_a_medida_o_corte_na_borda_fica_registrado(relato, tmp_path, pessoa, monkeypatch):
     # a rede de seguranca: sem a medida do texto editado (o Chromium que nao mediu), a pagina e o formato inteiro e o
-    # corte na borda e conferido depois de compor; o render para com o motivo do texto editado, nunca o generico
+    # corte na borda e conferido depois de compor. 0.9.6 (aprovacao soberana): o texto editado na familia que o DA
+    # confirmou nunca para o render; o corte fica registrado no render.json com os lados (antes: ErroRender
+    # texto_editado_cortado). O texto do motivo continua para o render de antes que parou assim
     monkeypatch.setattr(medida_quebras, 'medir_editados', lambda *a, **k: {})
     job = _copia(relato, tmp_path)
     _gravar(job, ALTO)
@@ -357,13 +345,13 @@ def test_sem_a_medida_o_corte_na_borda_para_com_motivo_proprio(relato, tmp_path,
     assert any(r['codigo'] == 'texto_editado_sem_medida' for r in d['registros'])
     contrato, bloqueios, conf = execucao.montar_contrato(job, 'f970x250')
     assert bloqueios == [], bloqueios
-    with pytest.raises(execucao.ErroRender) as e:
-        execucao.renderizar(job, disparo=humano.exigir('render'), formato='f970x250',
-                            aceites=sorted({c['codigo'] for c in conf}))
-    assert e.value.motivo == 'texto_editado_cortado'
-    assert 'base' in e.value.medidas['textos'][0]['cortada_na_regiao']
-    r = {'pararam': {'f970x250': e.value.motivo}, 'nomes': {'f970x250': '970x250'}}
-    assert tarefas.texto_do_motivo(e.value.motivo, r).startswith('O render do formato 970x250 parou porque um texto')
+    rel = execucao.renderizar(job, disparo=humano.exigir('render'), formato='f970x250',
+                              aceites=sorted({c['codigo'] for c in conf}))
+    reg = next(r for r in rel['registros'] if r['codigo'] == 'texto_editado_cortado_registrado')
+    assert 'base' in reg['medidas']['textos'][0]['cortada_na_regiao']
+    r = {'pararam': {'f970x250': 'texto_editado_cortado'}, 'nomes': {'f970x250': '970x250'}}
+    assert tarefas.texto_do_motivo('texto_editado_cortado', r).startswith(
+        'O render do formato 970x250 parou porque um texto')
 
 
 def test_medida_do_texto_editado_usa_o_cache(relato, tmp_path, monkeypatch):
@@ -427,7 +415,8 @@ def test_pagina_marca_o_membro_em_que_o_texto_passa_da_borda(relato, tmp_path):
             nav.close()
     assert 'f970x250' in vista['membro'], vista
     assert '970x250' in vista['faixa'] and 'passa da borda' in vista['faixa'], vista
-    assert vista['confirmar'] is True and 'passa da borda' in vista['titulo'], vista
+    # 0.9.6 (aprovacao soberana): "Confirmar familia" fica ligado; o aviso vai no title (antes: desligado)
+    assert vista['confirmar'] is False and 'passa da borda' in vista['titulo'], vista
     assert vista['rotulo'] is True and vista['aprovar'] is False, vista
     assert vista['linhas'] == ALTO.split('\n'), vista
     gravada = ted._rascunho_gravado(job)['familias'][gid]

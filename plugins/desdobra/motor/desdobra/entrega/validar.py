@@ -484,6 +484,25 @@ def texto_como_imagem(ctx):
                   camadas=camadas)]
 
 
+def aprovado_com_aviso(derivacao):
+    """True quando a derivacao do formato leva o registro aprovado_pelo_da_com_aviso (0.9.6): o DA confirmou a familia
+    olhando o aviso da conferencia."""
+    from desdobra.derivacao import proposta
+    return any(r.get('codigo') == proposta.CODIGO_APROVADO_COM_AVISO for r in (derivacao or {}).get('registros') or [])
+
+
+class _LimiteComAviso:
+    """O limite da area com o efeito avisa (0.9.6): a citacao e a mesma, so a situacao muda."""
+
+    def __init__(self, lim):
+        self._lim = lim
+        self.valor = lim.valor
+        self.efeito_efetivo = 'avisa'
+
+    def citacao(self):
+        return self._lim.citacao()
+
+
 def _areas(ctx):
     from desdobra.derivacao import formatos as mf
     areas = mf.areas(ctx['formato'], ctx['spec'], ctx['arquivo_specs'])
@@ -491,6 +510,11 @@ def _areas(ctx):
     tol = float(lim.valor)
     caixas = caixas_de_conteudo(ctx)
     itens = []
+    # a aprovacao do DA e soberana (0.9.6): no formato que o DA aprovou com aviso de composicao na familia
+    # (aprovado_pelo_da_com_aviso na derivacao), a peca fora da area da folha vai para aprovados com o aviso no
+    # relatorio. Peso, dimensao e tipo do arquivo continuam reprovando
+    if aprovado_com_aviso(ctx.get('derivacao')):
+        lim = _LimiteComAviso(lim)
     for nome, regra, zona in (('area_segura', 'fora_da_area_segura', areas['area_segura']),
                               ('area_util', 'fora_da_area_util', areas['area_util'])):
         if zona is None:

@@ -11,6 +11,9 @@ confere os dados antes do dialogo (validar), monta o texto do dialogo com o que 
     propos para ele (desdobra.render.linkados.confirmar);
   - spec_valor: confirmar um valor de spec em rascunho, ou escolher a leitura de um campo com fontes divergentes, so
     entre as pendencias do rascunho gravado (desdobra.specs.confirmar.confirmar_da_tela);
+  - spec_valores (0.9.6): os valores de spec que o DA marcou no passo 1, de uma vez, com uma janela que lista cada
+    um; uma acao 'confirmar' por valor, igual a do spec_valor (desdobra.specs.confirmar.confirmar_lote_da_tela). O
+    divergente e o formato com duas medidas ficam fora do lote;
   - render: o render dos formatos afetados, com uma confirmacao e um selo por formato (desdobra.tela.ato_render; M7b,
     B2);
   - aprovar: a aprovacao dos formatos marcados, com o arquivo final de cada um na janela e o sentido do giro que falta
@@ -86,6 +89,26 @@ def _spec(pasta, dados):
     return alvo
 
 
+LOTE_MAX = 500  # numero-neutro: valores de spec num lote (a folha maior dos testes tem 20)
+
+
+def _lote_de_spec(pasta, dados):
+    """0.9.6: os valores pedidos no lote do passo 1, na ordem do pedido, ou None. dados: {'valor_ids': [ids]}, sem
+    repeticao, cada um pendente, simples (sem leituras a escolher) e fora do formato com duas medidas (em_lote)."""
+    from desdobra.tela import estado
+    if not isinstance(dados, dict) or set(dados) != {'valor_ids'}:
+        return None
+    ids = dados['valor_ids']
+    if not isinstance(ids, list) or not ids or len(ids) > LOTE_MAX or \
+            not all(isinstance(i, str) for i in ids) or len(set(ids)) != len(ids):
+        return None
+    por_id = {x['valor_id']: x for x in estado.specs_pendentes(pasta)}
+    alvos = [por_id.get(i) for i in ids]
+    if any(a is None or not a.get('em_lote') for a in alvos):
+        return None
+    return alvos
+
+
 def atos_do_job(pasta, teto=None, conteudo=None):
     """{nome: Ato} do passo 1 para o servidor da tela do job. teto: o teto do modo de dados da linha de comando (o do
     estado.json entra sozinho, lido a cada pedido). conteudo: o da tela (desdobra.tela.estado.montar); com ele entram
@@ -143,6 +166,17 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         acao = confirmar.confirmar_da_tela(pasta, d['valor_id'], d.get('leitura'), disparo=disparo)
         return {'spec': acao is not None}
 
+    def lote_texto(d):
+        alvos = _lote_de_spec(pasta, d)
+        n = len(alvos)
+        # os formatos ficam so na lista da janela (revisao adversarial da 0.9.6): a frase nao os repete
+        return ('Você confirma %s de spec, como %s nas folhas.'
+                % ('1 valor' if n == 1 else '%d valores' % n, 'está' if n == 1 else 'estão'))
+
+    def lote_executar(disparo, d):
+        acoes = confirmar.confirmar_lote_da_tela(pasta, d['valor_ids'], disparo=disparo)
+        return {'spec': acoes is not None, 'confirmados': len(acoes or [])}
+
     atos = {'marca': _ato_da_marca(pasta, conteudo), 'marca_registrar': _ato_de_registrar(pasta, conteudo),
             'texto_como_imagem': _ato_texto_como_imagem(pasta),
             'formatos_digitados': _ato_formatos_digitados(pasta)}
@@ -159,6 +193,10 @@ def atos_do_job(pasta, teto=None, conteudo=None):
                        validar=lambda d: _linkado(pasta, d) is not None),
         'spec_valor': Ato(comando=confirmar.COMANDO, titulo='Confirmar o valor da spec', texto=spec_texto, sim=SIM,
                           nao=NAO, executar=spec_executar, validar=lambda d: _spec(pasta, d) is not None),
+        # 0.9.6: os valores de spec marcados pelo DA, de uma vez (uma janela, uma acao por valor)
+        'spec_valores': Ato(comando=confirmar.COMANDO, titulo='Confirmar os valores de spec', texto=lote_texto,
+                            sim=SIM, nao=NAO, executar=lote_executar,
+                            validar=lambda d: _lote_de_spec(pasta, d) is not None),
         # o render dos formatos afetados (M7b, B2): ato longo, com preparo e um selo por formato
         'render': ato_render.ato_de_render(pasta),
         # a aprovacao dos formatos marcados, com o sentido do giro que falta (M7b, B4): ato longo, com preparo
@@ -481,6 +519,11 @@ def _ato_de_salvar(pasta, conteudo):
 
     def executar(disparo, _d):
         r = salvar.salvar(pasta, conteudo, disparo)
-        return {'salvo': True, 'derivado': r['derivado']}
+        # 0.9.6: a tela diz quando a derivacao nao gravou o layout (nunca "salvo" calado) e quais formatos ficaram
+        # sem layout, pela medida
+        nomes = {f['id']: '%sx%s' % (f.get('largura'), f.get('altura'))
+                 for f in (r.get('briefing') or {}).get('formatos') or []}
+        return {'salvo': True, 'derivado': r['derivado'],
+                'sem_layout': [nomes.get(fid, fid) for fid in r.get('sem_layout') or []]}
     return Ato(comando=salvar.COMANDO, titulo='Salvar o briefing', texto=texto, sim=SIM, nao=NAO, executar=executar,
                validar=valido)

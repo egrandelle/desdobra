@@ -278,7 +278,7 @@ def _salvar(pasta, conteudo, disparo):
                por={'usuario': reg['usuario'], 'maquina': reg['maquina']}, quando=reg['quando'],
                modo=_modo(pasta, disparo.origem))
     contratos.validar(b, mb.ESQUEMA)
-    derivado, motivo, devolucoes = True, None, None
+    derivado, motivo, devolucoes, sem_layout = True, None, None, []
     with nucleo.Trava(pasta):
         # o salvar seletivo (M7b, A6): a derivacao em memoria com o briefing novo diz os formatos afetados antes de
         # gravar; sem ela (a derivacao nao roda), afetados fica None e todo formato e refeito, como antes
@@ -290,18 +290,23 @@ def _salvar(pasta, conteudo, disparo):
             r = nd.derivar(pasta, so=None if mudancas is None else
                            [f['id'] for f in b['formatos'] if f['id'] in mudancas])
             devolucoes = len(r['devolucoes'])
+            # 0.9.6: os formatos que ficaram sem layout depois do salvar; a tela os diz ao DA, com o motivo no passo 5
+            sem_layout = sorted(fid for fid, d in (r.get('formatos') or {}).items()
+                                if (d or {}).get('situacao') != 'derivado')
             if base is not None:
                 # o "o que mudou" sai da derivacao gravada agora contra a gravada antes (correcao do D2 do E1)
                 mudancas = _mudancas_da_gravada(base, r['formatos'])
         except nd.ErroDerivacao as e:
             derivado, motivo = False, e.motivo
+        except Exception as e:  # noqa: BLE001 - 0.9.6: o briefing ja esta gravado; a falha da derivacao vai a tela
+            derivado, motivo = False, 'erro_no_motor:%s' % type(e).__name__
         if mudancas is not None:
             _gravar_mudancas(pasta, mudancas)
     nucleo.registrar_evento(pasta, 'briefing_confirmado', origem=disparo.origem, meio=disparo.meio,
                             familias=len(b['composicoes']), derivado=derivado, motivo=motivo, afetados=afetados)
     _medir_sugestao(pasta, b, conteudo)
     return {'briefing': b, 'historico': guardada, 'derivado': derivado, 'motivo': motivo, 'devolucoes': devolucoes,
-            'afetados': afetados}
+            'afetados': afetados, 'sem_layout': sem_layout}
 
 
 def _medir_sugestao(pasta, b, conteudo):
@@ -461,4 +466,36 @@ def situacao_na_tela(pasta, familias, biblioteca=None):
         return nao
     if _decisoes(novo) != _decisoes(b):
         return nao
-    return {'salvo': True, 'em': b['cabecalho']['quando']}
+    refazer, sem_layout = layouts_a_refazer(pasta, b, [x for fids in familias.values() for x in fids])
+    if refazer:
+        # 0.9.6: o briefing esta gravado, mas o layout de algum formato falta ou e de antes dele (a derivacao que
+        # quebrou depois de gravar, ou a devolucao gravada por uma versao de antes da aprovacao soberana): o "Salvar e
+        # seguir" volta ligado, e o salvar seletivo refaz esses formatos (a impressao deles mudou)
+        return {'salvo': False, 'em': b['cabecalho']['quando'], 'refazer_layout': refazer}
+    salvo = {'salvo': True, 'em': b['cabecalho']['quando']}
+    return dict(salvo, sem_layout=sem_layout) if sem_layout else salvo
+
+
+def layouts_a_refazer(pasta, b, fids):
+    """0.9.6: ([formatos cujo layout o "Salvar e seguir" monta de novo], [formatos sem layout pelo motivo do motor de
+    agora]) do briefing gravado b. Refaz: sem derivacao gravada legivel; gravada com outro briefing ou outra folha (a
+    impressao de agora difere: a derivacao quebrou depois de gravar o briefing); ou devolvida por uma versao do motor
+    de antes desta. O devolvido pela versao de agora (a quebra sem medida, por exemplo) fica em sem_layout: salvar de
+    novo daria o mesmo, e o passo 5 diz o motivo."""
+    from desdobra import __version__
+    from desdobra.derivacao import nucleo as nd
+    refazer, sem_layout = [], []
+    for fid in fids:
+        d = _gravada(pasta, fid)
+        if d is None:
+            refazer.append(fid)
+            continue
+        if d.get('situacao') != 'derivado' and d.get('motor_versao') != __version__:
+            refazer.append(fid)
+            continue
+        imp = nd.impressao_de_agora(pasta, d, b)
+        if imp is not None and imp != d.get('impressao_formato'):
+            refazer.append(fid)
+        elif d.get('situacao') != 'derivado':
+            sem_layout.append(fid)
+    return refazer, sem_layout

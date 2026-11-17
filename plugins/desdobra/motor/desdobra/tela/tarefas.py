@@ -99,8 +99,6 @@ TEXTOS_POR_MOTIVO = {
     # revisao 0.9.4: a familia salva antes (a derivacao gravada nao e a de agora) pede "Salvar e seguir" de novo
     'derivacao_velha': 'A família de um formato precisa ser salva de novo. Clique em Salvar e seguir e peça o render '
                        'de novo. Nada mudou no job.',
-    'texto_passa_da_borda': 'O texto que você editou passa da borda de um formato. Ajuste o texto ou o tamanho dele '
-                            'na família antes do render. Nada mudou no job.',
     'texto_editado_cortado': 'O render de um formato parou porque um texto passou da borda dele. Volte à família, '
                              'ajuste o texto e peça o render de novo. Os formatos prontos ficaram renderizados.',
     'tinta_fora_da_caixa_validada': 'O render de um formato parou porque um texto saiu do lugar que a família mostra. '
@@ -115,11 +113,6 @@ TEXTOS_POR_MOTIVO_COM_FORMATO = {
         'novo. Nada mudou no job.',
         'As famílias dos formatos {formatos} precisam ser salvas de novo. Clique em Salvar e seguir e peça o render '
         'de novo. Nada mudou no job.'),
-    'texto_passa_da_borda': (
-        'O texto que você editou passa da borda do formato {formatos}. Ajuste o texto ou o tamanho dele na família '
-        'antes do render. Nada mudou no job.',
-        'O texto que você editou passa da borda dos formatos {formatos}. Ajuste o texto ou o tamanho dele na família '
-        'antes do render. Nada mudou no job.'),
     'texto_editado_cortado': (
         'O render do formato {formatos} parou porque um texto passou da borda dele. Volte à família, ajuste o texto '
         'e peça o render de novo. Os formatos prontos ficaram renderizados.',

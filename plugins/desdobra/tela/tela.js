@@ -232,6 +232,13 @@
   const AVISO_SALVO = 'O briefing está salvo. Cada formato parte agora das famílias que você confirmou. ' +
     'O render e a aprovação ficam no passo 5.';
   let salvoNaTela = false;
+  /* 0.9.6: os formatos que o servidor pede para montar de novo (briefing.salvar.layouts_a_refazer) */
+  function layoutsARefazer() { return (estado && estado.briefing && estado.briefing.refazer_layout) || []; }
+  const DICA_REFAZER = 'Clique em Salvar e seguir para montar os layouts que faltam.';
+  function avisoSemLayout(n) {
+    return 'O briefing está salvo, mas ' + (n === 1 ? '1 formato ficou' : n + ' formatos ficaram') +
+      ' sem layout. O motivo de cada um está no passo 5.';
+  }
   let p2Mudou = false;
   let esperaReconferida = false; // revisao 0.9.3: o estado pedido de novo uma vez quando a pagina e o servidor discordam
   const ajustes = new WeakMap();
@@ -500,7 +507,11 @@
   function mudouRascunho() {
     if (!escrita || rascunho.espera === null) return;
     // o briefing salvo deixa de valer para a tela: a mudanca nova pede outro Salvar e seguir
-    if (salvoNaTela) { salvoNaTela = false; atualizarSalvar(); }
+    if (salvoNaTela || layoutsARefazer().length) {
+      salvoNaTela = false;
+      if (estado && estado.briefing) estado.briefing = Object.assign({}, estado.briefing, { refazer_layout: [], sem_layout: [] });
+      atualizarSalvar();
+    }
     tirarAvisoDeAto();
     clearTimeout(rascunho.espera_id);
     rascunho.tentativas = 0; // a mudanca nova tenta de novo, tambem depois das tentativas sozinhas
@@ -747,15 +758,17 @@
       // M7c, M5: a janela do registro do padrao da marca mostra o que vai ao perfil
       // 0.9.1: a janela do texto como imagem lista as camadas atingidas
       const extra = nome === 'marca_registrar' ? extraDoRegistro() :
-        (nome === 'texto_como_imagem' ? extraDoTextoComoImagem(dados) : null);
+        (nome === 'texto_como_imagem' ? extraDoTextoComoImagem(dados) :
+          (nome === 'spec_valores' ? extraDoLoteDeSpecs(dados) : null));
       const perigo = !!(dados && dados.acao === 'remover');
       return confirmarNaJanela(Object.assign({}, p, extra ? { extra: extra, larga: nome === 'marca_registrar' } : {},
         { perigo: perigo })).then(function (sim) {
         if (!sim) return enviar('/api/ato/cancelar', { pedido: p.pedido }).then(function () { raiz.dataset.estadoAto = 'cancelado'; });
         const chave = JSON.stringify(dados || {});
+        let resposta = null;
         return enviar('/api/ato/confirmar', { pedido: p.pedido, resposta: 'confirmar' })
-          .then(recarregarEstado)
-          .then(function () { return depoisDoAto[nome] ? depoisDoAto[nome](dados) : null; })
+          .then(function (r) { resposta = r; return recarregarEstado(); })
+          .then(function () { return depoisDoAto[nome] ? depoisDoAto[nome](dados, resposta) : null; })
           .then(function () {
             raiz.dataset.estadoAto = 'feito';
             /* o botao clicado foi redesenhado: o foco volta ao botao novo do mesmo ato, para o teclado seguir dali */
@@ -787,6 +800,8 @@
     });
   }
   const SELO_CLIQUE_RECUSADO = 'O clique não foi registrado. O motivo está no rodapé.';
+  const SALVO_SEM_LAYOUT = 'O briefing está salvo, mas o desdobra não conseguiu montar os layouts. Clique em Salvar e ' +
+    'seguir de novo. Se continuar, fale com a Trezion.';
   function ligarAtos() {
     if (!escrita) return;
     document.addEventListener('click', function (ev) {
@@ -1364,12 +1379,166 @@
       no.appendChild(art);
     });
   }
+  /* 0.9.6: os valores de spec em lote. Cada formato da folha vira um cartao com uma caixa de marcar e a lista dos
+     valores dele, cada um com a caixa dele. Nada vem marcado (decisoes 31 e 170): "Marcar todos" e um clique do DA. O
+     botao "Confirmar os marcados" pede uma janela so, que lista cada valor, e o motor grava uma confirmacao por valor,
+     igual a do botao de um valor (ato spec_valores). O valor com leituras diferentes e o formato com duas medidas
+     ficam fora do lote, em "Escolha você", com os botoes de antes. Os textos da folha entram so por textContent */
+  const specsMarcados = new Set();
+  const LOTE_SEM_MARCA = 'Marque os valores que você quer confirmar.';
+  function valoresDoLote(lista) { return lista.filter(function (v) { return v.em_lote; }); }
   function montarSpecs(s) {
     const no = document.getElementById('lido-specs-pendentes');
     limpar(no);
     const lista = s.lista || [];
-    if (!lista.length) return;
+    const lote = valoresDoLote(lista);
+    const ids = new Set(lote.map(function (v) { return v.valor_id; }));
+    Array.from(specsMarcados).forEach(function (i) { if (!ids.has(i)) specsMarcados.delete(i); });
+    if (!lista.length) {
+      if (s.tem_rascunho) no.appendChild(el('p', 'Todos os valores de spec estão confirmados.', 'nota spec-vazio'));
+      return;
+    }
     no.appendChild(el('h3', lista.length === 1 ? '1 valor espera a sua confirmação' : lista.length + ' valores esperam a sua confirmação', 'subtitulo'));
+    const avulsos = lista.filter(function (v) { return !v.em_lote; });
+    if (avulsos.length) {
+      const sec = el('section', null, 'spec-escolha');
+      sec.appendChild(el('h4', 'Escolha você', 'spec-grupo-titulo'));
+      sec.appendChild(el('p', 'Estes valores pedem a sua escolha, um por um.', 'nota'));
+      montarSpecsAvulsos(sec, avulsos);
+      no.appendChild(sec);
+    }
+    if (lote.length) no.appendChild(montarLoteDeSpecs(lote));
+  }
+  function atualizarLoteDeSpecs() {
+    const caixa = document.getElementById('spec-lote');
+    if (!caixa) return;
+    const todos = Array.from(caixa.querySelectorAll('input.spec-valor-marca'));
+    todos.forEach(function (c) { c.checked = specsMarcados.has(c.dataset.valor); c.disabled = !escrita; });
+    caixa.querySelectorAll('input.spec-grupo-marca').forEach(function (g) {
+      const dele = todos.filter(function (c) { return c.dataset.grupo === g.dataset.grupo; });
+      const n = dele.filter(function (c) { return c.checked; }).length;
+      g.checked = n > 0 && n === dele.length;
+      g.indeterminate = n > 0 && n < dele.length;
+      g.disabled = !escrita;
+      const art = g.closest('.spec-cartao');
+      if (art) art.classList.toggle('marcado', n > 0);
+    });
+    const ordem = todos.filter(function (c) { return c.checked; }).map(function (c) { return c.dataset.valor; });
+    const b = document.getElementById('spec-lote-confirmar');
+    limpar(b);
+    b.appendChild(document.createTextNode('Confirmar os marcados'));
+    if (ordem.length) b.appendChild(el('span', String(ordem.length), 'contagem-botao'));
+    b.setAttribute('aria-label', ordem.length ? 'Confirmar os marcados, ' + plural(ordem.length, 'valor', 'valores') :
+      'Confirmar os marcados');
+    b.disabled = !escrita || !ordem.length;
+    b.title = b.disabled && escrita ? LOTE_SEM_MARCA : '';
+    b.dataset.dados = JSON.stringify({ valor_ids: ordem });
+    const t = document.getElementById('spec-lote-todos');
+    const tudo = ordem.length === todos.length && todos.length > 0;
+    t.textContent = tudo ? 'Desmarcar todos' : 'Marcar todos';
+    t.disabled = !escrita;
+  }
+  function montarLoteDeSpecs(lote) {
+    const caixa = el('section', null, 'spec-lote');
+    caixa.id = 'spec-lote';
+    caixa.setAttribute('aria-label', 'Valores de spec para confirmar');
+    const barra = el('div', null, 'spec-lote-barra');
+    const todos = botao('Marcar todos', 'botao');
+    todos.id = 'spec-lote-todos';
+    todos.addEventListener('click', function () {
+      const tudo = lote.every(function (v) { return specsMarcados.has(v.valor_id); });
+      lote.forEach(function (v) { if (tudo) specsMarcados.delete(v.valor_id); else specsMarcados.add(v.valor_id); });
+      atualizarLoteDeSpecs();
+    });
+    const conf = botao('Confirmar os marcados', 'botao botao-primario');
+    conf.id = 'spec-lote-confirmar';
+    conf.dataset.ato = 'spec_valores';
+    barra.appendChild(todos);
+    barra.appendChild(conf);
+    caixa.appendChild(barra);
+    const grupos = [];
+    lote.forEach(function (v) {
+      let g = grupos.find(function (x) { return x.id === v.grupo; });
+      if (!g) { g = { id: v.grupo, nome: v.grupo_nome, valores: [] }; grupos.push(g); }
+      g.valores.push(v);
+    });
+    // o cartao dos valores gerais da folha fica por ultimo
+    grupos.sort(function (a, b) { return (a.id === 'geral') - (b.id === 'geral'); });
+    grupos.forEach(function (g, i) {
+      const art = el('article', null, 'spec-cartao');
+      art.style.animationDelay = (i * 30) + 'ms';
+      const topo = el('label', null, 'spec-cartao-topo');
+      const gm = el('input', null, 'linha-marca spec-grupo-marca');
+      gm.type = 'checkbox';
+      gm.dataset.grupo = g.id;
+      gm.addEventListener('change', function () {
+        g.valores.forEach(function (v) {
+          if (gm.checked) specsMarcados.add(v.valor_id); else specsMarcados.delete(v.valor_id);
+        });
+        atualizarLoteDeSpecs();
+      });
+      topo.appendChild(gm);
+      topo.appendChild(el('span', g.nome, 'spec-cartao-nome'));
+      topo.appendChild(el('span', plural(g.valores.length, 'valor', 'valores'), 'spec-cartao-conta'));
+      art.appendChild(topo);
+      const ul = el('ul', null, 'spec-valores');
+      g.valores.forEach(function (v) {
+        const li = el('li', null, 'spec-valor');
+        const rot = el('label', null, 'spec-valor-rotulo');
+        const c = el('input', null, 'spec-valor-marca');
+        c.type = 'checkbox';
+        c.dataset.valor = v.valor_id;
+        c.dataset.grupo = g.id;
+        c.addEventListener('change', function () {
+          if (c.checked) specsMarcados.add(v.valor_id); else specsMarcados.delete(v.valor_id);
+          atualizarLoteDeSpecs();
+        });
+        rot.appendChild(c);
+        const info = el('span', null, 'opcao-info');
+        const linha = el('span', null, 'spec-valor-linha');
+        linha.appendChild(el('span', v.campo, 'spec-valor-campo'));
+        linha.appendChild(el('span', v.descricao, 'opcao-nome'));
+        info.appendChild(linha);
+        if (v.trecho && v.trecho !== v.descricao) info.appendChild(el('span', v.trecho, 'opcao-detalhe'));
+        rot.appendChild(info);
+        li.appendChild(rot);
+        ul.appendChild(li);
+      });
+      art.appendChild(ul);
+      caixa.appendChild(art);
+    });
+    setTimeout(atualizarLoteDeSpecs, 0);
+    return caixa;
+  }
+  /* a janela do lote lista cada valor marcado, por formato (so textContent) */
+  function extraDoLoteDeSpecs(dados) {
+    const lista = ((estado && estado.lido && estado.lido.specs && estado.lido.specs.lista) || []);
+    const por = {};
+    lista.forEach(function (v) { por[v.valor_id] = v; });
+    const corpo = el('div', null, 'registro-extra');
+    const grupos = [];
+    ((dados && dados.valor_ids) || []).forEach(function (i) {
+      const v = por[i];
+      if (!v) return;
+      let g = grupos.find(function (x) { return x.id === v.grupo; });
+      if (!g) { g = { id: v.grupo, nome: v.grupo_nome, valores: [] }; grupos.push(g); }
+      g.valores.push(v);
+    });
+    if (!grupos.length) return null;
+    grupos.forEach(function (g) {
+      const bloco = el('section', null, 'registro-grupo');
+      const topo = el('div', null, 'registro-grupo-topo');
+      topo.appendChild(el('h3', g.nome));
+      topo.appendChild(el('span', plural(g.valores.length, 'valor', 'valores'), 'registro-conta'));
+      bloco.appendChild(topo);
+      const ul = el('ul', null, 'spec-lista-janela');
+      g.valores.forEach(function (v) { ul.appendChild(el('li', v.campo + ': ' + v.descricao)); });
+      bloco.appendChild(ul);
+      corpo.appendChild(bloco);
+    });
+    return corpo;
+  }
+  function montarSpecsAvulsos(no, lista) {
     lista.forEach(function (v) {
       const art = el('article', null, 'decisao');
       const topo = el('div', null, 'decisao-topo');
@@ -1438,6 +1607,43 @@
     montarFormatos(estado.lido.specs, f.chave + '|' + graus + '|' + (sentido || ''));
     atualizarSalvar();
   }
+  /* 0.9.6 (revisao adversarial, pedido 3 do Duda): o giro em lote. "Sem giro nos que faltam" e um clique do DA
+     (nada vem marcado, decisoes 31 e 170) e vale so para os formatos ainda sem giro em que a folha nao fala de giro. O
+     formato em que a folha fala de giro fica para a escolha um por um, como o veiculo pede */
+  function formatosSemGiro(s) {
+    return s.formatos.filter(function (f) { return !giroCompleto(giroDe(f)) && !f.giro_da_folha; });
+  }
+  function montarGiroEmLote(no, s) {
+    const faltam = s.formatos.filter(function (f) { return !giroCompleto(giroDe(f)); });
+    if (!faltam.length) return;
+    const livres = formatosSemGiro(s);
+    const barra = el('div', null, 'giro-lote');
+    const b = botao(livres.length === 1 ? 'Sem giro no formato que falta' : (livres.length ? 'Sem giro nos ' +
+      livres.length + ' formatos que faltam' : 'Sem giro nos que faltam'), 'botao');
+    b.id = 'giro-lote';
+    b.disabled = !escrita || !livres.length;
+    b.addEventListener('click', function () {
+      const agora = formatosSemGiro(estado.lido.specs);
+      if (!agora.length) return;
+      agora.forEach(function (f) {
+        delete giroSemSentido[f.chave];
+        p1.rotacoes[f.chave] = { graus: 0, sentido: null };
+      });
+      mudouP1();
+      montarFormatos(estado.lido.specs, null);
+      atualizarSalvar();
+      const t = document.getElementById('t-giro');
+      if (t) { t.tabIndex = -1; t.focus({ preventScroll: true }); }
+      const selo = document.getElementById('selo');
+      if (selo) selo.textContent = plural(agora.length, 'formato ficou', 'formatos ficaram') + ' sem giro.';
+    });
+    barra.appendChild(b);
+    const fora = faltam.length - livres.length;
+    barra.appendChild(el('p', fora ? (fora === 1 ? 'A folha fala do giro de 1 formato. Escolha o giro dele abaixo.' :
+      'A folha fala do giro de ' + fora + ' formatos. Escolha o giro deles abaixo.') :
+      'Ou escolha o giro de cada formato abaixo.', 'nota'));
+    no.appendChild(barra);
+  }
   function botaoGiro(texto, pressionado, chave, acao) {
     const b = botaoOpcao(texto, pressionado, acao);
     b.dataset.giro = chave;
@@ -1459,6 +1665,7 @@
       no.appendChild(vazio);
       return;
     }
+    montarGiroEmLote(no, s);
     s.formatos.forEach(function (f) {
       const g = giroDe(f);
       const art = el('article', null, 'decisao giro' + (giroCompleto(g) ? ' feita' : ''));
@@ -2022,8 +2229,14 @@
     const dica = document.getElementById('dica-acoes');
     const aviso = document.getElementById('salvo');
     const irDica = document.getElementById('dica-ir');
-    aviso.hidden = !salvoNaTela;
-    aviso.textContent = salvoNaTela ? AVISO_SALVO : '';
+    /* 0.9.6: o briefing gravado com layout que falta (a derivacao que quebrou depois de gravar, ou a de uma versao de
+       antes) volta a pedir "Salvar e seguir", com o aviso no rodape; o formato sem layout pelo motivo do motor de agora
+       fica dito no aviso de salvo, com o motivo no passo 5. O estado do servidor manda: nada some no proximo clique */
+    const refazer = layoutsARefazer();
+    const semLayout = salvoNaTela ? ((estado && estado.briefing && estado.briefing.sem_layout) || []) : [];
+    aviso.hidden = !salvoNaTela && !refazer.length;
+    aviso.textContent = salvoNaTela ? (semLayout.length ? avisoSemLayout(semLayout.length) : AVISO_SALVO) :
+      (refazer.length ? SALVO_SEM_LAYOUT : '');
     dica.classList.remove('pronta', 'bloqueia');
     dica.removeAttribute('title');
     irDica.hidden = true;
@@ -2076,7 +2289,8 @@
       const gid = idsDasFamilias().find(function (id) { const f = rascunho.familias[id]; return !(f && f.confirmada); });
       // ja na familia que falta, o botao ao lado (Confirmar família) e o caminho; o "Ir até lá" so leva a outra
       if (gid && !(vista.familia === gid && !document.getElementById('passo-pecas').hidden)) destino = { passo: 'pecas', familia: gid };
-    } else { dica.textContent = DICA_PRONTA; dica.classList.add('pronta'); }
+    } else if (refazer.length) { dica.textContent = DICA_REFAZER; dica.classList.add('pronta'); }
+    else { dica.textContent = DICA_PRONTA; dica.classList.add('pronta'); }
     b.disabled = !!(semConfirmar || p2falta || semModo || semFormatos || semQuadro || semGiro || semMedida || semFamilias);
     if (b.disabled) {
       dica.classList.add('bloqueia');
@@ -3335,8 +3549,10 @@
         const r = mundo.querySelector('.rotulo[data-elemento="' + t.peca.elemento + '"]');
         const e = m.elementos.find(function (x) { return x.id === t.peca.elemento; });
         if (!r || !e) return;
-        const u = [Math.min(e.caixa[0], c[0]), Math.min(e.caixa[1], c[1]), Math.max(e.caixa[2], c[2]),
-          Math.max(e.caixa[3], c[3])];
+        /* 0.9.6 (decisao 196): com a caixa das linhas do DA vinda do motor, o rotulo e a tinta medida, e encolhe
+           quando o texto perde linhas. Sem ela (a medida que faltou no motor), a uniao de antes */
+        const u = e.caixa_das_linhas ? c.slice() : [Math.min(e.caixa[0], c[0]), Math.min(e.caixa[1], c[1]),
+          Math.max(e.caixa[2], c[2]), Math.max(e.caixa[3], c[3])];
         pos(r, u);
         etiquetas.forEach(function (par) { if (par[0].parentNode === r) par[1] = u; });
       });
@@ -3705,8 +3921,13 @@
     no.hidden = false;
     no.appendChild(el('span', 'Com as suas edições', 'var-numero'));
     no.appendChild(el('span', 'Cada edição vale para todos os arquivos desta família.', 'var-palco-descricao'));
+    /* 0.9.6 (aprovacao soberana): na familia confirmada, a falha que o DA aceitou fica em tom de aviso aceito, sem o
+       vermelho de erro, e a frase diz que ele confirmou assim. O membro sem layout continua em vermelho */
+    const aceito = familiaConfirmada() && !membroSemLayout(m);
     marcasDa({ falhas: m.falhas, decisoes_do_da: m.decisoes_do_da, avisos: m.avisos }).forEach(function (x) {
-      no.appendChild(el('span', x[1], 'var-palco-aviso' + (x[2] ? ' ' + x[2] : '')));
+      const forte = x[2] === 'forte';
+      no.appendChild(el('span', forte && aceito ? AVISO_ACEITO + ' ' + x[1] : x[1],
+        'var-palco-aviso' + (forte && aceito ? ' aceito' : (x[2] ? ' ' + x[2] : ''))));
     });
   }
   function atualizarSelo() {
@@ -3734,8 +3955,11 @@
       b.appendChild(el('span', m.formato, 'membro-nome'));
       b.appendChild(el('span', dimensao(m.palco.largura, m.palco.altura), 'membro-medida'));
       if (m.falhas.length) {
-        const s = el('span', MARCA_FALHA, 'marca-aviso forte');
-        s.title = frasesUnicas(m.falhas);
+        /* 0.9.6 (aprovacao soberana): na familia confirmada, o aviso que o DA aceitou fica discreto, sem cor de erro.
+           O membro devolvido (sem layout do desdobra) continua "Pede ajuste": confirmar nao monta o layout dele */
+        const aceito = familiaConfirmada() && !membroSemLayout(m);
+        const s = el('span', aceito ? MARCA_ACEITA : MARCA_FALHA, 'marca-aviso ' + (aceito ? 'aceito' : 'forte'));
+        s.title = (aceito ? AVISO_ACEITO + ' ' : '') + frasesUnicas(m.falhas);
         b.appendChild(s);
       }
       if (decisoes(m).length) {
@@ -3751,7 +3975,7 @@
         if (!textoPassaDaBorda(mini, m)) return;
         ed.bordas.formatos[m.formato] = true;
         b.classList.add('na-borda');
-        const s = el('span', MARCA_BORDA, 'marca-aviso forte');
+        const s = el('span', MARCA_BORDA, 'marca-aviso ' + (familiaConfirmada() ? 'aceito' : 'forte'));
         s.title = TEXTO_NA_BORDA;
         b.appendChild(s);
         b.setAttribute('aria-label', b.getAttribute('aria-label') + ', ' + MARCA_BORDA);
@@ -3771,7 +3995,27 @@
     const quebras = quebrasDa(vista.familia).length;
     if (quebras) partes.push(quebras === 1 ? 'Quebra de linha mudada em 1 texto desta família.' :
       'Quebra de linha mudada em ' + quebras + ' textos desta família.');
+    /* 0.9.6 (aprovacao soberana): o "Pede ajuste" e aviso. O DA decide olhando; confirmar nunca trava o job */
+    if (r.membros.some(function (m) { return m.falhas.length && !membroSemLayout(m); })) {
+      partes.push(familiaConfirmada() ? AVISO_ACEITO_NA_FAMILIA : PODE_CONFIRMAR_COM_AVISO);
+    }
+    /* o membro devolvido fica sem layout mesmo com a familia confirmada: a tela diz qual e o que fazer */
+    const semLayout = r.membros.filter(membroSemLayout);
+    if (semLayout.length) {
+      partes.push((semLayout.length === 1 ? 'O arquivo ' + semLayout[0].formato + ' fica' : 'Os arquivos ' +
+        listaDeNomes(semLayout.map(function (m) { return m.formato; })) + ' ficam') +
+        ' sem layout, mesmo com a família confirmada. ' + frasesUnicas(semLayout.map(function (m) {
+          return m.falhas[0];
+        })));
+    }
     document.getElementById('resumo-edicao').textContent = partes.join(' ');
+  }
+  /* 0.9.6: o membro que a previa traz devolvido (sem versao da galeria, ou com a quebra sem medida): a confirmacao da
+     familia nao monta o layout dele, e a marca nunca vira "Aprovado por você" */
+  function membroSemLayout(m) {
+    return m.situacao === 'devolvido' || m.falhas.some(function (f) {
+      return f.codigo === 'formato_devolvido' || f.codigo === 'quebra_sem_medida';
+    });
   }
   function atualizarBotaoFamilia() {
     const b = document.getElementById('confirmar-familia');
@@ -3787,8 +4031,10 @@
     const semSpecProprio = doGrupo.some(function (x) { return x.motivo === MOTIVO_SEM_SPEC; });
     const semSpecDaMestre = doGrupo.some(function (x) { return x.motivo === MOTIVO_SEM_SPEC_DA_MESTRE; });
     const semSpec = semSpecProprio || semSpecDaMestre;
-    // Linhas do DA (0.9.4): o texto editado que passa da borda de um membro pede ajuste antes da confirmacao
-    const semBorda = formatosNaBorda().length > 0;
+    // 0.9.6 (aprovacao soberana): o texto editado que passa da borda de um membro e aviso, e o DA pode confirmar
+    // assim (o render corta na borda, como o palco mostra). O botao so leva o aviso no title
+    const naBorda = formatosNaBorda().length > 0;
+    const semBorda = false;
     // a previa da ultima mudanca ainda nao voltou (revisao 2 do C): o DA confirma a familia que viu
     const semPrevia = esperandoPrevia();
     // o rascunho que nao gravou (revisao 1 da fase D): a familia confirmada seria a gravada antes, sem a ultima escolha
@@ -3796,8 +4042,9 @@
     b.textContent = conf ? SELO_CONFIRMADA : 'Confirmar família';
     b.disabled = conf || semEscolha || semSpec || semBorda || semPrevia || semGravar;
     b.title = semSpecProprio ? FAMILIA_SEM_SPEC : (semSpecDaMestre ? FAMILIA_SEM_SPEC_DA_MESTRE :
-      (semEscolha ? 'Escolha uma versão na galeria antes de confirmar a família.' : (semBorda ? TEXTO_NA_BORDA :
-        (semPrevia ? FAMILIA_ESPERA_PREVIA : (semGravar ? FAMILIA_SEM_GRAVAR : '')))));
+      (semEscolha ? 'Escolha uma versão na galeria antes de confirmar a família.' :
+        (semPrevia ? FAMILIA_ESPERA_PREVIA : (semGravar ? FAMILIA_SEM_GRAVAR : (naBorda && !conf ? TEXTO_NA_BORDA :
+          '')))));
     b.dataset.ato = 'familia';
     b.dataset.dados = JSON.stringify({ familia: vista.familia, versao: versao });
   }
@@ -4780,10 +5027,16 @@
      Linhas do DA (0.9.4): o texto editado nunca quebra sozinho na largura da caixa. As linhas sao as que o DA escreveu
      (Enter no texto, ou este controle), com o mesmo corpo, e a caixa cresce ate a linha mais longa. O desdobra nao
      propoe quebra nem pede aprovacao. Quando a tinta do texto editado passa da borda de um membro, o membro fica
-     marcado, a faixa de aviso leva ao formato e "Confirmar familia" espera o ajuste (o render tambem recusa). */
+     marcado e a faixa de aviso leva ao formato. Desde a 0.9.6 (aprovacao soberana), "Confirmar familia" fica ligado:
+     o texto sai cortado nessa borda, com registro, e o DA confirma assim ou muda as linhas. */
   const FAMILIA_ESPERA_PREVIA = 'Espere a família aparecer com a sua última mudança.';
   const FAMILIA_SEM_GRAVAR = 'A sua última mudança ainda não foi salva no rascunho. Espere o desdobra salvar.';
-  const TEXTO_NA_BORDA = 'O texto que você editou passa da borda de um arquivo desta família. Mude as linhas ou o tamanho do texto antes de confirmar a família.';
+  /* 0.9.6 (aprovacao soberana): o texto na borda e aviso. O DA confirma assim ou muda as linhas */
+  const TEXTO_NA_BORDA = 'O texto que você editou passa da borda de um arquivo desta família. Ele sai cortado nessa borda. Você pode confirmar assim ou mudar as linhas.';
+  const MARCA_ACEITA = 'Aprovado por você';
+  const AVISO_ACEITO = 'Você confirmou a família com este aviso:';
+  const PODE_CONFIRMAR_COM_AVISO = 'Você pode confirmar assim. O desdobra guarda o aviso.';
+  const AVISO_ACEITO_NA_FAMILIA = 'Você confirmou esta família com aviso. O desdobra guardou o aviso.';
   const MARCA_BORDA = 'passa da borda';
   /* a folga, em px da peca, da tinta do texto editado na borda (a de derivacao.enquadramento_tolerancia_px no desdobra) */
   const TEXTO_BORDA_PX = 1;
@@ -4964,7 +5217,8 @@
     document.getElementById('texto-borda-texto').textContent = (fs.length === 1 ?
       'O texto que você editou passa da borda do arquivo ' + nomesFs[0] + '.' :
       'O texto que você editou passa da borda dos arquivos ' + listaDeNomes(nomesFs) + '.') +
-      ' Mude as linhas ou o tamanho do texto antes de confirmar a família.';
+      (familiaConfirmada() ? ' Ele sai cortado nessa borda, como você aprovou.' :
+        ' Ele sai cortado nessa borda. Você pode confirmar assim ou mudar as linhas.');
     const ver = document.getElementById('ver-borda');
     ver.hidden = fs.length === 1 && fs[0] === vista.formato;
     ver.dataset.formato = fs.find(function (f) { return f !== vista.formato; }) || fs[0];
@@ -5128,9 +5382,31 @@
     depoisDoAto.familia = function () {
       return lerRascunho().then(function () {
         atualizarSelo(); atualizarBotaoFamilia(); atualizarSalvar(); mostrarBorda(); marcarBordaNoPalco();
+        /* 0.9.6: a marca dos membros vira "Aprovado por você", sem cor de erro */
+        if (ed.previa) {
+          montarMembros(ed.previa); montarResumo(ed.previa);
+          // e a linha do palco do formato aberto deixa o vermelho de erro
+          const m = ed.previa.membros.find(function (x) { return x.formato === vista.formato; });
+          if (m && comEdicoes()) descreverMembro(m);
+        }
       });
     };
+    /* 0.9.6: depois do lote, os cartoes confirmados somem; o selo diz quantos valores entraram, e o foco vai ao
+       titulo do bloco, sem perder a rolagem */
+    depoisDoAto.spec_valores = function (_dados, resposta) {
+      const selo = document.getElementById('selo');
+      if (resposta && resposta.spec === false) {
+        avisarNoRodape('As folhas mudaram depois do clique. Nada foi gravado. Confira os valores de novo.');
+      } else if (resposta && resposta.confirmados) {
+        selo.textContent = plural(resposta.confirmados, 'valor de spec confirmado', 'valores de spec confirmados') + '.';
+      }
+      const alvo = document.querySelector('#lido-specs-pendentes .subtitulo') || document.getElementById('t-specs');
+      if (alvo) { alvo.tabIndex = -1; alvo.focus({ preventScroll: true }); }
+    };
     depoisDoAto.salvar = function () {
+      /* 0.9.6: o salvar que nao montou os layouts, ou que deixou formato sem layout, e dito ao DA (nunca "salvo"
+         calado). O texto sai do estado do servidor (briefing.refazer_layout e briefing.sem_layout, em
+         atualizarSalvarAgora): o aviso fica ate o layout ser montado, e o botao volta ligado quando falta layout */
       atualizarSalvar();
       document.getElementById('salvo').focus();
     };
@@ -5269,6 +5545,10 @@
     }
     textos.appendChild(nome);
     textos.appendChild(el('span', f.motivo, 'linha-motivo'));
+    /* 0.9.6 (aprovacao soberana): o aviso que o DA aceitou ao confirmar a familia, discreto, nunca "Sem layout" */
+    if (f.avisos_aceitos && f.avisos_aceitos.length) {
+      textos.appendChild(el('span', AVISO_ACEITO_PAINEL + ' ' + f.avisos_aceitos.join(' '), 'linha-aviso-aceito'));
+    }
     abrir.appendChild(textos);
     abrir.addEventListener('click', function () {
       pn.escolhido = f.id;
@@ -5286,6 +5566,7 @@
     return linha;
   }
   const PAINEL_OCUPADO = 'Espere o trabalho em andamento terminar.';
+  const AVISO_ACEITO_PAINEL = 'Aviso aceito por você:';
   const PAINEL_SEM_AFETADOS = 'Nenhum formato pede render agora. O formato que espera uma decisão em Famílias ' +
     'aparece aqui depois dela.';
   const PAINEL_MARQUE = 'Marque na lista os formatos que você quer aprovar.';
@@ -5501,6 +5782,9 @@
     }
     aside.appendChild(antesEDepois(f, aside));
     aside.appendChild(el('p', f.motivo, 'detalhe-motivo'));
+    if (f.avisos_aceitos && f.avisos_aceitos.length) {
+      aside.appendChild(el('p', AVISO_ACEITO_PAINEL + ' ' + f.avisos_aceitos.join(' '), 'detalhe-aviso-aceito'));
+    }
     const sec = el('section', null, 'mudou');
     sec.setAttribute('aria-label', TITULO_MUDOU);
     const cab = el('div', null, 'mudou-topo');

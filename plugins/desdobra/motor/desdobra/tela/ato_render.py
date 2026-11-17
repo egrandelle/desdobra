@@ -32,10 +32,9 @@ SIM = 'Confirmar'
 NAO = 'Cancelar'
 MOTIVO_BLOQUEADO = 'formato_bloqueado'
 MOTIVO_MUDOU = 'contrato_mudou'
-# Linhas do DA (0.9.4): o bloqueio do contrato do texto editado que passa da borda (desdobra.render.derivado.montar)
-# e o motivo dito ao DA, com o nome do formato (desdobra.tela.tarefas.TEXTOS_POR_MOTIVO_COM_FORMATO)
-BLOQUEIO_BORDA = 'texto_editado_passa_do_formato'
-MOTIVO_BORDA = 'texto_passa_da_borda'
+# 0.9.6 (aprovacao soberana): o texto editado que passa da borda nao bloqueia mais o contrato; ele sai cortado na
+# borda, com o registro texto_editado_cortado_pelo_da (desdobra.render.derivado.montar). O preparo nao tem mais o
+# motivo texto_passa_da_borda
 # revisao 0.9.4: o formato cuja derivacao gravada e de antes (a familia confirmada numa versao anterior, sem a medida
 # do texto editado) pede "Salvar e seguir" de novo; o motivo dito ao DA, com o nome do formato
 BLOQUEIOS_VELHOS = frozenset({'derivacao_desatualizada', 'briefing_desatualizado'})
@@ -128,17 +127,13 @@ def ato_de_render(pasta):
     def preparar(d, tarefa):
         from desdobra.render import execucao
         nomes = _formatos_do_briefing(pasta)
-        itens, bloqueados, guardado, na_borda, velhos = [], [], {}, [], []
+        itens, bloqueados, guardado, velhos = [], [], {}, []
         for f in d['formatos']:
             if tarefa.parar():
                 raise ErroAtoRender('O preparo foi parado.', tarefas.MOTIVO_PARADO)
             tarefa.progresso('contrato')
             contrato, bloqueios, confirmar = execucao.montar_contrato(pasta, f)
             nome = nomes.get(f, f)
-            if any(b.get('codigo') == BLOQUEIO_BORDA for b in bloqueios or ()):
-                # Linhas do DA (0.9.4): o texto editado passa da borda do formato; o DA ajusta na familia
-                na_borda.append({'id': f, 'nome': nome})
-                continue
             if bloqueios and all(b.get('codigo') in BLOQUEIOS_VELHOS for b in bloqueios):
                 # a derivacao gravada e de antes: o "Salvar e seguir" da familia deriva de novo
                 velhos.append({'id': f, 'nome': nome})
@@ -149,9 +144,6 @@ def ato_de_render(pasta):
             aceites = sorted({c['codigo'] for c in confirmar})
             guardado[f] = {'contrato': impressao(contrato), 'aceites': aceites}
             itens.append({'id': f, 'nome': nome, 'decisoes': aceites})
-        if na_borda:
-            raise ErroAtoRender('O texto editado passa da borda de um formato.', MOTIVO_BORDA,
-                                resposta={'formatos': na_borda})
         if velhos:
             raise ErroAtoRender('A derivação de um formato é de antes.', MOTIVO_VELHO, resposta={'formatos': velhos})
         if bloqueados:

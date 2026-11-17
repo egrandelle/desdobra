@@ -175,8 +175,11 @@ def test_elemento_inteiro_fora_da_peca_pede_ajuste(edicoes, ids):
         por_id = {e['id']: e for e in d['elementos']}
         for k in ids:
             assert not por_id[k].get('sangria_do_da'), (fid, k, por_id[k].get('sangria_do_da'))
-        # o formato volta ao DA: a validacao obrigatoria reprova o enquadramento, e a falha diz o que aconteceu
-        assert d['situacao'] == 'devolvido', (fid, d['situacao'], [r['codigo'] for r in d['registros']])
+        # a falha diz o que aconteceu. 0.9.6 (aprovacao soberana): na familia confirmada, o formato fica derivado, e o
+        # elemento fora da peca vai ao aviso aceito pelo DA (antes: a validacao do enquadramento devolvia o formato)
+        assert d['situacao'] == 'derivado', (fid, d['situacao'], [r['codigo'] for r in d['registros']])
+        aviso = next(r for r in d['registros'] if r['codigo'] == 'aprovado_pelo_da_com_aviso')
+        assert 'fora_do_quadro' in {f['codigo'] for f in aviso['medidas']['falhas']}, aviso
         lay = _falhas_do_membro(edicoes, fid)
         fora = [f for f in lay['falhas'] if f['codigo'] == 'fora_do_quadro']
         assert sorted(k for f in fora for k in f['elementos']) == sorted(ids), lay['falhas']

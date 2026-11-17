@@ -26,8 +26,13 @@ formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A deri
     mesma mestre para todos os membros, mestre_da_galeria), e a escala do texto sai dela. O elemento leva
     quebras_origem ('da', ou 'proposta' na quebra que o motor propos) e origem_geometria 'da' quando a quebra e do DA
     ou foi aprovada por ele. No texto editado, a quebra vale sobre o texto novo, e a caixa e a da tinta medida;
-  - a validacao obrigatoria do motor continua valendo: o layout confirmado que reprova volta ao DA com o nome da
-    validacao, como na derivacao sem tela;
+  - a aprovacao do DA e soberana (0.9.6; proposta da decisao 198): o layout da familia confirmada que a validacao
+    obrigatoria do motor reprova, ou que a conferencia marca (sobreposicao, fora do formato, area segura, distancia,
+    texto na borda), fica derivado, com o registro aprovado_pelo_da_com_aviso e os valores. So a composicao que nao
+    foi confirmada volta ao DA com o nome da validacao, como na derivacao sem tela;
+  - o texto editado tem duas caixas (0.9.6; decisao 196): a de geometria, que da a escala e a transformacao, e a das
+    linhas do DA (caixa_visivel, a tinta medida em volta da ancora), que vale para alinhar, para o Tamanho, para a
+    conferencia, para as validacoes e para a caixa gravada;
   - o piso de escala (133) ou de distancia (135) que o elemento mexido pelo DA fura e decisao dele (M7b, D5): o
     formato leva o registro decisao_do_da, com os valores, no lugar de proposta_com_falha.
 A galeria e a mesma da tela (galeria_da_familia, com os formatos devolvidos da familia na ordem da tela). So le
@@ -43,6 +48,8 @@ MOTIVOS_DA_GALERIA = ('troca_forte_de_orientacao', 'troca_de_orientacao_quadrado
                       'validacao_obrigatoria_reprovou')
 ORIGEM_POR_CAMINHO = {'galeria': 'galeria', 'transform': 'transformacao', 'solver': 'regra', 'mestre_propria': 'da'}
 ORIGEM_DA = 'da'
+# 0.9.6: a familia confirmada pelo DA com aviso da conferencia (aprovacao soberana): o registro leva os valores
+CODIGO_APROVADO_COM_AVISO = 'aprovado_pelo_da_com_aviso'
 ORIGENS_DO_APAGADO = ('da', 'fixture_de_teste')
 QUEBRAS_DO_TEXTO_EDITADO = 'do_texto_editado'
 
@@ -162,7 +169,47 @@ def quadros_do_membro(cf):
     return {'margem': margem, 'area_segura': [float(v) for v in seg] if seg else list(margem)}
 
 
-def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, kv_tamanho):
+def caixa_visivel(el_cf, geo, tinta_doc):
+    """A caixa do texto editado no formato como o DA a ve (0.9.6; decisao 196): a tinta medida das linhas do DA
+    (tinta_doc, no espaco do documento) levada ao formato pela mesma transformacao do elemento (a escala tirada da
+    caixa de geometria geo, como galeria._escalas e galeria._elementos, e o destino no canto dela). Encolhe e cresce
+    com as linhas do DA, em volta da ancora; a escala do texto nao muda. el_cf: o elemento na mestre do membro."""
+    m, doc = el_cf['caixa'], el_cf['caixa_doc']
+    if m[2] > m[0]:
+        s = (float(geo[2]) - float(geo[0])) / (float(m[2]) - float(m[0]))
+    else:
+        s = (float(geo[3]) - float(geo[1])) / (float(m[3]) - float(m[1])) if m[3] > m[1] else 1.0
+    s *= float(el_cf.get('escala_na_mestre') or 1.0)
+    return _no_formato({'s': s, 'origem_doc': [float(doc[0]), float(doc[1])],
+                        'destino': [float(geo[0]), float(geo[1])]}, tinta_doc)
+
+
+def tintas_editadas(ctx, kv, edicoes, fid):
+    """{id do elemento: tinta das linhas do DA no documento} de cada elemento so de texto com texto editado nas
+    edicoes (0.9.6; decisao 196), com a quebra da familia do formato fid sobre o texto novo. A medida e a mesma da
+    derivacao gravada (_caixas_editadas, com o cache). O elemento sem a medida fica de fora: vale a caixa de antes."""
+    from desdobra.briefing import modelo as mb
+    from desdobra.derivacao import quebras as mq
+    cam = mb.camadas_do_laudo(ctx['laudo'])
+    els = []
+    for e in kv['elementos']:
+        texto = mq.texto_editado(edicoes, e['id'])
+        if texto is None or not e['layer_ids'] or \
+                any((cam.get(lid) or {}).get('tipo') != 'texto' for lid in e['layer_ids']):
+            continue
+        x = {'id': e['id'], 'layer_ids': list(e['layer_ids']), 'texto_editado': texto}
+        _quebras_do_editado(ctx, x, fid)
+        els.append(x)
+    if not els:
+        return {}
+    try:
+        medidas = _caixas_editadas(ctx, els)
+    except Exception:  # noqa: BLE001 - sem a medida, o texto fica com a caixa de antes, e o render confere a tinta
+        return {}
+    return {eid: c for eid, (c, _falta) in medidas.items() if c is not None}
+
+
+def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, kv_tamanho, tintas=None):
     """O layout de um membro da familia com as edicoes do DA: as edicoes em proporcao ao formato (o alinhamento no
     quadro com os quadros do membro, M7b, D2), a intencao de alinhamento entre os elementos de conteudo depois de cada
     edicao, so no que ela mexeu (edicao.editar, decisao 185), o alinhamento no quadro firmado de novo e a conferencia
@@ -177,8 +224,13 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
     pede ajuste (revisao 1 da fase D); o lado que so a versao da galeria sangrava deixa de sangrar, sem falha, e o
     elemento que o DA levou inteiro para fora da peca fica onde ele o pos e pede ajuste (revisao 2 da fase D). cf: o
     contexto da galeria do formato (galeria.contexto_do_formato).
-    Devolve {'caixas', 'sangra', 'apagados', 'textos', 'mexidos', 'alinhados', 'no_quadro', 'quadros',
-    'sangria_do_da', 'falhas', 'decisoes_do_da', 'avisos', 'reprovadas', 'elementos'}."""
+    tintas (0.9.6; decisao 196): {id: tinta das linhas do DA no documento} do texto editado (tintas_editadas). O
+    elemento com texto editado tem duas caixas: a de geometria (caixas, a que da a escala e a transformacao) e a
+    visivel (caixas_visiveis, a tinta das linhas do DA em volta da ancora). Alinhar, o Tamanho, o encaixe, a
+    conferencia e as validacoes usam a visivel: o texto que passou de 4 para 2 linhas nunca sobrepoe nem sai do
+    formato pela caixa de antes.
+    Devolve {'caixas', 'caixas_visiveis', 'sangra', 'apagados', 'textos', 'mexidos', 'alinhados', 'no_quadro',
+    'quadros', 'sangria_do_da', 'falhas', 'decisoes_do_da', 'avisos', 'reprovadas', 'elementos'}."""
     from desdobra import limites
     from desdobra.derivacao import elementos as mod_elementos
     from desdobra.derivacao import galeria as mg
@@ -196,8 +248,14 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
     borda = {(k, lado) for k in caixas if k in do_cf for lado, v in do_cf[k]['sangra'].items() if v}
     # as edicoes uma a uma, cada uma com a intencao de alinhamento na hora dela: so o que ela mexeu encaixa no
     # vizinho, com o grupo inteiro, e o alinhado no quadro fica na linha do quadro (decisao 185; M7b, D1 e D2)
+    tintas = dict(tintas or {})
+
+    def visivel(k, geo):
+        # a caixa das linhas do DA (0.9.6): so do elemento com a medida da tinta
+        return caixa_visivel(do_cf[k], geo, tintas[k]) if k in tintas and k in do_cf else None
     caixas, apagados, textos, mexidos, alinhados = edicao.editar(
-        caixas, edicoes, W, H, quadros, borda, conteudo=set(conteudo), kv_caixas=kv_caixas, kv_tamanho=kv_tamanho)
+        caixas, edicoes, W, H, quadros, borda, conteudo=set(conteudo), kv_caixas=kv_caixas, kv_tamanho=kv_tamanho,
+        visivel=visivel if tintas else None)
     intencoes = edicao.intencoes(edicoes)
     # o lado que o DA deixou passar da borda vira sangria do elemento neste membro (M7b, D4): a validacao e a
     # conferencia nao o marcam como defeito; o texto e a marca nunca sangram. A conta e sem a tolerancia do
@@ -207,7 +265,9 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
     do_da = [k for k in mexidos if k in do_cf]
     sangria_do_da = edicao.sangria_do_da(caixas, do_da, W, H, edicao.IGUAL, sem)
     # o elemento que o DA levou inteiro para fora da peca nao sangra: pede ajuste (revisao 2 da fase D)
-    fora_da_peca = [k for k in edicao.fora_da_peca(caixas, do_da, W, H, tol) if k not in sem]
+    editados = [k for k in textos if k in tintas]
+    fora_da_peca = [k for k in edicao.fora_da_peca(edicao.vistas(caixas, visivel, editados), do_da, W, H, tol)
+                    if k not in sem]
     for k, lados in list(sangria_do_da.items()):
         s = dict(sangra.get(k) or do_cf[k]['sangra'])
         # o lado que ja sangrava fica como era (o corte do asset na borda do KV), fora da sangria do DA
@@ -237,8 +297,9 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
         sangra[k] = dict(sangra.get(k) or do_cf[k]['sangra'], **{lado: False for lado in lados})
     # o que o DA nao mexeu fica parado (0.9.5): nada reposiciona os elementos depois das edicoes. O que esta inteiro
     # fora da peca tambem fica onde o DA o pos (a previa mostra o que ele fez), e a conferencia pede ajuste
-    caixas, no_quadro = edicao.firmar(caixas, intencoes, quadros, W, H, borda)
-    falhas, avisos, reprovadas = mg.conferir_edicao(cf, caixas, sangra, apagados)
+    caixas, no_quadro = edicao.firmar(caixas, intencoes, quadros, W, H, borda, visivel=visivel, editados=editados)
+    vis = edicao.vistas(caixas, visivel, editados)
+    falhas, avisos, reprovadas = mg.conferir_edicao(cf, vis, sangra, apagados, geometria=caixas)
     falhas = mg.corte_a_mostra(cf, falhas, cortes)
     falhas = mg.fora_da_peca(cf, falhas, fora_da_peca)
     # o piso que a versao de partida ja furava continua pedindo ajuste (revisao 1 da fase D): o DA so andou ou alinhou o
@@ -248,7 +309,8 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
         f_partida = mg.conferir_edicao(cf, partida, sangra_partida, apagados)[0]
         da_partida = {(f['codigo'], tuple(sorted(f['elementos']))) for f in f_partida if f['codigo'] in mg.PISOS_DO_DA}
     falhas, decisoes = mg.decisoes_do_da(cf, falhas, mexidos, da_partida)
-    return {'caixas': caixas, 'sangra': sangra, 'apagados': apagados, 'textos': textos, 'mexidos': mexidos,
+    return {'caixas': caixas, 'caixas_visiveis': vis, 'sangra': sangra, 'apagados': apagados, 'textos': textos,
+            'mexidos': mexidos,
             'alinhados': alinhados, 'no_quadro': no_quadro, 'quadros': quadros,
             'sangria_do_da': sangria_do_da,
             'falhas': falhas, 'decisoes_do_da': decisoes, 'avisos': avisos, 'reprovadas': reprovadas,
@@ -341,6 +403,21 @@ def lados_fora(caixa, W, H, tol):
                                     ('base', caixa[3] > H + tol)) if fora]
 
 
+def aviso_aprovado_pelo_da(lay, ruins, registros):
+    """As medidas do registro aprovado_pelo_da_com_aviso (0.9.6): as falhas da conferencia que o DA viu na previa
+    ({'codigo', 'texto', 'elementos', 'medidas'}), as validacoes do motor que reprovam (nome, elementos, fonte e
+    medidas) e os lados em que o texto editado passa da borda (o render corta ali, como o palco mostra). {} sem
+    nada."""
+    falhas = [{'codigo': f['codigo'], 'texto': f.get('texto') or '', 'elementos': list(f.get('elementos') or []),
+               'medidas': dict(f.get('medidas') or {})} for f in lay.get('falhas') or []]
+    validacoes = [{'nome': v['nome'], 'elementos': list(v.get('elementos') or []), 'fonte': v.get('fonte'),
+                   'medidas': v.get('medidas')} for v in ruins]
+    borda = [dict(r['medidas']) for r in registros if r.get('codigo') == 'texto_editado_passa_da_borda']
+    if not (falhas or validacoes or borda):
+        return {}
+    return {'falhas': falhas, 'validacoes': validacoes, 'texto_na_borda': borda}
+
+
 def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
     """A derivacao/1 do membro a partir do layout com as edicoes (layout_do_membro). cf: o contexto do formato, com a
     mestre de onde o membro partiu (mestre_do_membro)."""
@@ -380,14 +457,19 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
             x['origem_geometria'] = base
         if e['id'] in lay['textos']:
             x['texto_editado'] = lay['textos'][e['id']]
+            vis = (lay.get('caixas_visiveis') or {}).get(e['id'])
+            if vis is not None and vis is not (lay.get('caixas') or {}).get(e['id']):
+                # 0.9.6 (decisao 196): a caixa gravada do texto editado e a das linhas do DA, a mesma do palco; a
+                # escala e o destino da transformacao continuam os da geometria
+                x['caixa'] = [nd._q(v, nd.CASAS_PX) for v in vis]
         if e['id'] in lay['sangria_do_da']:
             # os lados que o DA deixou passar da borda (M7b, D4): o render corta no quadro
             x['sangria_do_da'] = list(lay['sangria_do_da'][e['id']])
         elementos.append(x)
     registros = list(d['registros'])
     # Linhas do DA (0.9.4): a caixa do texto editado e a tinta medida das linhas dele, com o mesmo corpo. O render a
-    # usa como caixa validada; o texto que passa da borda do formato fica registrado aqui e o render recusa o formato
-    # antes de desenhar (desdobra.render.derivado.montar)
+    # usa como caixa validada; o texto que passa da borda do formato fica registrado aqui e sai cortado nessa borda,
+    # com registro (0.9.6; desdobra.render.derivado.montar)
     from desdobra import limites
     tol = float(limites.valor('derivacao.enquadramento_tolerancia_px'))
     for eid, (caixa, falta) in sorted(_caixas_editadas(ctx, elementos).items()):
@@ -415,12 +497,22 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
                           'medidas': {'decisoes': [{'codigo': x['codigo'], 'elementos': list(x['elementos']),
                                                     'medidas': dict(x.get('medidas') or {})}
                                                    for x in lay['decisoes_do_da']]}})
-    validacoes = mg.validacoes_do_layout(cf, lay['caixas'], lay['sangra'], lay['apagados'])
+    # a conferencia ve a caixa que o DA ve (0.9.6): o texto editado nas linhas dele; a escala sai da geometria
+    validacoes = mg.validacoes_do_layout(cf, lay.get('caixas_visiveis') or lay['caixas'], lay['sangra'],
+                                         lay['apagados'], geometria=lay['caixas'])
     novo.update(elementos=elementos, validacoes=validacoes, caminho=caminho, situacao='derivado', devolucao=None,
                 registros=registros, proposta=dict(proposta),
                 apagados_pelo_da=[{'elemento': k, 'layer_ids': list(kv_por_id[k]['layer_ids']), 'origem': origem_apagado}
                                   for k in lay['apagados']])
     ruins = mv.reprovadas(validacoes)
+    if proposta.get('confirmada'):
+        # a aprovacao do DA e soberana (0.9.6): a familia que ele confirmou olhando a previa nunca volta devolvida por
+        # julgamento de composicao. O que a conferencia e as validacoes acham fica registrado com o valor, e o passo 5
+        # mostra como aviso aceito por ele
+        avisos = aviso_aprovado_pelo_da(lay, ruins, registros)
+        if avisos:
+            registros.append({'codigo': CODIGO_APROVADO_COM_AVISO, 'medidas': avisos})
+        return novo
     if ruins:
         v = ruins[0]
         return nd._devolver(novo, nd._devolucao('validacao_obrigatoria_reprovou',
@@ -464,11 +556,19 @@ def aplicar(ctx, kv, resultados, derivar_um, *, specs, arquivo_specs, params):
         try:
             galeria, kv_galeria, sem_medida = galeria_dos_devolvidos(
                 ctx, kv, dos, [por_id[f] for f in comp['formatos'] if f in dos and f in por_id], **kw)
-        except Exception:  # noqa: BLE001 - a galeria que quebra deixa os formatos como o motor os deixou
+        except Exception as e:  # noqa: BLE001 - a galeria que quebra deixa os formatos como o motor os deixou
             galeria, kv_galeria, sem_medida = None, None, []
+            erro_galeria = type(e).__name__
+        else:
+            erro_galeria = None
+        # a medida das linhas do DA do texto editado (0.9.6; decisao 196): a mesma para todo membro da familia
+        tintas = tintas_editadas(ctx, kv, comp['edicoes'], alvo[0]) if comp['edicoes'] else {}
         for fid in alvo:
             d = dos[fid]
             if d['situacao'] == 'devolvido':
+                if galeria is None and usa_galeria(d):
+                    # 0.9.6: o motivo fica gravado, e o passo 5 o diz (nunca "espera uma decisao sua em Familias")
+                    d['registros'].append({'codigo': 'erro_na_galeria', 'medidas': {'erro': erro_galeria}})
                 if galeria is None or not usa_galeria(d):
                     continue
                 if sem_medida:
@@ -486,7 +586,7 @@ def aplicar(ctx, kv, resultados, derivar_um, *, specs, arquivo_specs, params):
                 mestre = mestre_do_membro(ctx, kv, por_id[fid], d)
             try:
                 cf = mg.contexto_do_formato(ctx, mestre, por_id[fid], **kw)
-                lay = layout_do_membro(cf, elementos, comp['edicoes'], **extra)
+                lay = layout_do_membro(cf, elementos, comp['edicoes'], tintas=tintas, **extra)
                 resultados[fid] = _derivacao(ctx, kv, cf, d, lay, caminho, proposta, _origem_do_apagado(ctx, comp))
             except Exception as e:  # noqa: BLE001 - o formato fica como o motor o deixou, com o registro
                 d['registros'].append({'codigo': 'erro_na_proposta', 'medidas': {'erro': type(e).__name__}})
