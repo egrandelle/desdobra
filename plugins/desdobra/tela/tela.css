@@ -299,6 +299,34 @@ main { flex: 1; min-height: 0; display: flex; }
 }
 .dica-acoes.pronta { color: var(--ok); font-weight: 600; }
 .dica-ir { flex: none; }
+/* revisao 0.9.3: a frase do motivo cabe em duas linhas no rodape; a frase inteira fica no title e na espera */
+.dica-acoes { line-height: 1.35; max-height: calc(2 * 1.35em); overflow: hidden; max-width: 64ch; }
+/* revisao 0.9.3: a recusa do clique ou a escolha que nao foi salva, logo acima do "Salvar e seguir", com o motivo que
+   o desdobra deu. Fica por cima do conteudo, sem mudar a altura do rodape */
+.acoes { position: relative; }
+.aviso-acoes {
+  position: absolute; right: 16px; bottom: calc(100% + 8px); z-index: 30;
+  max-width: min(560px, calc(100vw - 32px)); margin: 0; padding: 10px 14px 10px 34px;
+  color: var(--tinta); background: var(--superficie); font-size: var(--t-13); line-height: 1.4;
+  border: 1px solid var(--linha-forte); border-left: 4px solid var(--aviso, #b45309); border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(15, 15, 20, 0.12); white-space: normal; overflow-wrap: anywhere;
+  animation: entrar 0.18s var(--curva);
+}
+.aviso-acoes::before {
+  content: "!"; position: absolute; left: 12px; top: 10px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--aviso, #b45309); color: #fff; font-size: 10px; font-weight: 700; line-height: 14px;
+  text-align: center;
+}
+.aviso-acoes[hidden] { display: none; }
+.botao.trabalhando { cursor: progress; }
+/* revisao 0.9.3: o motivo do servidor no alto do Design system e os cartoes das funcoes dele */
+.aviso-design {
+  margin: 0 0 16px; padding: 10px 14px; color: var(--tinta); background: var(--superficie);
+  border: 1px solid var(--linha-forte); border-left: 4px solid var(--aviso, #b45309); border-radius: 8px;
+  font-size: var(--t-13); line-height: 1.45;
+}
+.aviso-design[hidden] { display: none; }
+.funcao-ds.em-conflito { border-color: var(--aviso, #b45309); box-shadow: inset 3px 0 0 var(--aviso, #b45309); padding-left: 14px; }
 
 /* ---------------------------------------------------------------- passo 1 */
 .passo-lido { overflow: auto; }

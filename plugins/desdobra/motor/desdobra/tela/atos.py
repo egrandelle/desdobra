@@ -378,6 +378,74 @@ def _ato_da_familia(pasta, conteudo):
                executar=executar, validar=valido)
 
 
+# revisao 0.9.3: o motivo da recusa do "Salvar e seguir", em portugues para o DA, na ordem do que ele resolve primeiro
+MOTIVO_RASCUNHO_GRAVANDO = ('As suas últimas escolhas ainda estão sendo salvas no rascunho. Espere o selo dizer Salvo '
+                            'no rascunho e clique de novo em Salvar e seguir.')
+SEM_FAMILIAS = 'As famílias ainda não foram montadas. '
+MOTIVOS_DO_SALVAR = {
+    'sem_rascunho': MOTIVO_RASCUNHO_GRAVANDO,
+    'modo_dados_sem_escolha': 'Escolha o modo de dados no passo 1.',
+    'sem_formatos': 'O job ainda não tem formato com medida em pixels. Veja Valores de spec, no passo 1.',
+    'formato_sem_medida': 'Um formato da folha tem duas medidas e espera a sua escolha em Valores de spec, no passo 1.',
+    'rotacao_sem_escolha': 'Escolha o giro de cada formato no passo 1.',
+    'padrao_marca_desatualizado': ('O padrão da marca mudou depois do seu clique. No Design system, use o padrão de '
+                                   'novo ou clique de novo no valor que quer manter.'),
+    'formato_com_spec_por_confirmar': ('Um formato de uma família espera a confirmação de um valor de spec. Confirme '
+                                       'os valores dele em Valores de spec, no passo 1, e depois confirme a família.'),
+    'versao_que_a_familia_nao_tem': ('Uma família foi confirmada numa versão que ela não tem mais. Nas Famílias, '
+                                     'escolha a versão e confirme a família de novo.'),
+    'edicao_invalida': ('Uma edição feita numa família não vale mais com as escolhas de agora. Nas Famílias, confira as '
+                        'edições e confirme a família de novo.'),
+    'texto_sem_caractere': ('Um texto editado numa família usa uma letra que a fonte do job não tem. Nas Famílias, '
+                            'troque a letra e confirme a família de novo.'),
+    'briefing_invalido': ('As suas escolhas não formam um briefing que o desdobra consiga gravar. Peça ajuda ao Claude '
+                          'e diga qual foi o seu último clique.'),
+}
+ORDEM_DO_SALVAR = ('rascunho_de_outro_laudo', 'sem_rascunho', 'modo_dados_sem_escolha', 'sem_formatos',
+                   'formato_sem_medida', 'rotacao_sem_escolha', 'briefing_com_problema', 'padrao_marca_desatualizado',
+                   'formato_com_spec_por_confirmar', 'familia_sem_confirmacao', 'versao_que_a_familia_nao_tem',
+                   'edicao_invalida', 'texto_sem_caractere', 'briefing_invalido')
+
+
+def motivo_sem_familias(conteudo):
+    """O motivo do "Salvar e seguir" sem familia nenhuma: o da espera das Familias, como o servidor a monta."""
+    from desdobra.tela import estado
+    p3 = (conteudo.get('estado') or {}).get('passo_3') or {}
+    m = p3.get('motivo') or {}
+    return SEM_FAMILIAS + (m.get('texto') or p3.get('texto') or estado.AGUARDA_PASSO_2)
+
+
+def motivo_do_salvar(pend, detalhes=None):
+    """O texto da recusa do "Salvar e seguir" para o DA, pela primeira pendencia (salvar.pendencias) na ordem do que
+    ele resolve primeiro. detalhes: o briefing montado e os erros inteiros da conferencia, para dizer as camadas."""
+    from desdobra.tela import servidor
+    from desdobra.tela import estado
+    detalhes = detalhes or {}
+    codigos = {p['codigo'] for p in pend}
+    for codigo in ORDEM_DO_SALVAR + tuple(sorted(codigos - set(ORDEM_DO_SALVAR))):
+        if codigo not in codigos:
+            continue
+        if codigo == 'rascunho_de_outro_laudo':
+            return servidor.MOTIVO_PSD_RELIDO
+        if codigo == 'familia_sem_confirmacao':
+            n = sum(1 for p in pend if p['codigo'] == codigo)
+            return 'Falta confirmar 1 família para salvar.' if n == 1 else \
+                'Falta confirmar %d famílias para salvar.' % n
+        if codigo == 'briefing_com_problema':
+            m = None
+            if detalhes.get('erros') is not None and detalhes.get('laudo') is not None:
+                try:
+                    from desdobra.briefing import modelo as mb
+                    resolvidas = mb.resolver(detalhes['laudo'], detalhes['briefing'])[0]
+                except (KeyError, TypeError, ValueError):
+                    resolvidas = {}
+                m = estado.motivo_da_conferencia(detalhes['erros'], detalhes['laudo'], resolvidas)
+            return m['texto'] if m else estado.AGUARDA_CONFERENCIA
+        if codigo in MOTIVOS_DO_SALVAR:
+            return MOTIVOS_DO_SALVAR[codigo]
+    return MOTIVOS_DO_SALVAR['briefing_invalido']
+
+
 def _ato_de_salvar(pasta, conteudo):
     """O ato "Salvar e seguir" (decisoes-v1.md, 167): com todas as familias confirmadas, grava o briefing confirmado e
     deriva os formatos (desdobra.briefing.salvar, o mesmo gravador do "briefing confirmar" do terminal). O servidor
@@ -388,9 +456,18 @@ def _ato_de_salvar(pasta, conteudo):
 
     def valido(d):
         # a pagina manda o rascunho como a janela o mostra; ele tem de ser o gravado (revisao do M7a). Sem familia
-        # (o passo 3 ainda espera o passo 2), nada e salvo
-        return _chaves(d, 'rascunho') and bool(conteudo.get('familias')) and \
-            rascunho.mesma_vista(pasta, d['rascunho']) and not salvar.pendencias(pasta, conteudo)
+        # (o passo 3 ainda espera o passo 2), nada e salvo. Revisao 0.9.3: a recusa que o DA resolve leva o motivo
+        # em portugues (servidor.Recusa), e a pagina o mostra ao lado do botao
+        from desdobra.tela.servidor import Recusa
+        if not _chaves(d, 'rascunho') or not isinstance(d['rascunho'], dict):
+            return False
+        if not conteudo.get('familias'):
+            return Recusa(motivo_sem_familias(conteudo))
+        if not rascunho.mesma_vista(pasta, d['rascunho']):
+            return Recusa(MOTIVO_RASCUNHO_GRAVANDO)
+        detalhes = {}
+        pend = salvar.pendencias(pasta, conteudo, detalhes=detalhes)
+        return Recusa(motivo_do_salvar(pend, detalhes)) if pend else True
 
     def texto(_d):
         n = len(conteudo['familias'])

@@ -173,10 +173,12 @@ def _quebras_das_familias(novo, conteudo, dados, tipo):
         novo['quebras_por_familia'] = antes + da_tela
 
 
-def pendencias(pasta, conteudo, origem=None):
+def pendencias(pasta, conteudo, origem=None, detalhes=None):
     """O que impede gravar: [{'codigo', ...}], vazio quando o briefing pode ser gravado. origem: a do Disparo (da ou
     fixture_de_teste); None antes do dialogo (vale qualquer uma das duas). conteudo: o da tela
-    (desdobra.tela.estado.montar), com as familias e a previa da edicao."""
+    (desdobra.tela.estado.montar), com as familias e a previa da edicao. detalhes: um dict que recebe o briefing montado
+    e os erros inteiros da conferencia, com as camadas (revisao 0.9.3: o motivo da recusa do "Salvar e seguir" diz o
+    nome delas ao DA)."""
     from desdobra.briefing import modelo as mb
     from desdobra.tela import rascunho
     from desdobra.tela import estado as mod_estado
@@ -244,6 +246,8 @@ def pendencias(pasta, conteudo, origem=None):
              if not (e['codigo'] == 'pendente_obrigatorio' and e.get('onde') == '/modo_dados')]
     if erros:
         saida.append({'codigo': 'briefing_com_problema', 'erros': sorted({e['codigo'] for e in erros})})
+    if detalhes is not None:
+        detalhes.update(briefing=b, erros=erros, laudo=laudo)
     return saida
 
 

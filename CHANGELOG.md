@@ -2,6 +2,22 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.9.3 (16/11/2026): as famílias aparecem depois do Design system
+
+Correção do teste do KV A na 0.9.2: com as funções e o Design system feitos, as famílias não apareciam, o "Salvar e seguir" não dava retorno e o passo das Famílias mandava de volta para Funções. Tudo foi conferido em arquivos sintéticos.
+
+- A tela agora pergunta ao desdobra pelas famílias também depois de cada escolha do Design system. Antes, ela só perguntava depois de uma escolha de função, e quem fazia o Design system por último via a espera velha.
+- Quando o desdobra ainda não consegue montar as famílias, o passo das Famílias diz o motivo concreto, com o nome das camadas, marca na lista o item que falta e leva ao lugar certo. A lista nunca fica toda verde junto com a espera.
+- Todo motivo que o desdobra pode dar ganhou uma frase para o DA, com o passo onde ele se resolve.
+- No KV A, o motivo mais provável é o retângulo de fundo e o grafismo, que se sobrepõem e andam juntos num bloco: as funções deles precisam da mesma regra de escala. O Design system mostra esse aviso no alto, e a contagem "Faltam" conta esse item.
+- O "Salvar e seguir" fica desligado enquanto as famílias não aparecem, com o motivo ao lado. A frase "Tudo confirmado. Pode salvar." só aparece com todas as famílias confirmadas.
+- Quando o desdobra recusa um clique ou uma escolha não é salva, o aviso aparece no rodapé, ao lado do "Salvar e seguir", com o motivo que o desdobra deu. O botão mostra "Conferindo" enquanto espera a resposta. A frase "Tente de novo" saiu dos casos em que tentar de novo não resolve.
+- Quando uma escolha não é salva, o rodapé e o passo das Famílias dizem isso, com o motivo. Antes, a tela podia ficar dizendo "Salvando" sem salvar nada.
+- O aviso de um clique recusado sai quando você muda alguma coisa ou troca de passo. O motivo aparece uma vez só, no rodapé, e o foco do teclado volta ao botão.
+- A frase curta ao lado do "Salvar e seguir" diz o que fazer, como "Dê a mesma regra de tamanho às funções do bloco". As listas de camadas usam "e" no fim, e uma camada sem nome aparece como "sem nome".
+- O botão "Ir para o Design system" mostra o aviso do motivo junto do cartão que resolve, também nas telas menores.
+- A regra de bloco que veio de um briefing salvo fora da tela não se muda na tela. Quando ela trava as famílias, a tela diz para pedir ajuda ao Claude, em vez de mandar a um passo sem esse controle.
+
 ## 0.9.2 (16/11/2026): formatos digitados na tela
 
 Para o job que chega sem folha de spec. Sem folha, o job não tinha formato nenhum, e as famílias nunca apareciam. Tudo foi conferido em arquivos sintéticos.

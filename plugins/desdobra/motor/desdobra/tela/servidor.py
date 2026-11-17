@@ -11,7 +11,11 @@ Regras (cada uma com teste em testes/test_tela_servidor.py e testes/test_tela_es
     cabecalho X-Desdobra-CSRF com o token da sessao (entregue so na pagina, na meta dsd-csrf; um formulario comum nao
     manda cabecalho), Content-Length presente e ate tela.corpo_max_bytes (sem Transfer-Encoding; acima do teto, a
     recusa sai sem ler o corpo), JSON em UTF-8 e o esquema da rota conferido antes da gravacao atomica. Toda recusa e
-    403 ou 404, sem corpo e sem dizer o motivo;
+    403 ou 404, sem corpo e sem dizer o motivo. A excecao (revisao 0.9.3, Recusa): a escrita que passou por todas
+    essas conferencias e que o DA resolve na tela (o "Salvar e seguir" que ainda nao pode salvar, o rascunho de uma
+    pagina aberta antes de o PSD ser lido de novo) e recusada com 403 e {'motivo': texto em portugues para o DA}, sem
+    codigo, caminho nem detalhe tecnico. O ato ou a previa pedidos com uma tarefa em andamento tambem levam o motivo,
+    so quando o corpo tem a forma da rota (forma_da_rota); fora dela, a recusa e a de esquema, sem corpo;
   - rascunho (POST e GET /api/rascunho): briefing/rascunho.json (desdobra.tela.rascunho), com a chave do hash do
     laudo; o rascunho de outro laudo e recusado na gravacao e nunca volta calado na leitura;
   - cronometro da mestre (POST /api/medicao; M7b, C5): o sinal de clique ou tecla da pagina, com a familia aberta e as
@@ -165,6 +169,22 @@ class _ServidorExclusivo(http.server.ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):
         """Nada e impresso: um erro numa requisicao so fecha a conexao dela."""
+
+
+@dataclass(frozen=True)
+class Recusa:
+    """A recusa de uma escrita que passou por todas as conferencias de seguranca e que o DA resolve na tela (revisao
+    0.9.3): a resposta e 403 com {'motivo': texto} em portugues para o DA, sem codigo, caminho nem detalhe tecnico. As
+    recusas de seguranca (cookie, origem, CSRF, corpo, esquema) continuam 403 ou 404 sem corpo."""
+    motivo: str
+
+
+# o rascunho de uma pagina aberta antes de o PSD ser lido de novo: gravar outra vez nao resolve (revisao 0.9.3)
+MOTIVO_PSD_RELIDO = ('O PSD foi lido de novo com esta janela aberta, e ela ainda mostra a leitura antiga. Feche esta '
+                     'janela e peça ao Claude para abrir a tela de novo.')
+# o ato pedido enquanto outra tarefa da tela roda (o render, a aprovacao): clicar de novo depois resolve
+MOTIVO_TAREFA_EM_ANDAMENTO = ('O desdobra está terminando outra tarefa, como um render. Espere ela acabar, no passo 5, '
+                              'e clique de novo.')
 
 
 @dataclass(frozen=True)
@@ -518,6 +538,22 @@ class ServidorTela:
         """A escrita `chave` espera a tarefa longa acabar (a edicao fica bloqueada durante ela)."""
         return chave in BLOQUEADAS_NA_TAREFA and self.tarefas is not None and self.tarefas.ocupada
 
+    def forma_da_rota(self, chave, dados):
+        """O corpo tem a forma minima da rota (revisao 0.9.3, regressao 2): so o pedido com essa forma recebe o motivo
+        da tarefa em andamento; fora dela, a recusa e a de esquema, sem corpo. A conferencia inteira continua em
+        _escrever, depois da tarefa."""
+        from desdobra.tela import edicao
+        if not isinstance(dados, dict):
+            return False
+        if chave == 'ato_pedir':
+            return set(dados) == {'ato', 'dados'} and isinstance(dados['ato'], str) and dados['ato'] in self.atos
+        if chave == 'ato_confirmar':
+            return set(dados) == {'pedido', 'resposta'} and dados['resposta'] == RESPOSTA_CONFIRMAR
+        if chave == 'familia_previa':
+            return (isinstance(dados.get('familia'), str) and
+                    set(dados) <= set(edicao.CAMPOS + edicao.CAMPOS_OPCIONAIS))
+        return False
+
     def _estado_servido(self):
         if self.escreve:
             with self._trava_escrita:
@@ -719,7 +755,9 @@ class ServidorTela:
         from desdobra.tela import rascunho
         laudo_agora = rascunho.laudo_sha256(self.pasta)
         if laudo_agora != self.laudo_sha256:
-            return None  # o PSD foi relido com a tela aberta: o rascunho desta pagina e de outro laudo
+            # o PSD foi relido com a tela aberta: o rascunho desta pagina e de outro laudo, e o DA precisa saber que
+            # gravar de novo nao resolve (revisao 0.9.3)
+            return Recusa(MOTIVO_PSD_RELIDO)
         try:
             # cada familia mexida guarda os formatos que a tela mostra para ela agora (revisao do M7b, fase A)
             gravado = rascunho.gravar(self.pasta, dados, job_id=self.job_id, laudo_atual=laudo_agora,
@@ -743,6 +781,8 @@ class ServidorTela:
         # contra a tela montada com eles, mesmo antes de a pagina pedir o estado de novo (revisao do M7a)
         self._atualizar()
         valido = ato.validar(dados['dados']) if ato.validar is not None else dados['dados'] == {}
+        if isinstance(valido, Recusa):
+            return valido  # o motivo para o DA (o "Salvar e seguir" que ainda nao pode salvar, revisao 0.9.3)
         if valido is not True:
             return None
         if ato.preparar is not None:
@@ -967,13 +1007,27 @@ class ServidorTela:
                 except (UnicodeDecodeError, ValueError):
                     return self._negar(403, 'dado_recusado')  # numero-neutro: codigo HTTP
                 if dono.bloqueada(chave):
-                    return self._negar(403, 'tarefa_em_andamento')  # numero-neutro: codigo HTTP
+                    # revisao 0.9.3: o pedido passou pelas conferencias de seguranca, e o DA precisa saber por que
+                    # o clique nao foi aceito agora; o corpo fora da forma da rota sai como recusa de esquema, sem
+                    # corpo (regressao 2 da revisao adversarial)
+                    if not dono.forma_da_rota(chave, dados):
+                        return self._negar(403, 'dado_recusado')  # numero-neutro: codigo HTTP
+                    dono._contar('tarefa_em_andamento')
+                    self.close_connection = True
+                    corpo = json.dumps({'motivo': MOTIVO_TAREFA_EM_ANDAMENTO}, ensure_ascii=False).encode('utf-8')
+                    return self._responder(403, corpo, MIME_JSON)  # numero-neutro: codigo HTTP
                 try:
                     feito = dono._escrever(chave, dados)
                 except Exception:  # noqa: BLE001 - erro do ato: 500 sem detalhe, nada impresso
                     return self._negar(500, 'erro_do_ato')  # numero-neutro: codigo HTTP
                 if feito is None:
                     return self._negar(403, 'dado_recusado')  # numero-neutro: codigo HTTP
+                if isinstance(feito, Recusa):
+                    # revisao 0.9.3: a recusa que o DA resolve leva o motivo dele, em portugues
+                    dono._contar('dado_recusado')
+                    self.close_connection = True
+                    corpo = json.dumps({'motivo': feito.motivo}, ensure_ascii=False).encode('utf-8')
+                    return self._responder(403, corpo, MIME_JSON)  # numero-neutro: codigo HTTP
                 codigo, resposta = feito
                 dono._contar(chave)
                 if resposta is None:

@@ -213,11 +213,15 @@
   const DICA_QUADRO = 'Escolha a prancheta da peça no passo 1.';
   const DICA_GIRO = 'Escolha o giro de cada formato no passo 1.';
   const DICA_MEDIDA = 'Escolha a medida do formato com duas medidas no passo 1.';
+  /* revisao 0.9.3: sem familia, o motivo do servidor ao lado do botao */
+  const DICA_SEM_FAMILIAS = 'As famílias ainda não foram montadas. ';
+  const DICA_GRAVANDO = 'Salvando as suas escolhas. As famílias aparecem logo depois.';
   /* curto para caber em duas linhas no rodape a 1280 px (revisao do M7b, fase B) */
   const AVISO_SALVO = 'O briefing está salvo. Cada formato parte agora das famílias que você confirmou. ' +
     'O render e a aprovação ficam no passo 5.';
   let salvoNaTela = false;
   let p2Mudou = false;
+  let esperaReconferida = false; // revisao 0.9.3: o estado pedido de novo uma vez quando a pagina e o servidor discordam
   const ajustes = new WeakMap();
   const mundos = new WeakMap(); // o mundo de cada palco desenhado, para marcar camadas por cima
   const regua = document.createElement('canvas').getContext('2d');
@@ -259,9 +263,48 @@
       headers: { 'Content-Type': 'application/json', 'X-Desdobra-CSRF': csrf },
       body: JSON.stringify(dados)
     }).then(function (r) {
-      if (!r.ok) throw new Error('rota ' + r.status);
+      if (!r.ok) {
+        /* revisao 0.9.3: a recusa que o DA resolve vem com {motivo} em portugues (desdobra.tela.servidor.Recusa); a
+           recusa de seguranca vem sem corpo. O erro leva o status e o motivo, quando ha */
+        const erro = new Error('rota ' + r.status);
+        erro.status = r.status;
+        return r.text().then(function (t) {
+          try { const d = JSON.parse(t); if (d && typeof d.motivo === 'string') erro.motivo = d.motivo; } catch (e) { /* sem corpo */ }
+          throw erro;
+        }, function () { throw erro; });
+      }
       return r.status === 204 ? null : r.json();
+    }, function () {
+      const erro = new Error('rede');
+      erro.status = 0;
+      throw erro;
     });
+  }
+  /* revisao 0.9.3: o aviso do rodape, ao lado de "Salvar e seguir": o motivo da recusa do ato ou da gravacao que
+     falhou, em frase legivel em qualquer largura. O selo continua; este aviso fica perto do botao */
+  const AVISO_SEM_CONEXAO = 'A tela perdeu a conexão com o desdobra. Confira se a janela do desdobra continua aberta. ' +
+    'Se ela foi fechada, peça ao Claude para abrir a tela de novo.';
+  const AVISO_RECUSA_SEM_MOTIVO = 'O desdobra não aceitou este clique. Feche esta janela e peça ao Claude para abrir ' +
+    'a tela de novo.';
+  const AVISO_ERRO_DO_DESDOBRA = 'O desdobra teve um erro ao registrar o clique. Peça ajuda ao Claude e diga qual ' +
+    'foi o seu último clique.';
+  function motivoDoErro(e) {
+    if (e && e.motivo) return e.motivo;
+    if (!e || !e.status) return AVISO_SEM_CONEXAO;
+    if (e.status >= 500) return AVISO_ERRO_DO_DESDOBRA;
+    return AVISO_RECUSA_SEM_MOTIVO;
+  }
+  /* revisao adversarial 0.9.3 (UX 1): o aviso da recusa de um ato vale para aquele clique. A mudanca nova do DA, a
+     troca de passo e a gravacao que deu certo tiram ele; o aviso da gravacao que falhou fica ate ela gravar */
+  function tirarAvisoDeAto() {
+    if (!rascunho.avisoNoRodape) avisarNoRodape('');
+  }
+  function avisarNoRodape(texto) {
+    const n = document.getElementById('aviso-acoes');
+    if (!n) return;
+    n.textContent = texto || '';
+    n.hidden = !texto;
+    n.title = texto || '';
   }
 
   /* ---------------------------------------------------------------- rascunho (decisoes 164 e 167) */
@@ -305,19 +348,62 @@
     // o passo 2 ou o Design system mudou: depois de gravado, o servidor monta o passo 3 de novo (o GET do estado)
     const refazer = p2Mudou;
     p2Mudou = false;
+    let gravou = false;
+    // revisao 0.9.3: do envio ate o estado novo chegar, a pagina sabe que o servidor ainda nao viu estas escolhas
+    if (refazer) rascunho.refazendo = (rascunho.refazendo || 0) + 1;
+    const fim = function () { if (refazer) rascunho.refazendo -= 1; };
     return enviar('/api/rascunho', corpoDoRascunho())
       .then(function () {
+        gravou = true;
         rascunho.tentativas = 0;
         if (rascunho.espera_id === null) marcarRascunho('salvo');
+        // a escolha nova gravou: o aviso do rodape (da gravacao que falhou ou da recusa de um ato) ficou velho
+        rascunho.avisoNoRodape = false;
+        rascunho.falha = null;
+        avisarNoRodape('');
       })
-      .then(function () { return refazer ? refazerPasso3() : null; })
-      .then(function () { return true; })
-      .catch(function () {
+      .then(function () { return refazer ? refazerPasso3().then(function (x) { fim(); return x; }, function (e) { fim(); throw e; }) : null; })
+      .then(function () { atualizarSalvar(); redesenharEspera(); return true; })
+      .catch(function (e) {
+        if (!gravou) fim();
+        if (gravou) {
+          // gravou, e o estado novo nao chegou: a pagina pede de novo na proxima gravacao
+          if (refazer) p2Mudou = true;
+          atualizarSalvar();
+          return true;
+        }
         if (refazer) p2Mudou = true;
+        // revisao 0.9.3: o motivo do servidor vale para o DA, e gravar de novo sozinho nao resolve
+        if (e && e.motivo) rascunho.tentativas = REPETIR_RASCUNHO_MS.length;
         marcarRascunho('erro');
+        avisoDoRascunho(e);
         repetirRascunho();
+        // revisao adversarial 0.9.3 (D1): o rodape e a espera das Familias mostram a falha, nunca "Salvando"
+        atualizarSalvar();
+        redesenharEspera();
         return false;
       });
+  }
+  /* revisao 0.9.3: a escolha que nao gravou aparece no rodape, ao lado de "Salvar e seguir", com o motivo do servidor
+     quando ele vem */
+  function avisoDoRascunho(e) {
+    let resto;
+    if (e && e.motivo) resto = e.motivo;
+    else if (e && e.status === 0) resto = AVISO_SEM_CONEXAO;
+    else if (e && e.status >= 400 && e.status < 500) resto = AVISO_RECUSA_SEM_MOTIVO;
+    else resto = rascunho.tentativas >= REPETIR_RASCUNHO_MS.length ?
+      'Ela continua na tela. Faça uma mudança para salvar de novo.' :
+      'Ela continua na tela, e o desdobra tenta salvar de novo sozinho.';
+    rascunho.avisoNoRodape = true;
+    rascunho.falha = resto;
+    avisarNoRodape(RASCUNHO_NAO_SALVO + ' ' + resto);
+  }
+  /* revisao adversarial 0.9.3 (D1): a ultima escolha nao gravou (recusada, ou as tentativas sozinhas ainda nao
+     deram certo). Enquanto isso, a pagina nao diz que esta salvando nem que esta tudo pronto: o servidor nao viu a
+     escolha, e o estado dele pode ser de antes dela */
+  const RASCUNHO_NAO_SALVO = 'A sua última escolha não foi salva.';
+  function rascunhoNaoSalvo() {
+    return !!(escrita && raiz.dataset.rascunho === 'erro');
   }
   /* o rascunho que nao gravou (revisao 1 da fase D): a pagina tenta de novo sozinha, com esperas maiores a cada vez;
      a mudanca nova do DA tambem tenta. Enquanto isso, "Confirmar família" fica desligado */
@@ -403,6 +489,7 @@
     if (!escrita || rascunho.espera === null) return;
     // o briefing salvo deixa de valer para a tela: a mudanca nova pede outro Salvar e seguir
     if (salvoNaTela) { salvoNaTela = false; atualizarSalvar(); }
+    tirarAvisoDeAto();
     clearTimeout(rascunho.espera_id);
     rascunho.tentativas = 0; // a mudanca nova tenta de novo, tambem depois das tentativas sozinhas
     marcarRascunho('pendente');
@@ -591,11 +678,44 @@
     if (nome === 'salvar') return { rascunho: corpoDoRascunho() };
     return dados;
   }
-  function pedirAto(nome, dados, aoRecusar) {
+  /* revisao 0.9.3: o botao clicado mostra que esta trabalhando enquanto o desdobra confere o pedido (desligado,
+     aria-busy; o "Salvar e seguir" diz "Conferindo"), e volta quando a janela abre ou a recusa chega */
+  const TRABALHANDO = 'Conferindo';
+  function trabalhando(b, sim) {
+    if (!b) return;
+    if (sim) {
+      b.dataset.desligadoAntes = b.disabled ? '1' : '';
+      // revisao adversarial 0.9.3 (UX 2): o botao desligado perde o foco; ele volta quando a conferencia acaba
+      b.dataset.tinhaFoco = document.activeElement === b ? '1' : '';
+      b.disabled = true;
+      b.setAttribute('aria-busy', 'true');
+      b.classList.add('trabalhando');
+      if (b.id === 'salvar-seguir') b.textContent = TRABALHANDO;
+      return;
+    }
+    if (b.getAttribute('aria-busy') !== 'true') return;
+    b.removeAttribute('aria-busy');
+    b.classList.remove('trabalhando');
+    b.disabled = b.dataset.desligadoAntes === '1';
+    delete b.dataset.desligadoAntes;
+    if (b.id === 'salvar-seguir') atualizarSalvar();
+    const tinhaFoco = b.dataset.tinhaFoco === '1';
+    delete b.dataset.tinhaFoco;
+    if (!tinhaFoco || !b.isConnected) return;
+    // o foco volta ao botao; desligado, ao aviso do rodape (que diz por que), para o teclado nao cair no inicio
+    const av = document.getElementById('aviso-acoes');
+    if (!b.disabled) b.focus();
+    else if (av && !av.hidden) { av.tabIndex = -1; av.focus(); }
+  }
+  function pedirAto(nome, dados, aoRecusar, origem) {
     /* aoRecusar (revisao do M3): quem chama sabe dizer ao DA por que o motor recusou o pedido (403 antes da janela);
-       entao o aviso fica com ele, sem a frase de tentar de novo, que nao resolve */
+       entao o aviso fica com ele, sem a frase de tentar de novo, que nao resolve. origem: o botao clicado (revisao
+       0.9.3), que mostra o trabalho e perto do qual a recusa aparece */
     let recusado = false;
+    let erroDoPedido = null;
     raiz.dataset.estadoAto = '';
+    if (!rascunho.avisoNoRodape) avisarNoRodape('');
+    trabalhando(origem, true);
     // o rascunho que espera, ou que nao gravou, vai antes: o ato confirma o que esta gravado. Sem gravar, o ato nao
     // vai (revisao 1 da fase D)
     let antes = Promise.resolve(true);
@@ -607,9 +727,11 @@
       if (gravou === false) throw new Error('rascunho');
       return enviar('/api/ato/pedir', { ato: nome, dados: comVista(nome, dados || {}) }).catch(function (e) {
         recusado = !!(e && e.message === 'rota 403');
+        erroDoPedido = e;
         throw e;
       });
     }).then(function (p) {
+      trabalhando(origem, false);
       // M7c, M5: a janela do registro do padrao da marca mostra o que vai ao perfil
       // 0.9.1: a janela do texto como imagem lista as camadas atingidas
       const extra = nome === 'marca_registrar' ? extraDoRegistro() :
@@ -631,12 +753,28 @@
             if (novo) novo.focus();
           });
       });
-    }).catch(function () {
+    }).catch(function (e) {
       raiz.dataset.estadoAto = 'erro';
-      if (recusado && aoRecusar) { aoRecusar(); return; }
-      document.getElementById('selo').textContent = 'A tela não conseguiu registrar a ação. Tente de novo.';
+      const motivo = (erroDoPedido && erroDoPedido.motivo) || (e && e.motivo) || null;
+      if (recusado && aoRecusar && !motivo) { trabalhando(origem, false); aoRecusar(); return; }
+      // revisao 0.9.3: o motivo que o servidor deu, no rodape; nunca "Tente de novo" quando nao resolve
+      const selo = document.getElementById('selo');
+      if (e && e.message === 'rascunho') {
+        selo.textContent = 'O clique não foi registrado porque a sua última escolha não foi salva.';
+        trabalhando(origem, false);
+        return;
+      }
+      const texto = motivo || motivoDoErro(erroDoPedido || e);
+      avisarNoRodape(texto);
+      // revisao adversarial 0.9.3 (UX 3): o motivo e anunciado uma vez, pelo aviso do rodape (role=alert); o selo
+      // (role=status) diz so que o clique nao foi registrado, com o motivo no title
+      selo.textContent = SELO_CLIQUE_RECUSADO;
+      selo.title = texto;
+      // o aviso ja esta na tela: o foco do teclado pode ir a ele quando o botao fica desligado
+      trabalhando(origem, false);
     });
   }
+  const SELO_CLIQUE_RECUSADO = 'O clique não foi registrado. O motivo está no rodapé.';
   function ligarAtos() {
     if (!escrita) return;
     document.addEventListener('click', function (ev) {
@@ -645,7 +783,7 @@
       ev.preventDefault();
       let dados = {};
       try { dados = b.dataset.dados ? JSON.parse(b.dataset.dados) : {}; } catch (e) { return; }
-      pedirAto(b.dataset.ato, dados);
+      pedirAto(b.dataset.ato, dados, undefined, b);
     });
   }
 
@@ -710,6 +848,7 @@
     if (id === 'pecas' && !document.querySelector('#orientacoes [role=tab]')) iniciarPecas(null);
     if (id === 'pecas') reajustar(document.getElementById('palco'));
     if (id === 'formatos') montarPainel();
+    tirarAvisoDeAto();
     atualizarSalvar();
   }
 
@@ -1809,8 +1948,21 @@
     return out;
   }
   function atualizarFaltam() {
-    montarFaltam((estado.faltam || []).concat(p2idx.opcoes ? pendenciasP2() : [], escrita ? pendenciasDasQuebras() : []));
+    const doP2 = p2idx.opcoes ? pendenciasP2() : [];
+    montarFaltam((estado.faltam || []).concat(doP2, doP2.length ? [] : pendenciaDaEspera(),
+      escrita ? pendenciasDasQuebras() : []));
     atualizarSalvar();
+  }
+  /* revisao 0.9.3: com o passo 2 e o Design system completos na pagina, o motivo da espera do servidor conta no
+     "Faltam" (o "Faltam 0" com as familias em espera contradizia a tela). As specs sem formato e a prancheta ja vem
+     na lista do servidor */
+  function pendenciaDaEspera() {
+    const m = esperaDoServidor();
+    if (!m || m.codigo === 'sem_formatos' || m.codigo === 'quadro_sem_escolha') return [];
+    // o motivo sem lugar na tela (a regra de bloco, revisao adversarial 0.9.3, D2) leva as Familias, onde a espera
+    // diz que o Claude resolve
+    return [{ texto: m.curto ? m.curto + '.' : m.texto, detalhe: m.texto, ir: irDoMotivo(m) || { passo: 'pecas' },
+      tipo: 'motivo' }];
   }
   function idsDasFamilias() {
     const ids = [];
@@ -1820,8 +1972,41 @@
   function dicaDasFamilias(n) {
     return n === 1 ? 'Falta confirmar 1 família para salvar.' : 'Falta confirmar ' + n + ' famílias para salvar.';
   }
-  /* o botao Salvar e seguir e a linha ao lado dele: o que ainda falta, ou o briefing salvo e o proximo passo */
+  /* revisao 0.9.3: as escolhas da pagina que ainda nao chegaram ao servidor (gravando, ou gravadas sem o estado novo):
+     enquanto isso, a pagina nao contradiz o servidor nem diz que esta tudo pronto */
+  function escolhasEmVoo() {
+    const s = raiz.dataset.rascunho;
+    // revisao adversarial 0.9.3 (D1): a gravacao que falhou nao esta em voo (rascunhoNaoSalvo): p2Mudou fica ligado
+    // so para pedir o estado de novo na proxima gravacao
+    if (rascunhoNaoSalvo()) return false;
+    return !!(escrita && (p2Mudou || rascunho.refazendo > 0 || s === 'pendente' || s === 'salvando'));
+  }
+  /* revisao 0.9.3: a espera das Familias que vem do servidor, quando nada da pagina esta em voo: {texto, curto, passo,
+     funcoes} do motivo (desdobra.tela.estado.espera_e_motivo), ou null */
+  function esperaDoServidor() {
+    const p3 = estado && estado.passo_3;
+    // com a ultima escolha sem gravar, o estado do servidor e de antes dela: a pagina mostra a falha (rascunhoNaoSalvo)
+    if (!p3 || !p3.aguarda_passo_2 || escolhasEmVoo() || rascunhoNaoSalvo()) return null;
+    const m = p3.motivo || {};
+    return { texto: m.texto || p3.texto, curto: m.curto || '', passo: m.passo || p3.ir || null,
+      funcoes: m.funcoes || [], codigo: m.codigo || null, inteiro: p3.texto };
+  }
+  function irDoMotivo(m) {
+    if (!m || !m.passo) return null;
+    if (m.passo === 'design') {
+      const v = vistasDoDesign().find(function (x) { return m.funcoes.indexOf(x.funcao) >= 0; });
+      return v ? { passo: 'design', chave: v.chave } : { passo: 'design' };
+    }
+    return { passo: m.passo };
+  }
+  /* o botao Salvar e seguir e a linha ao lado dele: o que ainda falta, ou o briefing salvo e o proximo passo. Enquanto o
+     ato do botao confere (aria-busy), ele continua desligado e com o texto do trabalho */
   function atualizarSalvar() {
+    atualizarSalvarAgora();
+    const b = document.getElementById('salvar-seguir');
+    if (b.getAttribute('aria-busy') === 'true') { b.disabled = true; b.textContent = TRABALHANDO; }
+  }
+  function atualizarSalvarAgora() {
     const b = document.getElementById('salvar-seguir');
     const dica = document.getElementById('dica-acoes');
     const aviso = document.getElementById('salvo');
@@ -1829,6 +2014,7 @@
     aviso.hidden = !salvoNaTela;
     aviso.textContent = salvoNaTela ? AVISO_SALVO : '';
     dica.classList.remove('pronta', 'bloqueia');
+    dica.removeAttribute('title');
     irDica.hidden = true;
     b.removeAttribute('title');
     if (estado) marcarAbas(ultimaFaltam);
@@ -1849,6 +2035,7 @@
     const semGiro = lido.specs.formatos.some(function (f) { return !giroCompleto(giroDe(f)); });
     /* o formato da folha com duas medidas, sem a escolha do DA: o servidor recusa salvar (formato_sem_medida) */
     const semMedida = (lido.specs.sem_medida || []).length > 0;
+    const semFamilias = !idsDasFamilias().length;
     /* 0.9.2 (A6): o motivo em tinta, junto do botao, e o "Ir até lá" leva ao lugar onde ele se resolve */
     let destino = null;
     if (semFormatos) {
@@ -1859,16 +2046,30 @@
     else if (semQuadro) { dica.textContent = DICA_QUADRO; destino = { passo: 'lido', alvo: 'bloco-quadros' }; }
     else if (semGiro) { dica.textContent = DICA_GIRO; destino = { passo: 'lido', alvo: 'lido-formatos' }; }
     else if (p2falta) { dica.textContent = DICA_P2; destino = pendenciasP2()[0].ir; }
-    else if (semConfirmar) {
+    else if (semFamilias) {
+      // revisao 0.9.3: sem familia nenhuma, nunca "Tudo confirmado"; o motivo e o do servidor, e o "Ir até lá" leva ao
+      // passo dele
+      const m = esperaDoServidor();
+      // revisao adversarial 0.9.3 (D1): a escolha que nao gravou; o motivo inteiro fica no aviso acima do rodape
+      if (rascunhoNaoSalvo()) { dica.textContent = RASCUNHO_NAO_SALVO; dica.title = RASCUNHO_NAO_SALVO + ' ' + (rascunho.falha || ''); }
+      else if (escolhasEmVoo()) dica.textContent = DICA_GRAVANDO;
+      else if (m) {
+        // curto no rodape (cabe em duas linhas a 1024 px); a frase inteira no title, na espera e no Design system
+        dica.textContent = DICA_SEM_FAMILIAS + (m.curto ? m.curto + '.' : m.texto);
+        dica.title = DICA_SEM_FAMILIAS + m.texto;
+        destino = irDoMotivo(m);
+      }
+      else dica.textContent = DICA_SEM_FAMILIAS.trim();
+    } else if (semConfirmar) {
       dica.textContent = dicaDasFamilias(semConfirmar);
       const gid = idsDasFamilias().find(function (id) { const f = rascunho.familias[id]; return !(f && f.confirmada); });
       // ja na familia que falta, o botao ao lado (Confirmar família) e o caminho; o "Ir até lá" so leva a outra
       if (gid && !(vista.familia === gid && !document.getElementById('passo-pecas').hidden)) destino = { passo: 'pecas', familia: gid };
     } else { dica.textContent = DICA_PRONTA; dica.classList.add('pronta'); }
-    b.disabled = !!(semConfirmar || p2falta || semModo || semFormatos || semQuadro || semGiro || semMedida);
+    b.disabled = !!(semConfirmar || p2falta || semModo || semFormatos || semQuadro || semGiro || semMedida || semFamilias);
     if (b.disabled) {
       dica.classList.add('bloqueia');
-      b.title = dica.textContent;
+      b.title = dica.title || dica.textContent;
     }
     if (destino) {
       irDica.hidden = false;
@@ -1886,10 +2087,16 @@
     });
     if (typeof atualizarBotaoFamilia === 'function' && vista.familia) atualizarBotaoFamilia();
   }
-  function mudouP2() {
+  /* revisao 0.9.3 (relato do KV A): a escolha do Design system tambem pede o estado de novo depois de gravada. Antes,
+     so a escolha de funcao ligava p2Mudou, e quem fazia o Design system por ultimo via nas Familias a espera velha */
+  function mudouDesign() {
     p2Mudou = true;
+    esperaReconferida = false;
     tirarConfirmacoes();
     mudouRascunho();
+  }
+  function mudouP2() {
+    mudouDesign();
     atualizarArvore();
     atualizarFaltam();
     if (p2idx.atual !== null) detalhar(p2idx.por.get(p2idx.atual));
@@ -2169,7 +2376,7 @@
         erro.hidden = !!v;
         if (v) { delete p2obs[lid]; p2.funcoes[lid] = { funcao: 'indeterminado', observacao: v }; }
         else { p2obs[lid] = t.value; delete p2.funcoes[lid]; }
-        mudouRascunho();
+        mudouDesign();
         atualizarArvore();
         atualizarFaltam();
         montarDesign();
@@ -2252,7 +2459,13 @@
     mostrarPasso('design');
     montarDesign();
     const b = document.querySelector('#resumo-design [data-chave="' + chave + '"] button');
-    if (b) { b.scrollIntoView({ block: 'nearest' }); b.focus(); }
+    if (!b) return;
+    // revisao adversarial 0.9.3 (UX 4): o cartao em conflito vem com o aviso do motivo logo acima, os dois no alto
+    const av = document.getElementById('aviso-design');
+    const art = b.closest('article');
+    if (av && !av.hidden && art && av.nextElementSibling === art) av.scrollIntoView({ block: 'start' });
+    else b.scrollIntoView({ block: 'nearest' });
+    b.focus({ preventScroll: true });
   }
   function gravarDesign(v, campo, valor) {
     const alvo = v.funcao === 'indeterminado' ? p2.design_camadas : p2.design;
@@ -2267,8 +2480,7 @@
     if ((mudou || vencida) && d.origem) { delete d.origem[campo]; if (!Object.keys(d.origem).length) delete d.origem; }
     alvo[k] = d;
     p2idx.design = v.chave;
-    tirarConfirmacoes();
-    mudouRascunho();
+    mudouDesign();
     atualizarFaltam();
     const foco = document.activeElement;
     const marca = foco ? [foco.dataset.regra, foco.dataset.x, foco.dataset.y].join('|') : null;
@@ -2339,8 +2551,7 @@
     d.origem = origem;
     p2.design[v.funcao] = d;
     p2idx.design = v.chave;
-    tirarConfirmacoes();
-    mudouRascunho();
+    mudouDesign();
     atualizarFaltam();
     montarDesign();
     const b = document.querySelector('#resumo-design [data-chave="' + v.chave + '"] .padrao-marca');
@@ -2402,6 +2613,12 @@
     s.appendChild(el('h1', 'Design system'));
     s.appendChild(el('p', 'Para cada função, escolha como o tamanho muda de uma peça para outra e onde ela se prende. ' +
       'O elemento escolhido fica marcado no KV ao lado.', 'nota'));
+    // revisao 0.9.3: o motivo do servidor que se resolve aqui (o bloco com regras diferentes, no KV A), no alto
+    const avDs = el('p', null, 'aviso-design');
+    avDs.id = 'aviso-design';
+    avDs.setAttribute('role', 'status');
+    avDs.hidden = true;
+    s.appendChild(avDs);
     const vistas = vistasDoDesign();
     if (!vistas.length) {
       const vazio = el('div', null, 'vazio-design');
@@ -2475,6 +2692,7 @@
     const semFuncao = pendenciasP2().some(function (x) { return x.tipo === 'funcao' || x.tipo === 'coberta'; });
     if (prontas) {
       const fim = el('div', null, 'design-fim');
+      fim.id = 'design-fim';
       fim.appendChild(el('p', semFuncao ? 'Tudo escolhido aqui. Ainda falta função em alguma camada, no passo 2.' :
         'Tudo escolhido. As famílias usam estas regras no próximo passo.', 'nota'));
       const ir = botao(semFuncao ? 'Ir para Funções' : 'Ir para Famílias', 'botao botao-primario');
@@ -2486,7 +2704,36 @@
       s.appendChild(fim);
     }
     s.scrollTop = rolagem;
+    avisoDoDesign();
     marcarDesign();
+  }
+  /* revisao 0.9.3: o aviso do Design system segue a espera do servidor (sem montar a lista de novo): o texto no alto,
+     os cartoes das funcoes do motivo marcados e o "Tudo escolhido" fora da vista enquanto o servidor recusa */
+  function avisoDoDesign() {
+    const av = document.getElementById('aviso-design');
+    if (!av) return;
+    const m = esperaDoServidor();
+    const aqui = !!(m && m.passo === 'design' && m.codigo !== 'passo_2_incompleto');
+    av.textContent = aqui ? m.texto : '';
+    av.hidden = !aqui;
+    Array.from(document.querySelectorAll('#resumo-design article.funcao-ds')).forEach(function (a) {
+      const v = vistasDoDesign().find(function (x) { return x.chave === a.dataset.chave; });
+      a.classList.toggle('em-conflito', aqui && !!v && m.funcoes.indexOf(v.funcao) >= 0);
+    });
+    // revisao adversarial 0.9.3 (UX 4): o aviso fica logo acima do primeiro cartao em conflito, junto do controle que
+    // resolve; a 1024 px, o "Ir para o Design system" mostra os dois juntos (irParaDesign)
+    const primeiro = document.querySelector('#resumo-design article.funcao-ds.em-conflito');
+    if (primeiro && av.nextElementSibling !== primeiro) primeiro.parentNode.insertBefore(av, primeiro);
+    const fim = document.getElementById('design-fim');
+    if (fim) fim.hidden = aqui;
+  }
+  /* revisao 0.9.3: o estado novo chegou e nada esta em voo: a espera das Familias, o aviso do Design system e o
+     "Faltam" seguem o servidor */
+  function redesenharEspera() {
+    if (!estado) return;
+    atualizarFaltam();
+    avisoDoDesign();
+    if (!document.getElementById('passo-pecas').hidden && !(estado.orientacoes || []).length) iniciarPecas(null);
   }
   function marcarDesign() {
     const v = vistasDoDesign().find(function (x) { return x.chave === p2idx.design; });
@@ -2607,9 +2854,32 @@
       estado: design.length ? (nDesign === 1 ? '1 função sem tamanho ou âncora, no passo 3' : nDesign + ' funções sem tamanho ou âncora, no passo 3') :
         (funcoes.length ? 'Depois das funções, no passo 3' : 'Todas as funções têm tamanho e âncora'),
       botao: 'Ir para o Design system', ir: design.length ? design[0].ir : { passo: 'design' } });
+    /* revisao 0.9.3 (paridade com o servidor): a lista toda feita na pagina e o servidor ainda esperando. O item do
+       passo do motivo vira "Falta", com o nome curto do motivo; o motivo de outro lugar entra como item proprio. A
+       lista nunca fica toda verde junto com a espera */
+    const m = esperaDoServidor();
+    // o motivo sem passo na tela (a regra de bloco, revisao adversarial 0.9.3, D2) tambem entra, sem botao
+    if (m && lista.every(function (c) { return c.feito; })) {
+      const nomes = { funcoes: 'Função de cada camada', design: 'Tamanho e âncora de cada função' };
+      const botoes = { lido: 'Ir para O que eu li', funcoes: 'Ir para Funções', design: 'Ir para o Design system',
+        pecas: 'Ir para Famílias' };
+      const ir = irDoMotivo(m);
+      const alvo = lista.find(function (c) { return c.nome === nomes[m.passo]; });
+      const curto = m.curto || 'O desdobra ainda recusa as escolhas';
+      if (alvo) Object.assign(alvo, { feito: false, estado: curto + '. ' + m.texto, botao: botoes[m.passo], ir: ir });
+      else lista.push({ nome: 'Conferência do desdobra', feito: false, estado: curto + '. ' + m.texto,
+        botao: botoes[m.passo] || 'Ir até lá', ir: ir });
+    }
     return lista;
   }
   function mostrarEspera(texto) {
+    // revisao 0.9.3: a pagina com o passo 2 completo e o servidor dizendo que falta escolha: o estado e pedido de novo
+    // uma vez (o estado que a pagina tem pode ser de antes da ultima gravacao); a lista ja mostra o que o servidor diz
+    const m = esperaDoServidor();
+    if (m && m.codigo === 'passo_2_incompleto' && escrita && !(p2idx.opcoes && pendenciasP2().length) && !esperaReconferida) {
+      esperaReconferida = true;
+      refazerPasso3().catch(function () { return null; });
+    }
     document.getElementById('passo-pecas').classList.add('esperando');
     const caixa = document.getElementById('espera-familias');
     caixa.hidden = false;
@@ -2630,19 +2900,28 @@
     });
     const ir = document.getElementById('espera-ir');
     const primeira = lista.find(function (c) { return !c.feito; });
-    ir.hidden = !primeira;
+    // revisao adversarial 0.9.3 (D1): a ultima escolha nao gravou; o servidor nao a viu, e as familias esperam por ela
+    if (rascunhoNaoSalvo()) {
+      document.getElementById('espera-texto').textContent = RASCUNHO_NAO_SALVO + ' ' + (rascunho.falha || '') +
+        ' As famílias aparecem aqui depois que ela for salva.';
+    }
+    // o item sem lugar na tela (a regra de bloco, D2) fica sem botao: o texto diz que o Claude resolve
+    ir.hidden = !(primeira && primeira.ir);
     if (primeira) {
-      ir.textContent = primeira.botao;
-      ir.onclick = function () { irPara(primeira.ir); };
-    } else if (p2Mudou || raiz.dataset.rascunho === 'pendente' || raiz.dataset.rascunho === 'salvando') {
+      if (primeira.ir) {
+        ir.textContent = primeira.botao;
+        ir.onclick = function () { irPara(primeira.ir); };
+      }
+    } else if (escolhasEmVoo()) {
       // tudo feito na tela e o rascunho ainda gravando: as familias chegam sozinhas quando ele grava
       ir.hidden = true;
       document.getElementById('espera-texto').textContent = 'Tudo pronto. As famílias aparecem aqui assim que as suas escolhas forem salvas.';
-    } else {
+    } else if (!rascunhoNaoSalvo()) {
       // tudo feito e o desdobra ainda recusa: o texto do servidor diz o motivo concreto, e o botao leva ao passo dele
-      // (revisao do 0.9.2: o botao ficava escondido, e o DA sem saida)
-      const destino = (estado.passo_3 && estado.passo_3.ir) === 'design' ? 'design' : 'funcoes';
-      ir.hidden = false;
+      // (revisao do 0.9.2: o botao ficava escondido, e o DA sem saida); sem passo na tela, sem botao
+      const passo = estado.passo_3 && estado.passo_3.ir;
+      const destino = passo === 'design' ? 'design' : 'funcoes';
+      ir.hidden = !passo;
       ir.textContent = destino === 'design' ? 'Ir para o Design system' : 'Ir para Funções';
       ir.onclick = function () { mostrarPasso(destino); };
     }

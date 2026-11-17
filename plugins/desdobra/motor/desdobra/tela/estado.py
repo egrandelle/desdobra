@@ -1309,18 +1309,131 @@ AGUARDA_CONFERENCIA = ('As funções e o Design system estão preenchidos, mas o
 # leva ao passo dele (motivo_da_conferencia). {camadas}: o nome das camadas
 AGUARDA_CONFERENCIA_COM_MOTIVO = ('As funções e o Design system estão preenchidos, mas o desdobra ainda não consegue '
                                   'montar as famílias. %s')
+# revisao 0.9.3: todo codigo da conferencia do motor (desdobra.briefing.modelo.conferir) tem a frase para o DA, o passo
+# onde ele se resolve (DESTINO_DO_MOTIVO: 'lido', 'funcoes', 'design' ou 'pecas'; None quando a tela nao tem o
+# controle e a frase manda pedir ajuda ao Claude) e o nome curto da lista da espera
+# (CURTO_DO_MOTIVO). {camadas}: o nome das camadas; {funcoes}: o nome das funcoes delas (testes/test_tela_revisao_093.py
+# percorre todos os codigos)
 MOTIVOS_DA_CONFERENCIA = {
-    'mestre_sem_elemento': ('Nenhuma camada ficou dentro da peça: todas estão em Fora da peça ou sem nada visível. Em '
-                            'Funções, dê a função certa às camadas que aparecem na peça.'),
+    'pendente_obrigatorio': ('Uma escolha obrigatória do briefing ainda está sem valor. Abra a lista Faltam, no alto da '
+                             'tela, e resolva o primeiro item.'),
+    'indeterminado_sem_observacao': ('A camada {camadas} está com a função indeterminado e ainda não tem a sua '
+                                     'observação. Em Funções, escreva a observação ou escolha outra função.'),
+    'camada_inexistente': ('As escolhas citam uma camada que o PSD lido agora não tem. Em Funções, confira as camadas e '
+                           'escolha a função delas de novo.'),
+    'quadro_invalido': ('A prancheta escolhida não existe no PSD lido agora. Escolha de novo a prancheta da peça no '
+                        'passo 1.'),
+    'quadro_sem_escolha': 'O PSD tem pranchetas, e a peça ainda não diz de qual delas sai. Escolha a prancheta no passo 1.',
+    'camada_sem_funcao': 'A camada {camadas} ainda não tem função. Em Funções, escolha a função dela.',
+    'coberta_sem_decisao': ('A camada {camadas} fica coberta por outra no KV e ainda espera a sua decisão. Em Funções, '
+                            'decida o que fazer com ela.'),
+    'regra_de_escala_faltando': ('A função {funcoes} ainda não tem regra de escala. No Design system, escolha o tamanho '
+                                 'dessa função.'),
+    'ancora_faltando': ('A camada {camadas}, com a função {funcoes}, ainda não tem âncora. No Design system, escolha a '
+                        'âncora dessa função.'),
+    'formato_repetido': ('Dois formatos do job ficaram com o mesmo nome. Confira os formatos em Valores de spec, no '
+                         'passo 1, e peça ajuda ao Claude se a lista estiver certa.'),
+    'mestre_invalida': ('Uma família cita um formato que o job não tem mais. Confira os formatos no passo 1 e confirme '
+                        'as famílias de novo.'),
+    'job_diferente': ('As escolhas salvas são de outro job. Feche esta janela e peça ao Claude para abrir a tela do job '
+                      'certo.'),
     'camada_sem_tinta_sem_bloco': ('A camada {camadas} não tem nada visível na peça e não está em nenhum bloco. Em '
                                    'Funções, mude a função dela para Fora da peça.'),
-    'bloco_com_regras_diferentes': ('As camadas {camadas} andam juntas num bloco, e as funções delas têm regras de '
-                                    'escala diferentes. No Design system, dê a mesma regra a essas funções.'),
-    'regra_de_bloco_conflitante': ('As camadas {camadas} andam juntas num bloco com regras de escala que não '
-                                   'combinam. No Design system, dê a mesma regra às funções dessas camadas.'),
+    'mestre_sem_elemento': ('Nenhuma camada ficou dentro da peça: todas estão em Fora da peça ou sem nada visível. Em '
+                            'Funções, dê a função certa às camadas que aparecem na peça.'),
+    'bloco_com_regras_diferentes': ('As camadas {camadas} andam juntas num bloco, e as funções delas ({funcoes}) têm '
+                                    'regras de escala diferentes. No Design system, dê a mesma regra a essas funções.'),
+    # revisao 0.9.3 (corretude D2): a regra de bloco (regras_bloco) vem de um briefing salvo fora da tela, e a tela
+    # nao tem controle dela; o motivo nao manda a um passo (DESTINO_DO_MOTIVO None) e diz que o Claude resolve
+    'regra_de_bloco_conflitante': ('As camadas {camadas} andam juntas num bloco, e o briefing salvo dá a elas regras '
+                                   'de bloco que não combinam. Essa regra não se muda na tela. Peça ajuda ao Claude '
+                                   'para deixar uma regra só nesse bloco.'),
+    'regra_de_bloco_sem_bloco': ('A camada {camadas} tem uma regra de bloco no briefing salvo, mas não anda junto com '
+                                 'outra camada. Essa regra não se muda na tela. Peça ajuda ao Claude para tirar a '
+                                 'regra de bloco dessa camada.'),
+    'quebra_em_caixa_de_paragrafo': ('A quebra de linha da camada {camadas} está num texto de caixa de parágrafo, que '
+                                     'quebra sozinho na largura da caixa. Nas Famílias, tire a quebra desse texto.'),
+    'quebra_para_formato_inexistente': ('A quebra de linha da camada {camadas} cita um formato que o job não tem '
+                                        'mais. Nas Famílias, confira a quebra desse texto.'),
+    'quebra_com_faixa_invertida': ('A quebra de linha da camada {camadas} vale para uma faixa de proporções que não '
+                                   'existe. Nas Famílias, confira a quebra desse texto.'),
+    'quebras_conflitantes': ('A camada {camadas} tem duas quebras de linha diferentes para os mesmos formatos. Nas '
+                             'Famílias, fique com uma só.'),
+    'quebras_da_mestre_propria_ambiguas': ('A camada {camadas} junta mais de um texto, e a quebra de linha dela não diz '
+                                           'de qual texto é. Nas Famílias, confira a quebra desse elemento.'),
+    'quebra_aprovada_invalida': ('A quebra de linha da camada {camadas} cita uma posição que o texto não tem. Nas '
+                                 'Famílias, confira a quebra desse texto.'),
+    'quebra_fora_de_espaco': ('A quebra de linha da camada {camadas} cai fora de um espaço do texto. Nas Famílias, '
+                              'mude a quebra para um espaço entre as palavras.'),
+    'quebra_fora_da_familia': ('Uma quebra de linha cita uma família que mudou de formatos. Nas Famílias, confira a '
+                               'quebra e confirme a família de novo.'),
+    'quebra_proposta_sem_aprovacao': ('Uma família confirmada tem uma quebra de linha proposta pelo desdobra que ainda '
+                                      'espera a sua aprovação. Nas Famílias, aprove ou mude a quebra.'),
+    'composicao_com_formato_inexistente': ('Uma família confirmada cita um formato que o job não tem mais. Nas '
+                                           'Famílias, confirme essa família de novo.'),
+    'formato_em_duas_composicoes': ('Um formato ficou em duas famílias confirmadas. Nas Famílias, confirme de novo as '
+                                    'famílias desse formato.'),
+    'formato_id_reservado': ('Um formato do job ficou com um nome que o desdobra não aceita. Peça ajuda ao Claude para '
+                             'trocar o nome desse formato.'),
 }
-DESTINO_DO_MOTIVO = {'mestre_sem_elemento': 'funcoes', 'camada_sem_tinta_sem_bloco': 'funcoes',
-                     'bloco_com_regras_diferentes': 'design', 'regra_de_bloco_conflitante': 'design'}
+DESTINO_DO_MOTIVO = {
+    'pendente_obrigatorio': 'lido', 'indeterminado_sem_observacao': 'funcoes', 'camada_inexistente': 'funcoes',
+    'quadro_invalido': 'lido', 'quadro_sem_escolha': 'lido', 'camada_sem_funcao': 'funcoes',
+    'coberta_sem_decisao': 'funcoes', 'regra_de_escala_faltando': 'design', 'ancora_faltando': 'design',
+    'formato_repetido': 'lido', 'mestre_invalida': 'pecas', 'job_diferente': 'lido',
+    'camada_sem_tinta_sem_bloco': 'funcoes', 'mestre_sem_elemento': 'funcoes', 'bloco_com_regras_diferentes': 'design',
+    'regra_de_bloco_conflitante': None, 'regra_de_bloco_sem_bloco': None, 'quebra_em_caixa_de_paragrafo': 'pecas',
+    'quebra_para_formato_inexistente': 'pecas', 'quebra_com_faixa_invertida': 'pecas', 'quebras_conflitantes': 'pecas',
+    'quebras_da_mestre_propria_ambiguas': 'pecas', 'quebra_aprovada_invalida': 'pecas', 'quebra_fora_de_espaco': 'pecas',
+    'quebra_fora_da_familia': 'pecas', 'quebra_proposta_sem_aprovacao': 'pecas',
+    'composicao_com_formato_inexistente': 'pecas', 'formato_em_duas_composicoes': 'pecas', 'formato_id_reservado': 'lido',
+}
+# revisao 0.9.3 (UX 6): o curto aparece ao lado de "Salvar e seguir" e diz o que fazer, em ate 60 letras
+CURTO_DO_MOTIVO = {
+    'pendente_obrigatorio': 'Resolva o primeiro item da lista Faltam',
+    'indeterminado_sem_observacao': 'Escreva a observação da camada indeterminada',
+    'camada_inexistente': 'Confira as camadas em Funções',
+    'quadro_invalido': 'Escolha de novo a prancheta no passo 1',
+    'quadro_sem_escolha': 'Escolha a prancheta no passo 1',
+    'camada_sem_funcao': 'Escolha a função da camada em Funções',
+    'coberta_sem_decisao': 'Decida o que fazer com a camada coberta',
+    'regra_de_escala_faltando': 'Escolha o tamanho da função no Design system',
+    'ancora_faltando': 'Escolha a âncora da função no Design system',
+    'formato_repetido': 'Confira os nomes dos formatos no passo 1',
+    'mestre_invalida': 'Confirme as famílias de novo',
+    'job_diferente': 'Feche a janela e peça ao Claude o job certo',
+    'camada_sem_tinta_sem_bloco': 'Mude a camada sem nada visível para Fora da peça',
+    'mestre_sem_elemento': 'Dê função às camadas que aparecem na peça',
+    'bloco_com_regras_diferentes': 'Dê a mesma regra de tamanho às funções do bloco',
+    'regra_de_bloco_conflitante': 'Peça ajuda ao Claude com a regra do bloco',
+    'regra_de_bloco_sem_bloco': 'Peça ajuda ao Claude com a regra de bloco',
+    'quebra_em_caixa_de_paragrafo': 'Tire a quebra do texto de parágrafo',
+    'quebra_para_formato_inexistente': 'Confira a quebra de linha nas Famílias',
+    'quebra_com_faixa_invertida': 'Confira a quebra de linha nas Famílias',
+    'quebras_conflitantes': 'Fique com uma quebra só para o texto',
+    'quebras_da_mestre_propria_ambiguas': 'Confira a quebra de linha nas Famílias',
+    'quebra_aprovada_invalida': 'Confira a quebra de linha nas Famílias',
+    'quebra_fora_de_espaco': 'Mude a quebra para um espaço entre as palavras',
+    'quebra_fora_da_familia': 'Confira a quebra e confirme a família de novo',
+    'quebra_proposta_sem_aprovacao': 'Aprove ou mude a quebra proposta',
+    'composicao_com_formato_inexistente': 'Confirme a família de novo',
+    'formato_em_duas_composicoes': 'Confirme de novo as famílias do formato',
+    'formato_id_reservado': 'Peça ao Claude para trocar o nome do formato',
+}
+# o nome de cada funcao para o DA, como a pagina (tela/tela.js, FUNCOES)
+NOMES_DAS_FUNCOES = {
+    'fundo': 'fundo', 'imagem': 'imagem', 'sujeito': 'sujeito', 'veu_de_legibilidade': 'véu de legibilidade',
+    'grafismo': 'grafismo', 'titulo': 'título', 'texto_de_apoio': 'texto de apoio', 'cta': 'CTA',
+    'url_ou_contato': 'URL ou contato', 'texto_legal': 'texto legal', 'informacao_de_evento': 'informação de evento',
+    'destaque_numerico': 'destaque numérico', 'icone_de_cta': 'ícone de CTA', 'logo_principal': 'logo principal',
+    'assinatura_institucional': 'assinatura institucional', 'selo': 'selo', 'logo_de_parceiro': 'logo de parceiro',
+    'ajuste_global': 'ajuste global', 'estrutura': 'estrutura', 'fora_da_peca': 'fora da peça',
+    'indeterminado': 'indeterminado',
+}
+# o passo 2 com escolha faltando e as specs sem formato: a espera leva ao passo do primeiro que falta
+CURTO_PASSO_2 = 'Escolha o que falta em Funções ou no Design system'
+CURTO_SEM_FORMATOS = 'Escreva os formatos com medida em pixels no passo 1'
+CURTO_CONFERENCIA = 'Confira as funções das camadas em Funções'
 AGUARDA_QUADRO = 'O PSD tem pranchetas. Escolha no passo 1 de qual prancheta a peça sai, e as famílias aparecem aqui.'
 # specs sem nenhum formato em pixels (revisao do M7a): o passo 3 e a lista do que falta dizem o que falta e o que fazer
 SEM_FORMATOS = ('As famílias saem dos formatos das specs, e o job ainda não tem nenhum formato com medida em pixels. '
@@ -1428,50 +1541,95 @@ def espera_do_passo_3(pasta, ctx):
     """None quando o briefing do contexto passa na conferencia do motor (o modo de dados fica para o passo 1), senao o
     aviso do passo 3 que espera: as specs sem formato em pixels, a prancheta sem escolha, o passo 2 com escolha
     faltando, ou o passo 2 completo que a conferencia ainda recusa."""
+    return espera_e_motivo(pasta, ctx)[0]
+
+
+def espera_e_motivo(pasta, ctx):
+    """(aviso do passo 3 que espera ou None, motivo ou None). O motivo (revisao 0.9.3) e o que a pagina usa para nunca
+    contradizer o servidor: {'codigo', 'texto', 'curto', 'passo', 'camadas', 'funcoes'}, com o passo onde a espera se
+    resolve ('lido', 'funcoes', 'design', 'pecas' ou None), o nome das camadas e as funcoes envolvidas (a pagina marca os
+    cartoes do Design system delas)."""
     from desdobra.briefing import modelo as mb
     from desdobra.tela import funcoes, rascunho
     if not ctx['briefing']['formatos']:
-        return SEM_FORMATOS
+        return SEM_FORMATOS, _motivo('sem_formatos', SEM_FORMATOS, CURTO_SEM_FORMATOS, 'lido')
     erros = [e for e in mb.conferir(ctx['laudo'], ctx['briefing'], ctx['estado']['job_id'])
              if not (e['codigo'] == 'pendente_obrigatorio' and e.get('onde') == '/modo_dados')]
     if not erros:
-        return None
-    if any(e['codigo'] in ('quadro_sem_escolha', 'quadro_invalido') for e in erros):
-        return AGUARDA_QUADRO
+        return None, None
+    quadro = next((e for e in erros if e['codigo'] in ('quadro_sem_escolha', 'quadro_invalido')), None)
+    if quadro is not None:
+        return AGUARDA_QUADRO, motivo_da_conferencia([quadro], ctx['laudo'])
     dados, _de_outro = rascunho.ler(pasta, rascunho.laudo_sha256(pasta))
-    if funcoes.pendencias(ctx['laudo'], dados or {}, ctx['info'].get('quadro')):
-        return AGUARDA_PASSO_2
+    pend = funcoes.pendencias(ctx['laudo'], dados or {}, ctx['info'].get('quadro'))
+    if pend:
+        primeira = pend[0]
+        passo = 'funcoes' if primeira['tipo'] in ('funcao', 'coberta') else 'design'
+        f = primeira.get('funcao')
+        return AGUARDA_PASSO_2, _motivo('passo_2_incompleto', AGUARDA_PASSO_2, CURTO_PASSO_2, passo,
+                                        funcoes=[f] if f else [])
     # o motivo vem da conferencia do briefing com o passo 2 do rascunho por cima (o ctx pode ser o de antes dele)
     conferido = conferencia_do_passo_2(pasta, ctx)
-    motivo = motivo_da_conferencia(conferido[1] if conferido else erros, ctx['laudo'])
-    return AGUARDA_CONFERENCIA_COM_MOTIVO % motivo[0] if motivo else AGUARDA_CONFERENCIA
+    briefing = conferido[0] if conferido else ctx['briefing']
+    try:
+        resolvidas = mb.resolver(ctx['laudo'], briefing)[0]
+    except (KeyError, TypeError, ValueError):
+        resolvidas = {}
+    motivo = motivo_da_conferencia(conferido[1] if conferido else erros, ctx['laudo'], resolvidas)
+    if motivo is None:
+        return AGUARDA_CONFERENCIA, _motivo('conferencia', AGUARDA_CONFERENCIA, CURTO_CONFERENCIA, 'funcoes')
+    return AGUARDA_CONFERENCIA_COM_MOTIVO % motivo['texto'], motivo
 
 
-def motivo_da_conferencia(erros, laudo):
-    """(texto, passo) do primeiro erro da conferencia do briefing que o DA resolve na tela, com o nome das camadas, ou
-    None. passo: 'funcoes' ou 'design', para onde o botao da espera leva (revisao do 0.9.2: tudo feito na lista e o
-    motor ainda recusa, como no KV A)."""
+def _motivo(codigo, texto, curto, passo, camadas=(), funcoes=()):
+    return {'codigo': codigo, 'texto': texto, 'curto': curto, 'passo': passo, 'camadas': list(camadas),
+            'funcoes': list(funcoes)}
+
+
+SEM_NOME = 'sem nome'
+
+
+def lista_pt(itens):
+    """Os itens numa frase para o DA (revisao 0.9.3, UX 5): 'a', 'a e b' ou 'a, b e c'; '' sem item."""
+    itens = [str(i) for i in itens]
+    if not itens:
+        return ''
+    *inicio, ultimo = itens
+    return ', '.join(inicio) + ' e ' + ultimo if inicio else ultimo
+
+
+def motivo_da_conferencia(erros, laudo, resolvidas=None):
+    """O motivo do primeiro erro da conferencia do briefing ({'codigo', 'texto', 'curto', 'passo', 'camadas',
+    'funcoes'}), com o nome das camadas e das funcoes delas, ou None quando nenhum erro tem motivo. passo: o lugar da
+    tela onde o DA resolve ('lido', 'funcoes', 'design' ou 'pecas'), para onde o botao da espera leva, ou None (o
+    Claude resolve; a espera fica sem botao). resolvidas:
+    {layer_id: {'funcao', ...}} do briefing conferido, para dizer as funcoes das camadas (revisao 0.9.3)."""
     nomes = {c['identidade']['layer_id']: c.get('nome') or '' for c in laudo.get('camadas') or []}
+    resolvidas = resolvidas or {}
     for e in erros:
         codigo = e.get('codigo')
         if codigo not in MOTIVOS_DA_CONFERENCIA:
             continue
         m = e.get('medidas') or {}
         ids = m.get('camadas') or ([m['layer_id']] if m.get('layer_id') is not None else [])
-        camadas = ', '.join(nomes.get(i) or str(i) for i in ids)
-        return MOTIVOS_DA_CONFERENCIA[codigo].replace('{camadas}', camadas), DESTINO_DO_MOTIVO[codigo]
+        # revisao 0.9.3 (regressao 4): a camada sem nome nunca mostra o id do motor ao DA
+        camadas = [nomes.get(i) or SEM_NOME for i in ids]
+        funcoes = []
+        for f in ([m['funcao']] if m.get('funcao') else []) + [(resolvidas.get(i) or {}).get('funcao') for i in ids]:
+            if f and f not in funcoes:
+                funcoes.append(f)
+        texto = MOTIVOS_DA_CONFERENCIA[codigo].replace('{camadas}', lista_pt(camadas) or 'citada') \
+            .replace('{funcoes}', lista_pt([NOMES_DAS_FUNCOES.get(f, f.replace('_', ' ')) for f in funcoes]) or 'citada')
+        return _motivo(codigo, texto, CURTO_DO_MOTIVO[codigo], DESTINO_DO_MOTIVO[codigo], camadas, funcoes)
     return None
 
 
-def destino_da_espera(texto):
-    """Para onde o botao da espera leva quando a lista do que as familias pedem esta toda feita: o passo do motivo
-    concreto ('funcoes' ou 'design'), ou None."""
-    if not texto or not texto.startswith(AGUARDA_CONFERENCIA_COM_MOTIVO[:40]):
-        return None
-    for codigo, frase in MOTIVOS_DA_CONFERENCIA.items():
-        if frase.split('{camadas}')[0] in texto:
-            return DESTINO_DO_MOTIVO[codigo]
-    return None
+def passo_3_na_tela(espera, motivo, aplicado):
+    """O passo 3 do estado da tela: se espera, o texto do servidor, o motivo estruturado e o passo para onde o botao da
+    espera leva (ir), e se a pagina ja mostra o passo 2 do rascunho."""
+    return {'aguarda_passo_2': espera is not None, 'texto': espera or '', 'passo_2_aplicado': aplicado,
+            'ir': motivo['passo'] if (espera is not None and motivo) else None,
+            'motivo': motivo if espera is not None else None}
 
 
 def palco_do_documento(laudo, base, resolvidas, quadro):
@@ -1849,7 +2007,7 @@ def montar(pasta, teto=None, biblioteca=None):
             # o passo 3 mostra o passo 2 do rascunho (ou o rascunho nao tem passo 2): a pagina tira o aviso de que as
             # familias ainda sao as de antes
             aplicado = ctx is not ctx_base or _sem_passo_2(pasta)
-            espera = espera_do_passo_3(pasta, ctx)
+            espera, motivo_da_espera = espera_e_motivo(pasta, ctx)
             specs, arquivo_specs = mf.specs_do_job(pasta)
             params = mf.parametros(pasta, ctx['briefing'])
             if espera is None:
@@ -1917,8 +2075,7 @@ def montar(pasta, teto=None, biblioteca=None):
               'funcoes': {'arvore': arvore(laudo, b, ctx['resolvidas'], quadro),
                           'resumo': resumo_das_funcoes(b, ctx['resolvidas']), 'palco_kv': kv_palco,
                           'decisoes': decisoes_do_passo_2(laudo, quadro)},
-              'passo_3': {'aguarda_passo_2': espera is not None, 'texto': espera or '', 'passo_2_aplicado': aplicado,
-                          'ir': destino_da_espera(espera)},
+              'passo_3': passo_3_na_tela(espera, motivo_da_espera, aplicado),
               'faltam': [],
               # a tolerancia da intencao de alinhamento e os limites do tamanho no palco (M7b, D3)
               'edicao': {'tolerancia_alinhamento': limites.valor('derivacao.alinhamento_intencao_tolerancia'),
@@ -2009,9 +2166,8 @@ def montar(pasta, teto=None, biblioteca=None):
             if ctx is ctx_base and _escolhas_do_passo_1(pasta) == passo_1 and                     com_o_passo_2_do_rascunho(pasta, ctx_base) is ctx_base:
                 # o passo 2 mudou e ainda nao fecha, como antes: as familias e as previas sao as mesmas, e so o aviso
                 # do passo 3 muda (sem derivar de novo a cada clique do DA)
-                espera_nova = espera_do_passo_3(pasta, ctx_base)
-                p3 = dict(atual['estado']['passo_3'], texto=espera_nova or '', passo_2_aplicado=_sem_passo_2(pasta),
-                          ir=destino_da_espera(espera_nova))
+                espera_nova, motivo_novo = espera_e_motivo(pasta, ctx_base)
+                p3 = passo_3_na_tela(espera_nova, motivo_novo, _sem_passo_2(pasta))
                 novo = dict(atual, estado=dict(atual['estado'], passo_3=p3),
                             recarregar=lambda: dict(recarregar(), passo_3=p3))
                 novo['atualizar'] = atualizador(nova, novo)
