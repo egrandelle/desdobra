@@ -5,8 +5,9 @@ antes do codigo.
 Criterios de pronto cobertos aqui:
   - a edicao alinhar leva o elemento, ou o grupo (elementos), a margem esquerda, a direita, ao topo, a base, ao centro
     na largura ou ao centro na altura do quadro de cada membro da familia, pela margem dele ou pela area segura dele;
-  - a intencao fica valendo depois da edicao: a intencao de alinhamento entre elementos (168) e o encaixe refeito pelo
-    solver nao tiram o bloco da margem. Mexer no bloco depois, naquele eixo, troca a intencao pela edicao nova;
+  - a intencao fica valendo depois da edicao: a intencao de alinhamento entre elementos (168) nao tira o bloco da
+    margem, e o resto fica parado (0.9.5: nada refaz o encaixe). Mexer no bloco depois, naquele eixo, troca a intencao
+    pela edicao nova;
   - os esquemas do rascunho e do briefing aceitam a edicao com alvo e referencia, tambem com o grupo;
   - na derivacao da fixture com a estrutura do KV A (titulo, linha, apoio, icones, packshot e assinatura), nas
     familias do 2048x720 e do 1008x432, o bloco de texto fica com a borda esquerda na margem e o centro na metade da
@@ -106,13 +107,15 @@ def test_intencoes_que_ficam_depois_das_edicoes():
     # mover o grupo so na altura tira a intencao da altura e deixa a da largura
     mover_y = {'elemento': 'a', 'elementos': ['a', 'b'], 'acao': 'mover', 'dx': 0.0, 'dy': 0.02}
     assert [i['alvo'] for i in ed.intencoes([esq, meio, mover_y])] == ['margem_esquerda']
-    # mover um so na largura tira so ele da intencao da largura
+    # 0.9.5 (o que o DA nao mexeu fica parado): mover um so na largura tira o grupo inteiro da intencao da largura;
+    # senao a linha seria refeita so com o outro, e ele andaria sem o DA mexer nele. A da altura continua
     mover_x = {'elemento': 'b', 'acao': 'mover', 'dx': 0.01, 'dy': 0.0}
-    assert ed.intencoes([esq, mover_x])[0]['elementos'] == ['a']
-    # escalar troca a intencao pela edicao nova nos dois eixos; apagar tira o elemento
+    assert ed.intencoes([esq, mover_x]) == []
+    assert [i['alvo'] for i in ed.intencoes([esq, meio, mover_x])] == ['centro_vertical']
+    # escalar troca a intencao pela edicao nova nos dois eixos; apagar um tira o grupo dos dois eixos
     escalar = {'elemento': 'a', 'elementos': ['a', 'b'], 'acao': 'escalar', 'fator': 1.2}
     assert ed.intencoes([esq, meio, escalar]) == []
-    assert ed.intencoes([esq, {'elemento': 'a', 'acao': 'apagar'}])[0]['elementos'] == ['b']
+    assert ed.intencoes([esq, {'elemento': 'a', 'acao': 'apagar'}]) == []
     # o alinhamento novo no mesmo eixo vale sobre o de antes; o texto nao mexe
     dir_ = dict(esq, alvo='margem_direita')
     assert [i['alvo'] for i in ed.intencoes([esq, dir_, {'elemento': 'a', 'acao': 'texto', 'texto': 'X'}])] == \
@@ -252,19 +255,14 @@ def test_derivacao_poe_o_bloco_de_texto_na_margem_e_no_meio_da_altura_em_cada_me
             assert all(origem[k] == 'da' for k in BLOCO), origem
 
 
-def test_encaixe_refeito_nao_tira_o_bloco_da_margem(monkeypatch):
-    # o solver que empurra o bloco (aqui de mentira, 7 px para a direita e para baixo) nao tira o bloco do lugar que o
-    # DA pediu: o alinhamento no quadro e firmado de novo depois do encaixe refeito
+def test_layout_do_membro_deixa_o_bloco_na_margem_e_o_resto_parado():
+    # 0.9.5: nada refaz o encaixe depois da edicao (o solver de mentira que empurrava o bloco saiu do teste, porque
+    # nao ha mais encaixe refeito para empurrar). O alinhamento no quadro continua firmado no layout do membro, e o
+    # que o DA nao mexeu fica com a caixa da versao de partida
     ctx, antes = _derivar([])
     kv = nd.mestre_do_kv(ctx)
     f = next(x for x in ctx['briefing']['formatos'] if x['id'] == 'a1')
     cf = mg.contexto_do_formato(ctx, proposta.mestre_do_membro(ctx, kv, f, antes['a1']), f, specs={})
-    real = mg.reencaixar
-
-    def empurra(cf_, caixas, sangra, apagados=(), do_da=()):
-        cs, falha = real(cf_, caixas, sangra, apagados, do_da)
-        return {k: ([v[0] + 7.0, v[1] + 7.0, v[2] + 7.0, v[3] + 7.0] if k in BLOCO else v) for k, v in cs.items()}, falha
-    monkeypatch.setattr(mg, 'reencaixar', empurra)
     extra = {'kv_por_id': {e['id']: e for e in kv['elementos']},
              'conteudo': [e['id'] for e in kv['elementos'] if mod_solver.conteudo(e)],
              'kv_caixas': {e['id']: [float(x) for x in e['caixa']] for e in kv['elementos']},
@@ -274,6 +272,10 @@ def test_encaixe_refeito_nao_tira_o_bloco_da_margem(monkeypatch):
     assert abs(u[0] - cf['quadro'][0]) <= TOL and abs((u[1] + u[3]) / 2.0 - cf['H'] / 2.0) <= TOL, (u, cf['quadro'])
     assert sorted(x['alvo'] for x in lay['no_quadro']) == ['centro_vertical', 'margem_esquerda']
     assert lay['quadros']['margem'] == pytest.approx(cf['quadro'])
+    partida = {e['id']: [float(x) for x in e['caixa']] for e in antes['a1']['elementos']}
+    for k, c in lay['caixas'].items():
+        if k not in BLOCO:
+            assert c == pytest.approx(partida[k], abs=1e-6), k
 
 
 def test_mover_o_bloco_depois_de_alinhar_vale_a_edicao_nova():

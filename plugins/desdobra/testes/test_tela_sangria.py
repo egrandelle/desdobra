@@ -6,8 +6,8 @@ do codigo.
 Criterios de pronto cobertos aqui:
   - o lado em que a caixa que o DA mexeu ou escalou passa da borda do formato vira sangria por decisao do DA
     (sangria_do_da), em qualquer lado; o texto e a marca nunca sangram (continuam dentro do quadro, como antes);
-  - a derivacao da familia confirmada honra a caixa do DA: o encaixe refeito pelo solver nao puxa o elemento de volta
-    para dentro nem separa o grupo, e a validacao obrigatoria (enquadramento) e a conferencia (fora do quadro) nao
+  - a derivacao da familia confirmada honra a caixa do DA: nada puxa o elemento de volta para dentro nem separa o
+    grupo (0.9.5: nada refaz o encaixe depois da edicao), e a validacao obrigatoria (enquadramento) e a conferencia (fora do quadro) nao
     marcam a sangria do DA como defeito;
   - o caso do packshot (Duda, 10/11): o grupo (circulo, garrafa, copo e lata) escalado a 85% e movido para os tres
     produtos ficarem inteiros na largura, sangrando na base; o circulo pode sangrar na direita;
@@ -97,7 +97,7 @@ def test_derivacao_honra_a_caixa_que_o_da_deixou_sangrar(edicoes):
         assert d['situacao'] == 'derivado', (fid, d.get('devolucao'))
         assert [v['nome'] for v in d['validacoes'] if v['situacao'] == 'reprova'] == []
         assert not [r for r in d['registros'] if r['codigo'] == 'proposta_com_falha'], d['registros']
-        # a caixa de cada elemento do grupo e a que o DA deu: o solver nao puxa nada para dentro nem separa o grupo
+        # a caixa de cada elemento do grupo e a que o DA deu: nada puxa o elemento para dentro nem separa o grupo
         esperado = ed.aplicar(_caixas(antes[fid]), edicoes, w, h)[0]
         caixas = _caixas(d)
         por_id = {e['id']: e for e in d['elementos']}
@@ -139,13 +139,22 @@ def test_packshot_menor_fica_inteiro_na_largura_e_sangra_na_base():
 
 
 def test_texto_e_marca_nunca_sangram():
-    # a marca que o DA arrasta para fora volta para dentro do quadro, como antes do D4
+    # a marca que o DA arrasta para fora nunca sangra. Antes da 0.9.5, o encaixe refeito a trazia de volta para dentro
+    # do quadro; agora ela fica onde o DA a pos (o que o DA mexeu fica onde ele deixou), e a derivacao avisa que ela
+    # passou da borda, para o DA decidir
     antes = _derivar([])
     depois = _derivar([{'elemento': 'el%d' % LOGO, 'acao': 'mover', 'dx': -0.1, 'dy': 0.0}])
     for fid, w, h in HORIZONTAIS:
-        e = next(x for x in depois[fid]['elementos'] if x['id'] == 'el%d' % LOGO)
-        assert e['caixa'][0] >= -TOL and 'sangria_do_da' not in e and not any(e['transformacao']['sangra'].values())
-        assert e['caixa'][0] < next(x for x in antes[fid]['elementos'] if x['id'] == e['id'])['caixa'][0]
+        d = depois[fid]
+        e = next(x for x in d['elementos'] if x['id'] == 'el%d' % LOGO)
+        assert 'sangria_do_da' not in e and not any(e['transformacao']['sangra'].values())
+        x0 = next(x for x in antes[fid]['elementos'] if x['id'] == e['id'])['caixa'][0]
+        assert e['caixa'][0] == pytest.approx(x0 - 0.1 * w, abs=TOL)
+        assert e['caixa'][0] < -TOL
+        da_marca = [v['nome'] for v in d['validacoes'] if v['situacao'] == 'reprova' and e['id'] in v['elementos']]
+        falha = [c for r in d['registros'] if r['codigo'] == 'proposta_com_falha' for c in r['medidas']['falhas']]
+        # o aviso e o da marca fora da peca: o enquadramento dela reprova, ou a conferencia diz fora do quadro
+        assert 'enquadramento' in da_marca or 'fora_do_quadro' in falha, (fid, d['validacoes'], d['registros'])
 
 
 def test_derivacao_com_sangria_do_da_e_deterministica():

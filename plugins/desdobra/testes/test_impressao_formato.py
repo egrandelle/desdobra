@@ -242,8 +242,9 @@ def test_funcao_de_camada_fora_do_escopo_deixa_a_impressao_igual(base):
 
 
 def test_apagado_na_familia_da_galeria_ainda_alimenta_os_outros_elementos():
-    """Na galeria, a versao sai com todos os elementos e o apagado sai depois, com o encaixe refeito: a funcao dele
-    muda a caixa dos outros, e a impressao cai junto (dependencia de verdade, pela derivacao)."""
+    """Na galeria, a versao sai com todos os elementos e o apagado sai depois (0.9.5: os outros ficam onde a versao os
+    pos): a funcao dele muda a versao e a caixa dos outros, e a impressao cai junto (dependencia de verdade, pela
+    derivacao)."""
     b = _briefing()
     b['composicoes'][2]['edicoes'] = [{'elemento': 'el20', 'acao': 'apagar'}]
     antes, r = _todas(b)

@@ -963,21 +963,10 @@ def test_entregar_recusa_briefing_do_da_sem_composicoes(job):
         assert 'familia_sem_confirmacao' in [x['codigo'] for x in conf['formatos'][fid]['falhas']], fid
 
 
-def test_formato_de_escala_pura_refeito_pelo_solver_diz_regra(job, monkeypatch):
-    # revisao do M7a: depois de uma edicao, o encaixe e refeito pelo solver; caixa que mudou nao e mais escala pura, e
-    # a regra aplicada diz o caminho do solver
-    from desdobra.derivacao import galeria as mg
-    original = mg.reencaixar
-    andou = {}
-
-    def reencaixar(cf, caixas, sangra, apagados=(), do_da=()):
-        novas, falha = original(cf, caixas, sangra, apagados, do_da)
-        novas = {k: list(v) for k, v in novas.items()}
-        logo = next(e['id'] for e in cf['kv']['elementos'] if e['funcao'] == 'logo_principal')
-        novas[logo] = [v - 2.0 for v in novas[logo]]  # numero-neutro: o solver tirou o logo do lugar em 2 px
-        andou['logo'] = logo
-        return novas, falha
-    monkeypatch.setattr(mg, 'reencaixar', reencaixar)
+def test_formato_de_escala_pura_com_edicao_deixa_o_resto_parado_e_em_escala_pura(job):
+    # 0.9.5 (o que o DA nao mexeu fica parado): depois de uma edicao, nada refaz o encaixe. O elemento que o DA nao
+    # mexeu fica com a caixa da proposta e continua escala pura; so o mexido leva a origem do DA. Antes, o teste punha
+    # um solver de mentira que tirava o logo do lugar e esperava a origem 'regra'; esse caminho saiu
     conteudo = te.montar(job)
     gid = _familia_de(conteudo, 'mesma')
     comps = []
@@ -993,14 +982,14 @@ def test_formato_de_escala_pura_refeito_pelo_solver_diz_regra(job, monkeypatch):
             c['edicoes'] = [{'elemento': titulo, 'acao': 'mover', 'dx': 0.0, 'dy': 0.04}]
     _briefing_do_da(job, composicoes=comps)
     depois = _deriv(job, 'mesma')
+    origem = {e['id']: e['origem_geometria'] for e in depois['elementos']}
+    assert origem[titulo] == 'da', origem
     for e in depois['elementos']:
-        if e['origem_geometria'] == 'da':
+        if e['id'] == titulo:
             continue
-        mudou = e['caixa'] != antes[e['id']]['caixa']
-        assert e['origem_geometria'] == ('regra' if mudou else 'transformacao'), (e['id'], mudou)
-        assert e['regra_aplicada']['caminho'] == ('solver' if mudou else 'transform'), (e['id'], mudou)
-    logo = next(e for e in depois['elementos'] if e['id'] == andou['logo'])
-    assert (logo['origem_geometria'], logo['regra_aplicada']['caminho']) == ('regra', 'solver')
+        assert e['caixa'] == antes[e['id']]['caixa'], e['id']
+        assert e['origem_geometria'] == 'transformacao', (e['id'], e['origem_geometria'])
+        assert e['regra_aplicada']['caminho'] == 'transform', e['id']
 
 
 def test_entregar_recusa_formato_fora_das_familias_confirmadas(job):

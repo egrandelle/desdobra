@@ -6,7 +6,8 @@ Criterios de pronto cobertos aqui:
   - o elemento que o DA mexeu ou escalou no palco e fura o piso de escala (133) ou de distancia (135) contra a mestre
     verdadeira deixa de "pedir ajuste": a conferencia o separa como decisao do DA (decisoes_do_da), com o valor a
     vista (a porcentagem da escala, ou a distancia e o minimo em px);
-  - o elemento que o solver mexeu continua marcado como falha, tambem quando o par dele tem um elemento do DA;
+  - 0.9.5: o elemento que o DA nao mexeu fica parado (nada refaz o encaixe), e o par com o elemento do DA vira
+    decisao dele;
   - a validacao obrigatoria do motor continua devolvendo o formato, com ou sem decisao do DA;
   - a derivacao da familia confirmada registra a decisao do DA (registro decisao_do_da) no lugar de proposta_com_falha;
   - a previa da tela leva decisoes_do_da por membro, sem a falha;
@@ -120,52 +121,17 @@ def test_sem_edicao_do_da_nao_ha_decisao_do_da():
     assert lay['decisoes_do_da'] == []
 
 
-def _solver_que_mexe(monkeypatch, mexer):
-    real = mg.reencaixar
-
-    def falso(cf_, caixas, sangra, apagados=(), do_da=()):
-        cs, falha = real(cf_, caixas, sangra, apagados, do_da)
-        return mexer({k: list(v) for k, v in cs.items()}), falha
-    monkeypatch.setattr(mg, 'reencaixar', falso)
-
-
-def test_elemento_que_o_solver_aproximou_continua_pedindo_ajuste(monkeypatch):
-    # o DA so anda o produto um pouco; o solver (aqui de mentira) desce o apoio para perto da assinatura: nenhum dos
-    # dois foi mexido pelo DA, entao a distancia continua uma falha
-    def desce_o_apoio(cs):
-        c = cs[P]
-        alvo = cs[A][1] - 4.0  # numero-neutro: px acima do topo da assinatura
-        d = alvo - c[3]
-        cs[P] = [c[0], c[1] + d, c[2], c[3] + d]
-        return cs
-    _solver_que_mexe(monkeypatch, desce_o_apoio)
-    lay = _layout([{'elemento': 'el%d' % PRODUTO, 'acao': 'mover', 'dx': -0.01, 'dy': 0}])
-    assert ('distancia_menor_que_na_mestre', sorted([A, P])) in _codigos(lay['falhas']), lay['falhas']
-    assert lay['decisoes_do_da'] == []
-
-
-def test_par_com_um_elemento_do_da_e_outro_do_solver_continua_pedindo_ajuste(monkeypatch):
-    # o DA aproxima a assinatura, e o solver (de mentira) ainda desce o apoio 6 px: o apoio foi mexido pelo solver
-    def desce_6(cs):
-        c = cs[P]
-        cs[P] = [c[0], c[1] + 6.0, c[2], c[3] + 6.0]  # numero-neutro: px do empurrao de mentira
-        return cs
-    _solver_que_mexe(monkeypatch, desce_6)
+def test_quem_o_da_nao_mexeu_fica_parado_e_o_piso_dele_nao_muda():
+    # 0.9.5 (o que o DA nao mexeu fica parado): os tres testes do solver de mentira (o solver que aproximava o apoio,
+    # que descia o apoio junto do par do DA e que encolhia o titulo) sairam, porque nada mais reposiciona o elemento
+    # que o DA nao mexeu. Aqui, o DA aproxima a assinatura do apoio: o apoio, o titulo e o produto ficam com a caixa da
+    # versao de partida, e a distancia do par vira decisao do DA (ele mexeu a assinatura)
+    partida = _layout([])
     lay = _layout(PERTO)
-    assert ('distancia_menor_que_na_mestre', sorted([A, P])) in _codigos(lay['falhas']), lay['falhas']
-    assert not [d for d in lay['decisoes_do_da'] if d['codigo'] == 'distancia_menor_que_na_mestre']
-
-
-def test_escala_que_o_solver_encolheu_continua_pedindo_ajuste(monkeypatch):
-    # o solver (de mentira) encolhe o titulo, que o DA nao mexeu, abaixo do piso de escala
-    def encolhe_o_titulo(cs):
-        c = cs[T]
-        cs[T] = [c[0], c[1], c[0] + (c[2] - c[0]) * 0.3, c[1] + (c[3] - c[1]) * 0.3]  # numero-neutro: fator de mentira
-        return cs
-    _solver_que_mexe(monkeypatch, encolhe_o_titulo)
-    lay = _layout([{'elemento': A, 'acao': 'mover', 'dx': 0.01, 'dy': 0}])
-    assert ('abaixo_do_piso_da_regra', [T]) in _codigos(lay['falhas']), lay['falhas']
-    assert lay['decisoes_do_da'] == []
+    for k in (P, T, 'el%d' % PRODUTO, 'el%d' % FUNDO):
+        assert lay['caixas'][k] == pytest.approx(partida['caixas'][k], abs=1e-6), k
+    assert ('distancia_menor_que_na_mestre', sorted([A, P])) in _codigos(lay['decisoes_do_da']), lay['decisoes_do_da']
+    assert 'falha_solver' not in lay and 'solver_nao_fecha' not in [f['codigo'] for f in lay['falhas']]
 
 
 def test_so_o_piso_vira_decisao_do_da():
@@ -179,7 +145,7 @@ def test_so_o_piso_vira_decisao_do_da():
     kv = nd.mestre_do_kv(ctx)
     f = next(x for x in ctx['briefing']['formatos'] if x['id'] == 'h1')
     cf = mg.contexto_do_formato(ctx, kv, f, specs={})
-    ficam, decisoes = mg.decisoes_do_da(cf, falhas, do_da=[A], do_solver=[])
+    ficam, decisoes = mg.decisoes_do_da(cf, falhas, do_da=[A])
     assert [x['codigo'] for x in ficam] == ['sobreposicao_nova', 'fora_do_quadro', 'validacao_reprova']
     assert [x['codigo'] for x in decisoes] == ['distancia_menor_que_na_mestre']
     assert decisoes[0]['texto'] == 'A marca e o texto ficam a 20 px um do outro. O KV pede pelo menos 30 px.'

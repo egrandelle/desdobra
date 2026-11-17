@@ -551,15 +551,15 @@
   },
   {
    "id": "tela.escala_max",
-   "valor": 4,
+   "valor": 10,
    "unidade": "fator do tamanho do elemento sobre o tamanho antes das edicoes do DA (a conta dos fatores de escalar)",
    "fonte": {
     "arquivo": "arquitetura-v1.md",
-    "secao": "9.8, Editor de mestre; plano do M7b, passo D3 (escala por numero, fator livre entre 0,25 e 4)"
+    "secao": "9.8, Editor de mestre; plano do M7b, passo D3 (escala por numero, fator livre entre 0,25 e 4), revisto pela decisao do Duda em 17/11 (0.9.5)"
    },
    "situacao": "a_calibrar",
    "efeito": "registra",
-   "nota": "O maior tamanho que o DA da a um elemento no palco: o campo Tamanho recusa mais de 400%, Aumentar e o canto param nele, e a previa e o rascunho recusam a edicao que passa dele (desdobra.tela.edicao.escala_fora). Origem: o fator 4 do plano do M7b (INFERENCIA, sem medicao de quanto o DA aumenta um elemento)."
+   "nota": "O maior tamanho que o DA da a um elemento no palco: o campo Tamanho recusa mais de 1000%, Aumentar e o canto param nele, e a previa e o rascunho recusam a edicao que passa dele (desdobra.tela.edicao.escala_fora). Origem: decisao do Duda em 17/11, depois do teste do KV A na 0.9.4: o teto de 400% sobre o tamanho da versao chegou cedo no titulo do 970x250; o teto fica so como protecao contra numero digitado errado. Antes, o fator 4 do plano do M7b (INFERENCIA)."
   },
   {
    "id": "leitor.filhos_paralelos",
@@ -993,10 +993,10 @@
   {
    "id": "tela.previa_latencia_alvo_ms",
    "valor": 1000,
-   "unidade": "milissegundos para o motor refazer o encaixe de todos os membros de uma familia depois de uma edicao no palco",
+   "unidade": "milissegundos para o motor levar a edicao a todos os membros de uma familia depois de uma edicao no palco",
    "fonte": {
     "arquivo": "decisoes-v1.md",
-    "secao": "n 167 (cada edicao levada a cada formato da familia, com o encaixe refeito e a miniatura de cada um); proposta do M7, secao 3, linha Alvo de latencia da previa"
+    "secao": "n 167 (cada edicao levada a cada formato da familia, com a miniatura de cada um; o encaixe refeito saiu na 0.9.5, decisao do Duda em 17/11: o que o DA nao mexeu fica parado); proposta do M7, secao 3, linha Alvo de latencia da previa"
    },
    "situacao": "a_calibrar",
    "efeito": "registra",

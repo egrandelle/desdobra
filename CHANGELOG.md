@@ -2,6 +2,22 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.9.5 (17/11/2026): o que você não mexeu fica parado
+
+Correção do teste do KV A na 0.9.4, no passo das Famílias. No 970x250, aumentar só o texto de apoio fazia o título e a barra do fundo subirem juntos, até o título sair do formato. Tudo foi conferido em arquivos sintéticos.
+
+- Quando você mexe num elemento, só ele anda. Os outros ficam no mesmo lugar e com o mesmo tamanho, em todos os arquivos da família.
+- Isso vale para mover, mudar o tamanho, alinhar, editar o texto e apagar.
+- O desdobra não reorganiza mais a peça depois da sua edição. Antes, ele refazia o encaixe e mudava elementos que você não tinha tocado.
+- Se a sua edição deixa um elemento sobre outro, fora do formato, fora da área segura ou mais perto do que o KV pede, a tela avisa. Você decide o que fazer.
+- A prévia e o "Salvar e seguir" continuam dando o mesmo resultado.
+- O Tamanho agora vai até 1000%. O limite de 400% chegava cedo no título do 970x250. O teto de 1000% fica só para proteger de um número digitado errado.
+- Se você alinha dois elementos juntos e depois mexe em um deles, o outro fica onde o alinhamento o deixou.
+- Ir a 1000% e voltar a 100% pelo Tamanho devolve o elemento ao lugar de antes, mesmo quando ele passou das bordas no caminho.
+- O palco fica com o mesmo zoom enquanto você edita. Os avisos que aparecem em cima dele não encolhem mais o desenho. Ajustar, o zoom e a troca de formato refazem o enquadramento.
+- Mudar o tamanho pelo canto do elemento mostra a porcentagem final, como o campo Tamanho.
+- Cada aviso aparece uma vez só na faixa de avisos e nas marcas dos arquivos.
+
 ## 0.9.4 (17/11/2026): as linhas do texto editado são as do DA
 
 Correção do teste do KV A na 0.9.3, no passo das Famílias. O texto editado quebrava sozinho na largura da caixa, o "Aprovar quebra" não mudava nada, e o render do 970x250 parava com a mensagem genérica. Também ficou mais rápido escrever no texto. Tudo foi conferido em arquivos sintéticos.

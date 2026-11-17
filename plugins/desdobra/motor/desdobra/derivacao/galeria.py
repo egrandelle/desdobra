@@ -588,15 +588,13 @@ def _gerar(cf, vid, forcada=None):
             'eixo_quadro': _eixo_longo(q[2] - q[0], q[3] - q[1])}
 
 
-def _resolver(cf, caixas, sangra, do_da=()):
+def _resolver(cf, caixas, sangra):
     """O fluxo vai ao solver do repositorio como mestre sintetica do tamanho do formato: as caixas do fluxo sao a
     mestre, e a regra de cada elemento vai dividida pela escala que o fluxo deu (o piso da 133 fica relativo a regra
-    verdadeira). do_da: os elementos que o DA mexeu no palco (M7b, D1); a regra deles e o tamanho que o DA deu (escala 1
-    sobre a mestre sintetica), para o encaixe refeito nunca puxar um elemento do grupo para um tamanho e o outro para
-    outro; o piso da 133 contra a regra verdadeira continua na conferencia (conferir_edicao). Devolve (caixas, nome da
-    obrigatoria que nao fecha ou None); sem fechar, ficam as caixas do fluxo."""
+    verdadeira). So a variante da galeria passa por aqui: depois de uma edicao do DA no palco, nada refaz o encaixe (o
+    que o DA nao mexeu fica parado, 0.9.5). Devolve (caixas, nome da obrigatoria que nao fecha ou None); sem fechar,
+    ficam as caixas do fluxo."""
     W, H, kv = cf['W'], cf['H'], cf['kv']
-    do_da = set(do_da)
     sint, regras = [], []
     for e in kv['elementos']:
         c, m = caixas[e['id']], e['caixa']
@@ -610,7 +608,7 @@ def _resolver(cf, caixas, sangra, do_da=()):
             x['sangra'] = sangra[e['id']]
         sint.append(x)
         r = cf['regras'][e['id']]
-        regras.append(1.0 if e['id'] in do_da else ((r / k) if r and k else r))
+        regras.append((r / k) if r and k else r)
     try:
         resolvidas, _esc, _r = mod_solver.resolver(sint, (W, H), (W, H), cf['areas'], regras)
     except mod_solver.NaoFecha as ex:
@@ -695,13 +693,6 @@ def sem_elementos(cf, apagados):
     return dict(cf, kv=kv, kv_inteiro=cf.get('kv_inteiro') or cf['kv'])
 
 
-def reencaixar(cf, caixas, sangra, apagados=(), do_da=()):
-    """O encaixe refeito pelo solver do repositorio depois de uma edicao do DA no palco (desdobra.tela.edicao): as
-    caixas editadas sao a mestre sintetica do formato, como na variante (_resolver), e os elementos que o DA mexeu
-    (do_da) ficam com o tamanho que ele deu. Devolve (caixas, nome da obrigatoria que nao fecha ou None)."""
-    return _resolver(sem_elementos(cf, apagados), caixas, sangra, do_da)
-
-
 def contexto_do_formato(ctx, kv, formato, *, specs=None, arquivo_specs=None, params=None):
     """O contexto que a galeria monta para um formato (para a edicao no palco reaproveitar entre as edicoes)."""
     cf = _contexto(ctx, kv, formato, specs, arquivo_specs, params)
@@ -715,23 +706,23 @@ def conferir_edicao(cf, caixas, sangra, apagados=()):
     return _conferir(sem_elementos(cf, apagados), caixas, sangra, apagados=apagados, com_validacoes=True)
 
 
-def decisoes_do_da(cf, falhas, do_da, do_solver=(), da_partida=()):
+def decisoes_do_da(cf, falhas, do_da, da_partida=()):
     """(falhas que ficam, decisoes do DA) do layout editado no palco (M7b, D5; pergunta 10 do plano). A falha de piso
     (PISOS_DO_DA: a escala abaixo do piso da 133, a distancia menor que a da 135) com um elemento que o DA mexeu ou
-    escalou (do_da) e decisao dele, quando nenhum elemento dela foi mexido pelo solver (do_solver): sai das falhas e
-    ganha o texto com o valor a vista. O resto (fora do quadro, area segura, sobreposicao, validacao do motor, solver
-    que nao fecha) continua falha. Revisao 1 da fase D: o piso que a versao de partida ja furava (da_partida: os pares
-    (codigo, elementos ordenados) das falhas dela) continua falha, porque o DA nao o furou; a distancia de duas caixas
-    que se sobrepoem (zero ou menos) tambem, porque a sobreposicao ja pede ajuste e px negativo nao diz nada ao DA. A
-    ordem das listas e a das falhas."""
-    do_da, do_solver = set(do_da), set(do_solver)
+    escalou (do_da) e decisao dele: sai das falhas e ganha o texto com o valor a vista. Depois da edicao, nada refaz o
+    encaixe (0.9.5): o elemento que o DA nao mexeu fica parado, e so a edicao do DA muda o layout. O resto (fora do
+    quadro, area segura, sobreposicao, validacao do motor) continua falha. Revisao 1 da fase D: o piso que a versao de
+    partida ja furava (da_partida: os pares (codigo, elementos ordenados) das falhas dela) continua falha, porque o DA
+    nao o furou; a distancia de duas caixas que se sobrepoem (zero ou menos) tambem, porque a sobreposicao ja pede
+    ajuste e px negativo nao diz nada ao DA. A ordem das listas e a das falhas."""
+    do_da = set(do_da)
     da_partida = set(da_partida)
     por_id = {e['id']: e for e in cf['kv']['elementos']}
     ficam, decisoes = [], []
     for f in falhas:
         els = set(f['elementos'])
         m = f.get('medidas') or {}
-        if f['codigo'] not in PISOS_DO_DA or not els & do_da or els & do_solver or \
+        if f['codigo'] not in PISOS_DO_DA or not els & do_da or \
                 (f['codigo'], tuple(sorted(els))) in da_partida or \
                 (f['codigo'] == 'distancia_menor_que_na_mestre' and float(m.get('distancia_px', 1)) <= 0):
             ficam.append(f)

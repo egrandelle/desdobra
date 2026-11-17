@@ -15,7 +15,7 @@ as decisoes do DA de uma vez so, nunca peca a peca:
   - alinhar no quadro (M7b, D2): o elemento, ou o grupo, encosta na margem esquerda, na direita, no topo ou na base,
     ou fica no centro da largura ou da altura do quadro de cada membro (a margem dele ou a area segura dele). A
     intencao fica ate o DA mexer naquele eixo (intencoes): o alinhamento entre elementos nao a desfaz, e ela e firmada
-    de novo depois do encaixe refeito pelo solver (firmar);
+    de novo no layout de cada membro (firmar);
   - a escala por numero (M7b, D3): o tamanho de cada elemento e a conta dos fatores das edicoes de escalar que o
     levam, sozinho ou no grupo (escalas); 100% e o tamanho antes das edicoes do DA, a versao de onde o membro parte. O
     campo Tamanho da pagina grava o escalar que leva do tamanho de agora ao digitado. O tamanho fica entre
@@ -25,16 +25,15 @@ as decisoes do DA de uma vez so, nunca peca a peca:
     numerico, nem com o rascunho gravado (revisao 2 da fase D);
   - a sangria do DA (M7b, D4; pergunta 5 do plano, "So o DA ajusta"): o elemento, ou o grupo, que o DA mexeu ou
     escalou pode passar da borda do quadro em qualquer lado; o quadro corta o que fica fora (sangria_do_da). O lado
-    vira sangria do elemento naquele membro: o encaixe refeito nao o puxa de volta e a conferencia nao o marca como
-    defeito. O texto e a marca nunca sangram. O elemento que o DA tira da borda em que o asset dele acaba no KV fica
+    vira sangria do elemento naquele membro: nada o puxa de volta e a conferencia nao o marca como defeito. O texto e a marca nunca sangram. O elemento que o DA tira da borda em que o asset dele acaba no KV fica
     onde o DA o pos, com o tamanho dele, e a conferencia pede ajuste porque o corte aparece (corte_a_mostra, revisao 1
     da fase D). No alinhamento no quadro, o elemento preso a borda daquele lado fica fora da linha do grupo e anda
     junto (caixa_da_linha). O elemento levado inteiro para fora da peca nao sangra: pede ajuste (fora_da_peca,
     revisao 2 da fase D);
   - o piso diante da intencao do DA (M7b, D5; pergunta 10 do plano): a escala abaixo do piso da 133 ou a distancia
     menor que a da 135 com um elemento que o DA mexeu ou escalou e decisao dele. A previa a leva em decisoes_do_da, com
-    o valor no texto, e nao em falhas; a tela a mostra como "Decisão do DA", nunca como "Pede ajuste". O elemento que
-    o encaixe refeito tirou do lugar continua falha, e a validacao do motor continua devolvendo o formato. O piso que
+    o valor no texto, e nao em falhas; a tela a mostra como "Decisão do DA", nunca como "Pede ajuste". A validacao
+    do motor continua devolvendo o formato. O piso que
     a versao de partida ja furava, e a distancia de caixas que se sobrepoem, continuam falha (revisao 1 da fase D);
   - depois de cada edicao, a intencao de alinhamento (168, revista pela 185): so o elemento que o DA acabou de mexer
     (ou o grupo dele) anda. A borda ou o centro dele que fica a menos de derivacao.alinhamento_intencao_tolerancia do
@@ -46,8 +45,12 @@ as decisoes do DA de uma vez so, nunca peca a peca:
     tirou o mexido nao o puxa de volta, e o eixo em que ele nao andou nao encaixa (o alinhar na largura nao muda a
     altura). O mexido que divide agora uma linha que ja dividia no KV com um terceiro fica nela, e a linha mais perto
     vem primeiro, sem depender da ordem dos cliques (revisao 2 da fase D);
-  - o encaixe de cada membro e refeito pelo solver do repositorio, com as caixas editadas como mestre sintetica (como a
-    galeria faz com a variante), e o layout e conferido contra a mestre verdadeira (desdobra.derivacao.galeria);
+  - o que o DA nao mexeu fica parado (decisao do Duda em 17/11, 0.9.5; revisa a 185 e o encaixe refeito do M7b):
+    depois de qualquer edicao (mover, escalar, alinhar, texto, apagar), cada elemento fora dela fica com a caixa e o
+    tamanho que a versao de partida, ou a edicao de antes, lhe deu. O motor nao reposiciona nada por conta propria. O
+    layout de cada membro e conferido contra a mestre verdadeira (desdobra.derivacao.galeria): quando o resultado
+    sobrepoe elementos, sai do formato, passa da area segura ou fica mais perto do que o KV pede, a previa avisa (falhas
+    ou decisoes_do_da), e o DA decide;
   - o texto editado precisa de todos os caracteres na face do job que o desenha (a cobertura do cmap lida pelo filho
     das fontes; o processo principal nunca abre a fonte); a previa leva o texto novo com a face real, e as linhas
     sao as do DA (Linhas do DA, 0.9.4): nada quebra na largura da caixa, e o texto cresce em volta da ancora com o
@@ -221,23 +224,34 @@ def intencoes(edicoes):
     """Os alinhamentos no quadro que ficam valendo depois das edicoes (M7b, D2), na ordem delas: [{'elementos',
     'eixo', 'alvo', 'referencia'}]. A ultima edicao vence: o elemento movido naquele eixo, escalado ou apagado depois
     sai da intencao, e o alinhamento novo no mesmo eixo vale sobre o de antes. Vale igual em todo formato (so le as
-    edicoes); a derivacao a segura contra a intencao de alinhamento (168) e o encaixe refeito (firmar)."""
+    edicoes); a derivacao a segura contra a intencao de alinhamento (168) e a firma de novo no layout (firmar).
+    Revisao 0.9.5 (o que o DA nao mexeu fica parado): quando um membro sai do alinhamento de um grupo, o grupo inteiro
+    sai daquele eixo. Senao o firmar recalcularia a linha so com quem sobrou e levaria um elemento que o DA nao tocou."""
     vale = {}
+
+    def tirar(eid, eixo):
+        n = vale.pop((eid, eixo), None)
+        if n is None:
+            return
+        for chave in [c for c, m in vale.items() if m == n and c[1] == eixo]:
+            vale.pop(chave)
+
     for n, ed in enumerate(edicoes):
         acao = ed['acao']
         if acao == 'alinhar':
             eixo = ALVOS[ed['alvo']][0]
             for eid in membros(ed):
+                tirar(eid, eixo)
                 vale[(eid, eixo)] = n
         elif acao == 'mover':
             for eid in membros(ed):
                 for eixo, d in (('x', ed['dx']), ('y', ed['dy'])):
                     if float(d):
-                        vale.pop((eid, eixo), None)
+                        tirar(eid, eixo)
         elif acao in ('escalar', 'apagar'):
             for eid in membros(ed):
                 for eixo in ('x', 'y'):
-                    vale.pop((eid, eixo), None)
+                    tirar(eid, eixo)
     por_edicao = {}
     for (eid, _eixo), n in vale.items():
         por_edicao.setdefault(n, set()).add(eid)
@@ -250,8 +264,8 @@ def intencoes(edicoes):
 
 
 def firmar(caixas, intencoes_, quadros, W, H, borda=()):
-    """Os alinhamentos no quadro (intencoes) de novo, depois do encaixe refeito pelo solver (M7b, D2): cada intencao
-    leva os elementos dela que o formato tem, juntos, ate a linha do quadro do membro; o solver nunca tira o bloco do
+    """Os alinhamentos no quadro (intencoes) de novo, no layout de cada membro depois das edicoes (M7b, D2): cada
+    intencao leva os elementos dela que o formato tem, juntos, ate a linha do quadro do membro; nada tira o bloco do
     lugar que o DA pediu. A linha do grupo e a de caixa_da_linha (borda: {(id, lado)} do asset cortado na borda do
     KV). Devolve (caixas, no_quadro [{'elementos', 'eixo', 'alvo', 'referencia', 'valor'}])."""
     caixas = {k: list(v) for k, v in caixas.items()}
@@ -284,7 +298,7 @@ def caixa_da_linha(caixas, ids, alvo, W, H, borda=()):
     packshot vai para a base pela linha dos produtos, e o circulo de tras continua passando da borda. Com todos presos
     a borda, e no centro, conta o grupo inteiro. Revisao 2 da fase D: o elemento que so encosta na borda (o que o
     alinhamento acabou de levar ate ela, quando a linha do quadro e a propria borda da peca) continua na conta; senao
-    o segundo clique, ou o alinhamento firmado depois do solver, levaria o grupo para fora da peca."""
+    o segundo clique, ou o alinhamento firmado no layout do membro, levaria o grupo para fora da peca."""
     _eixo, nome = ALVOS[alvo]
     lado = LADO_DO_ALVO.get(nome)
     cs = [caixas[k] for k in ids]
@@ -370,8 +384,8 @@ def sangria_do_da(caixas, mexidos, W, H, tol, sem_sangria=()):
     borda por mais que tol. O quadro corta o que fica fora, e o lado vira sangria por decisao do DA. O texto e a marca
     (sem_sangria: os ids deles) nunca sangram: continuam dentro do quadro, como no KV. Revisao 2 da fase D: o elemento
     que fica inteiro fora da peca nao sangra (fora_da_peca): sangrar e passar uma parte pela borda, e o que some da
-    peca pede ajuste. A derivacao passa tol pequeno (a folga numerica): o solver prende sem folga o lado que nao
-    sangra, e o elemento que passa da borda por menos que a tolerancia do enquadramento tambem fica onde o DA o pos."""
+    peca pede ajuste. A derivacao passa tol pequeno (a folga numerica): o elemento que passa da borda por menos que a
+    tolerancia do enquadramento tambem fica onde o DA o pos, com o lado marcado como sangria."""
     saida = {}
     fora = set(fora_da_peca(caixas, mexidos, W, H, tol))
     for k in mexidos:
@@ -837,7 +851,7 @@ class Editor:
             lay = proposta.layout_do_membro(cf, elementos, aceitas, kv_por_id=self.kv_por_id, conteudo=self.conteudo,
                                             kv_caixas=self.kv_caixas, kv_tamanho=self.kv_tamanho)
             apagados, textos, alinhados = lay['apagados'], lay['textos'], lay['alinhados']
-            falhas, avisos, reprovadas, falha = lay['falhas'], lay['avisos'], lay['reprovadas'], lay['falha_solver']
+            falhas, avisos, reprovadas = lay['falhas'], lay['avisos'], lay['reprovadas']
             els = lay['elementos']
             palco = estado.palco_da_variante(fid, W, H, {'elementos': els}, self.laudo, self.base)
             for eid, texto in textos.items():
@@ -853,7 +867,9 @@ class Editor:
                                                for d in lay['decisoes_do_da']],
                             'avisos': [{'codigo': a['codigo'], 'texto': a['texto']} for a in avisos],
                             'validacoes_reprovadas': reprovadas,
-                            'situacao': 'proposta' if not falha else 'proposta_sem_solver',
+                            # nada refaz o encaixe depois da edicao (0.9.5): o membro e sempre a proposta com as
+                            # edicoes do DA, e o que precisa do olhar dele vem nas falhas
+                            'situacao': 'proposta',
                             'sangria_do_da': {k: list(v) for k, v in lay['sangria_do_da'].items()},
                             'quadro': {'margem': [round(v, 4) for v in lay['quadros']['margem']],  # numero-neutro: casas do px
                                        'area_segura': [round(float(v), 4) for v in seg] if seg else None}})  # numero-neutro: casas do px

@@ -8,11 +8,13 @@ formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A deri
     escolhida para a familia (sem escolha, a primeira sem falha, como a tela mostra), com as edicoes do DA; o caminho
     e 'galeria' e o formato deixa de ser devolvido quando a versao passa nas validacoes obrigatorias;
   - o formato que o motor deriva sozinho (transform ou solver) recebe as edicoes do DA por cima da proposta dele;
-  - as edicoes vao a cada membro em proporcao ao formato dele, com a intencao de alinhamento (168), e o encaixe e
-    refeito pelo solver do repositorio: a mesma conta da previa da tela (desdobra.tela.edicao.Editor), pelas mesmas
-    funcoes daqui, para a derivacao gravada ser o que o DA viu;
+  - as edicoes vao a cada membro em proporcao ao formato dele, com a intencao de alinhamento (168, revista pela 185):
+    a mesma conta da previa da tela (desdobra.tela.edicao.Editor), pelas mesmas funcoes daqui, para a derivacao
+    gravada ser o que o DA viu. O que o DA nao mexeu fica parado (0.9.5): o motor nao refaz o encaixe depois das
+    edicoes, e cada elemento fora delas fica com a caixa da versao de partida;
   - cada elemento leva a origem da geometria (origem_geometria): 'da' (mexido, alinhado pela intencao ou com texto
-    editado pelo DA), 'galeria' (a versao sem edicao), 'transformacao' (escala pura), 'regra' (solver);
+    editado pelo DA), 'galeria' (a versao sem edicao), 'transformacao' (escala pura), 'regra' (solver, quando o
+    motor derivou o formato pelo solver);
   - o elemento apagado sai do formato e fica em apagados_pelo_da, com a origem de quem confirmou a familia; ele deixa
     de contar no inventario igual entre formatos;
   - o texto editado vale so na familia onde o DA mexeu (171) e vai em texto_editado, com as quebras dele (as linhas
@@ -27,8 +29,7 @@ formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A deri
   - a validacao obrigatoria do motor continua valendo: o layout confirmado que reprova volta ao DA com o nome da
     validacao, como na derivacao sem tela;
   - o piso de escala (133) ou de distancia (135) que o elemento mexido pelo DA fura e decisao dele (M7b, D5): o
-    formato leva o registro decisao_do_da, com os valores, no lugar de proposta_com_falha. O elemento que o solver
-    tirou do lugar continua falha.
+    formato leva o registro decisao_do_da, com os valores, no lugar de proposta_com_falha.
 A galeria e a mesma da tela (galeria_da_familia, com os formatos devolvidos da familia na ordem da tela). So le
 arquivos do job pelo contexto da derivacao: nao abre PSD, fonte nem imagem.
 """
@@ -44,7 +45,6 @@ ORIGEM_POR_CAMINHO = {'galeria': 'galeria', 'transform': 'transformacao', 'solve
 ORIGEM_DA = 'da'
 ORIGENS_DO_APAGADO = ('da', 'fixture_de_teste')
 QUEBRAS_DO_TEXTO_EDITADO = 'do_texto_editado'
-TEXTO_SOLVER = 'As restrições da folha e do KV não fecham nesta versão.'
 
 
 def usa_galeria(derivado):
@@ -165,17 +165,19 @@ def quadros_do_membro(cf):
 def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, kv_tamanho):
     """O layout de um membro da familia com as edicoes do DA: as edicoes em proporcao ao formato (o alinhamento no
     quadro com os quadros do membro, M7b, D2), a intencao de alinhamento entre os elementos de conteudo depois de cada
-    edicao, so no que ela mexeu (edicao.editar, decisao 185), o encaixe
-    refeito pelo solver (so quando o DA mexeu ou apagou), o alinhamento no quadro firmado de novo e a conferencia
-    contra a mestre verdadeira. O lado em que o elemento mexido pelo DA passa da borda do formato vira sangria dele
-    (sangria_do_da {id: [lados]}, M7b, D4), sem o lado que ja sangrava no KV. O piso de escala ou de distancia que o
-    elemento mexido pelo DA fura sai das falhas e vai a decisoes_do_da, com o valor a vista (M7b, D5); o elemento que
-    o encaixe refeito tirou do lugar continua falha, e o piso que a versao de partida ja furava tambem. O lado em que o
-    asset acaba na borda do KV e que o DA tirou da borda e um corte a vista: o solver nao puxa o elemento de volta, e a
-    falha corte_a_mostra pede ajuste (revisao 1 da fase D); o lado que so a versao da galeria sangrava deixa de sangrar,
-    sem falha, e o elemento que o DA levou inteiro para fora da peca fica onde ele o pos e pede ajuste (revisao 2 da
-    fase D). cf: o contexto da galeria do formato (galeria.contexto_do_formato).
-    Devolve {'caixas', 'sangra', 'apagados', 'textos', 'mexidos', 'alinhados', 'no_quadro', 'quadros', 'falha_solver',
+    edicao, so no que ela mexeu (edicao.editar, decisao 185), o alinhamento no quadro firmado de novo e a conferencia
+    contra a mestre verdadeira. O que o DA nao mexeu fica parado (decisao do Duda em 17/11, 0.9.5): cada elemento fora
+    das edicoes fica com a caixa da versao de partida, e o motor nao reposiciona nada por conta propria (o encaixe
+    refeito pelo solver do M7b saiu). Quando o resultado sobrepoe elementos, sai do formato, passa da area segura ou
+    fica mais perto do que o KV pede, a conferencia avisa, e o DA decide. O lado em que o elemento mexido pelo DA
+    passa da borda do formato vira sangria dele (sangria_do_da {id: [lados]}, M7b, D4), sem o lado que ja sangrava no
+    KV. O piso de escala ou de distancia que o elemento mexido pelo DA fura sai das falhas e vai a decisoes_do_da, com
+    o valor a vista (M7b, D5); o piso que a versao de partida ja furava continua falha. O lado em que o asset acaba na
+    borda do KV e que o DA tirou da borda e um corte a vista: o elemento fica onde o DA o pos, e a falha corte_a_mostra
+    pede ajuste (revisao 1 da fase D); o lado que so a versao da galeria sangrava deixa de sangrar, sem falha, e o
+    elemento que o DA levou inteiro para fora da peca fica onde ele o pos e pede ajuste (revisao 2 da fase D). cf: o
+    contexto da galeria do formato (galeria.contexto_do_formato).
+    Devolve {'caixas', 'sangra', 'apagados', 'textos', 'mexidos', 'alinhados', 'no_quadro', 'quadros',
     'sangria_do_da', 'falhas', 'decisoes_do_da', 'avisos', 'reprovadas', 'elementos'}."""
     from desdobra import limites
     from desdobra.derivacao import elementos as mod_elementos
@@ -197,10 +199,9 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
     caixas, apagados, textos, mexidos, alinhados = edicao.editar(
         caixas, edicoes, W, H, quadros, borda, conteudo=set(conteudo), kv_caixas=kv_caixas, kv_tamanho=kv_tamanho)
     intencoes = edicao.intencoes(edicoes)
-    # o lado que o DA deixou passar da borda vira sangria do elemento neste membro (M7b, D4): o solver nao o puxa de
-    # volta, e a validacao e a conferencia nao o marcam como defeito; o texto e a marca nunca sangram. A conta e sem a
-    # tolerancia do enquadramento (revisao 2 da fase D): o solver prende o lado que nao sangra sem folga nenhuma, e o
-    # grupo que passa da borda por menos de 1 px se desmontaria so naquele membro
+    # o lado que o DA deixou passar da borda vira sangria do elemento neste membro (M7b, D4): a validacao e a
+    # conferencia nao o marcam como defeito; o texto e a marca nunca sangram. A conta e sem a tolerancia do
+    # enquadramento (revisao 2 da fase D)
     sem =[k for k, e in kv_por_id.items() if e['classe'] in mod_elementos.CLASSES_SEM_SANGRIA]
     tol = limites.valor('derivacao.enquadramento_tolerancia_px')
     do_da = [k for k in mexidos if k in do_cf]
@@ -218,11 +219,11 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
         sangra[k] = s
     for k in apagados:
         sangra.pop(k, None)
-    # o lado que sangrava no membro de partida e que o DA tirou da borda: o solver nunca puxa o elemento de volta para
-    # a borda nem muda o tamanho dele (o grupo nao se separa, e o tamanho vale igual em todo membro). Quando o asset
-    # acaba ali no KV, o corte fica a vista (revisao 1 da fase D): a conferencia pede ajuste com a frase do corte, e a
-    # validacao obrigatoria devolve o formato. Quando so a versao da galeria sangrava ali (a arte da faixa), a borda do
-    # asset e inteira: o lado deixa de sangrar, sem falha (revisao 2 da fase D)
+    # o lado que sangrava no membro de partida e que o DA tirou da borda: o elemento fica onde o DA o pos, com o
+    # tamanho dele (o grupo nao se separa, e o tamanho vale igual em todo membro). Quando o asset acaba ali no KV, o
+    # corte fica a vista (revisao 1 da fase D): a conferencia pede ajuste com a frase do corte, e a validacao
+    # obrigatoria devolve o formato. Quando so a versao da galeria sangrava ali (a arte da faixa), a borda do asset e
+    # inteira: o lado deixa de sangrar, sem falha (revisao 2 da fase D)
     cortes, soltos = {}, {}
     for k in do_da:
         s, c = sangra.get(k) or do_cf[k]['sangra'], caixas[k]
@@ -234,39 +235,21 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
             soltos[k] = [lado for lado in lados if not do_cf[k]['sangra'][lado]]
     for k, lados in soltos.items():
         sangra[k] = dict(sangra.get(k) or do_cf[k]['sangra'], **{lado: False for lado in lados})
-    para_o_solver = {k: v for k, v in sangra.items()}
-    for k, lados in cortes.items():
-        para_o_solver[k] = dict(sangra.get(k) or do_cf[k]['sangra'], **{lado: False for lado in lados})
-    # o que esta inteiro fora da peca fica onde o DA o pos (a previa mostra o que ele fez): para o solver, os lados que
-    # ele passa sangram; para a conferencia e a validacao, nao
-    for k in fora_da_peca:
-        c = caixas[k]
-        passa = {'esq': c[0] < 0, 'topo': c[1] < 0, 'dir': c[2] > W, 'base': c[3] > H}
-        base = para_o_solver.get(k) or sangra.get(k) or do_cf[k]['sangra']
-        para_o_solver[k] = {lado: bool(base[lado] or passa[lado]) for lado in base}
-    falha = None
-    antes_do_solver = {k: list(v) for k, v in caixas.items()}
-    if mexidos or apagados:
-        caixas, falha = mg.reencaixar(cf, caixas, para_o_solver, apagados, do_da=mexidos)
+    # o que o DA nao mexeu fica parado (0.9.5): nada reposiciona os elementos depois das edicoes. O que esta inteiro
+    # fora da peca tambem fica onde o DA o pos (a previa mostra o que ele fez), e a conferencia pede ajuste
     caixas, no_quadro = edicao.firmar(caixas, intencoes, quadros, W, H, borda)
     falhas, avisos, reprovadas = mg.conferir_edicao(cf, caixas, sangra, apagados)
     falhas = mg.corte_a_mostra(cf, falhas, cortes)
     falhas = mg.fora_da_peca(cf, falhas, fora_da_peca)
-    # o piso que o elemento do DA fura e decisao dele (M7b, D5): o elemento que o solver tirou do lugar (a caixa que
-    # o encaixe refeito mudou, sem ser do DA) continua pedindo ajuste
-    do_solver = [k for k, c in caixas.items() if k not in mexidos and k in antes_do_solver and
-                 max(abs(float(a) - float(b)) for a, b in zip(c, antes_do_solver[k])) > tol]
     # o piso que a versao de partida ja furava continua pedindo ajuste (revisao 1 da fase D): o DA so andou ou alinhou o
     # elemento, e o piso nao e decisao dele. A conta da partida so roda quando ha piso furado com elemento do DA
     da_partida = ()
     if any(f['codigo'] in mg.PISOS_DO_DA and set(f['elementos']) & set(mexidos) for f in falhas):
         f_partida = mg.conferir_edicao(cf, partida, sangra_partida, apagados)[0]
         da_partida = {(f['codigo'], tuple(sorted(f['elementos']))) for f in f_partida if f['codigo'] in mg.PISOS_DO_DA}
-    falhas, decisoes = mg.decisoes_do_da(cf, falhas, mexidos, do_solver, da_partida)
-    if falha:
-        falhas.append({'codigo': 'solver_nao_fecha', 'texto': TEXTO_SOLVER, 'elementos': []})
+    falhas, decisoes = mg.decisoes_do_da(cf, falhas, mexidos, da_partida)
     return {'caixas': caixas, 'sangra': sangra, 'apagados': apagados, 'textos': textos, 'mexidos': mexidos,
-            'alinhados': alinhados, 'no_quadro': no_quadro, 'quadros': quadros, 'falha_solver': falha,
+            'alinhados': alinhados, 'no_quadro': no_quadro, 'quadros': quadros,
             'sangria_do_da': sangria_do_da,
             'falhas': falhas, 'decisoes_do_da': decisoes, 'avisos': avisos, 'reprovadas': reprovadas,
             'elementos': mg.elementos_do_layout(cf, caixas, sangra, apagados)}
@@ -371,7 +354,6 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
     do_da = set(lay['mexidos']) | {a['elementos'][0] for a in lay['alinhados']} | set(lay['textos'])
     antes = {e['id']: e for e in d['elementos']} if d['situacao'] == 'derivado' else {}
     base = ORIGEM_POR_CAMINHO[caminho]
-    refeito = bool(lay['mexidos'] or lay['apagados'])
     elementos = []
     for e in lay['elementos']:
         x = dict(e)
@@ -393,12 +375,8 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
         if e['id'] in do_da or (e['id'] not in lay['textos'] and m.get('quebra_do_da')):
             # mexido, alinhado, com texto editado, ou com a quebra de linha que o DA fez ou aprovou na familia
             x['origem_geometria'] = ORIGEM_DA
-        elif refeito and o is not None and [float(v) for v in o['caixa']] != [float(v) for v in e['caixa']]:
-            # o encaixe refeito pelo solver depois da edicao do DA mudou esta caixa: nao e mais escala pura, e a regra
-            # aplicada diz o caminho do solver
-            x['origem_geometria'] = ORIGEM_POR_CAMINHO['solver']
-            x['regra_aplicada']['caminho'] = 'solver'
         else:
+            # o que o DA nao mexeu fica com a caixa e a origem da versao de partida (0.9.5: nada refaz o encaixe)
             x['origem_geometria'] = base
         if e['id'] in lay['textos']:
             x['texto_editado'] = lay['textos'][e['id']]

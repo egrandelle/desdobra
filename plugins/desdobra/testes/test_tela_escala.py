@@ -4,8 +4,9 @@
 Criterios de pronto cobertos aqui:
   - o tamanho de cada elemento e a conta dos fatores das edicoes de escalar que o levam, sozinho ou no grupo
     (escalas): 100% e o tamanho antes das edicoes do DA;
-  - o tamanho fica entre tela.escala_min e tela.escala_max (0,25 e 4, o fator livre do plano), com a folga do
-    arredondamento das fracoes; a previa e o rascunho recusam a edicao que passa disso;
+  - o tamanho fica entre tela.escala_min e tela.escala_max (0,25 e 10: o fator livre do plano ia ate 4, e o teto
+    passou a 10 na 0.9.5, decisao do Duda em 17/11), com a folga do arredondamento das fracoes; a previa e o rascunho
+    recusam a edicao que passa disso;
   - a tela manda os dois limites a pagina (estado.edicao);
   - na derivacao da fixture com a estrutura do KV A e na previa do job sintetico, a assinatura escalada a 155% fica com
     1,55 vez a largura e a altura que tinha em cada membro da familia;
@@ -41,7 +42,7 @@ def _escalar(fator, *ids, **kw):
 # ------------------------------------------------------------------ o fator e os limites, sem job
 def test_limites_da_escala_vem_do_registro():
     assert ed.limites_da_escala() == (limites.valor('tela.escala_min'), limites.valor('tela.escala_max'))
-    assert ed.limites_da_escala() == (0.25, 4.0)
+    assert ed.limites_da_escala() == (0.25, 10.0)
 
 
 def test_escalas_multiplicam_os_fatores_de_cada_elemento():
@@ -58,17 +59,18 @@ def test_escalas_multiplicam_os_fatores_de_cada_elemento():
 
 @pytest.mark.parametrize('edicoes, fora', [
     ([_escalar(ALVO, 'a')], []),
-    ([_escalar(4.0, 'a')], []),
+    ([_escalar(10.0, 'a')], []),
+    ([_escalar(4.5, 'a')], []),
     ([_escalar(0.25, 'a')], []),
-    ([_escalar(4.01, 'a')], ['a']),
+    ([_escalar(10.01, 'a')], ['a']),
     ([_escalar(0.2, 'a')], ['a']),
-    ([_escalar(2.0, 'a'), _escalar(2.0, 'a')], []),
-    ([_escalar(2.0, 'a'), _escalar(2.1, 'a', 'b')], ['a']),
+    ([_escalar(5.0, 'a'), _escalar(2.0, 'a')], []),
+    ([_escalar(5.0, 'a'), _escalar(2.1, 'a', 'b')], ['a']),
     ([_escalar(0.5, 'a', 'b'), _escalar(0.5, 'a')], []),
     ([_escalar(0.5, 'a', 'b'), _escalar(0.4, 'b', 'a')], ['a', 'b']),
     # a conta da pagina com o fator arredondado em 6 casas: 0,3 x 0,833333 fica dentro pela folga
     ([_escalar(0.3, 'a'), _escalar(0.833333, 'a')], []),
-    ([_escalar(4.0, 'a'), _escalar(1.000001, 'a')], []),
+    ([_escalar(10.0, 'a'), _escalar(1.000001, 'a')], []),
 ])
 def test_escala_fora_dos_limites(edicoes, fora):
     assert ed.escala_fora(edicoes) == fora
@@ -161,7 +163,7 @@ def _confere_155(antes, depois, eid, k=ALVO):
 
 def test_estado_manda_os_limites_da_escala_a_pagina(conteudo_escala):
     assert conteudo_escala['estado']['edicao']['escala_min'] == 0.25
-    assert conteudo_escala['estado']['edicao']['escala_max'] == 4.0
+    assert conteudo_escala['estado']['edicao']['escala_max'] == 10.0
 
 
 def test_previa_escala_a_assinatura_a_155_em_cada_arquivo(job_escala, conteudo_escala):
@@ -174,9 +176,9 @@ def test_previa_escala_a_assinatura_a_155_em_cada_arquivo(job_escala, conteudo_e
 
 
 @pytest.mark.parametrize('edicoes', [
-    lambda a, g: [_escalar(4.5, a)],
+    lambda a, g: [_escalar(10.5, a)],
     lambda a, g: [_escalar(0.2, a)],
-    lambda a, g: [_escalar(3.0, a), _escalar(1.5, a)],
+    lambda a, g: [_escalar(5.0, a), _escalar(2.5, a)],
     lambda a, g: [_escalar(0.5, *g), _escalar(0.4, g[1])],
 ])
 def test_previa_recusa_escala_fora_dos_limites(job_escala, conteudo_escala, edicoes):
@@ -196,13 +198,13 @@ def test_rascunho_recusa_escala_fora_dos_limites(job_escala, conteudo_escala):
                 'familias': {gid: {'versao': None, 'confirmada': False, 'edicoes': edicoes}}}
     try:
         with pytest.raises(tr.ErroRascunho) as erro:
-            tr.gravar(job, mandar([_escalar(5.0, job_escala['assinatura'])]), job_id=job_id, laudo_atual=laudo,
+            tr.gravar(job, mandar([_escalar(11.0, job_escala['assinatura'])]), job_id=job_id, laudo_atual=laudo,
                       origem='rascunho')
         assert erro.value.motivo == 'escala'
         assert not (job / tr.ARQUIVO).exists()
-        gravado = tr.gravar(job, mandar([_escalar(4.0, job_escala['assinatura'])]), job_id=job_id, laudo_atual=laudo,
+        gravado = tr.gravar(job, mandar([_escalar(10.0, job_escala['assinatura'])]), job_id=job_id, laudo_atual=laudo,
                             origem='rascunho')
-        assert gravado['familias'][gid]['edicoes'][0]['fator'] == 4.0
+        assert gravado['familias'][gid]['edicoes'][0]['fator'] == 10.0
     finally:
         tgr._limpar_rascunho(job)
 
@@ -371,27 +373,27 @@ def test_escala_por_numero_na_tela_do_chromium(job_escala, conteudo_escala):
             assert len(eds) == 2 and eds[1]['fator'] == pytest.approx(1.205 / ALVO, abs=1e-6)
             assert _tamanho(pg) == '120,5'
             # fora dos limites ou sem numero: nada e gravado, e a tela diz o que fazer
-            for texto in ('500', '10', 'abc', ''):
+            for texto in ('1100', '1000,5', '10', 'abc', ''):
                 _digitar(pg, texto)
                 assert len(tgr._edicoes(job, gid)) == 2, texto
                 assert pg.evaluate('() => document.getElementById("ed-tamanho").getAttribute("aria-invalid")') == 'true'
-                assert '25%' in pg.evaluate(msg) and '400%' in pg.evaluate(msg), texto
-            # 400% e o teto: Aumentar ali nao grava nada e diz que chegou ao limite
-            _digitar(pg, '400')
+                assert '25%' in pg.evaluate(msg) and '1000%' in pg.evaluate(msg), texto
+            # 1000% e o teto (0.9.5): Aumentar ali nao grava nada e diz que chegou ao limite
+            _digitar(pg, '1000')
             tp._esperar(pg, salvo)
             assert len(tgr._edicoes(job, gid)) == 3
             assert pg.evaluate('() => document.getElementById("ed-tamanho").getAttribute("aria-invalid")') is None
-            assert _tamanho(pg) == '400'
+            assert _tamanho(pg) == '1000'
             assert pg.evaluate('() => document.getElementById("ed-aumentar").disabled') is True
             pg.evaluate('() => document.getElementById("ed-diminuir").click()')
             tp._esperar(pg, salvo)
-            assert len(tgr._edicoes(job, gid)) == 4 and _tamanho(pg) == '381'
+            assert len(tgr._edicoes(job, gid)) == 4 and _tamanho(pg) == '952,4'
             pg.evaluate('() => document.getElementById("ed-aumentar").click()')
             tp._esperar(pg, salvo)
             pg.evaluate('() => document.getElementById("ed-aumentar").click()')
             tp._esperar(pg, salvo)
             eds = tgr._edicoes(job, gid)
-            assert ed.escala_fora(eds) == [] and _tamanho(pg) == '400'
+            assert ed.escala_fora(eds) == [] and _tamanho(pg) == '1000'
             # o grupo do packshot: o campo mostra 100, e 80 grava uma edicao so, com a lista
             x, y = tgr._ponto(pg, grupo[0])
             pg.mouse.click(x, y)

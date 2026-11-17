@@ -26,8 +26,8 @@
    apaga; a barra embaixo do palco tem Diminuir, Aumentar, o campo Tamanho (M7b, D3: a porcentagem sobre o tamanho
    antes das edicoes), Editar texto, Apagar e Desfazer. Durante o arraste so o no
    arrastado muda (transform), com uma linha discreta quando uma borda ou um centro encosta no de outro elemento; ao
-   soltar, a edicao vai ao motor (/api/familia/previa), que a leva a cada arquivo da familia, alinha o que ficou quase
-   igual e refaz o encaixe; o palco e as miniaturas de cada arquivo voltam desenhados. As edicoes e a versao ficam no
+   soltar, a edicao vai ao motor (/api/familia/previa), que a leva a cada arquivo da familia e alinha o mexido; o que o
+   DA nao mexeu fica parado (0.9.5). O palco e as miniaturas de cada arquivo voltam desenhados. As edicoes e a versao ficam no
    rascunho; "Confirmar familia" e um ato da janela, com a confirmacao nela, e mexer depois volta a pedir a
    confirmacao. O texto editado vale so na familia (decisao 171) e a recusa do motor aparece no proprio editor.
    M7b, D5: o piso de escala ou de distancia que o elemento mexido pelo DA fura vem da previa em decisoes_do_da e sai
@@ -199,7 +199,7 @@
   const CASAS_FRACAO = 1e6;
   /* M7b, D3: o tamanho por numero. Os limites vem do desdobra (estado.edicao, tela.escala_min e tela.escala_max); a
      folga cobre o arredondamento do fator em 6 casas (desdobra.tela.edicao.FOLGA_ESCALA) */
-  const ESCALA_PADRAO = [0.25, 4];
+  const ESCALA_PADRAO = [0.25, 10];
   const FOLGA_ESCALA = 1e-4;
   const POR_CENTO = 100;
   const CASAS_TAMANHO = 10; // o tamanho aparece com uma casa depois da virgula, so quando ela nao e zero
@@ -3056,6 +3056,7 @@
     area.dataset.formato = fid;
     vista.formato = fid;
     vista.k = null;
+    ed.kDaEdicao = null;
     document.querySelectorAll('.ficha').forEach(function (b) {
       b.setAttribute('aria-pressed', b.dataset.formato === fid ? 'true' : 'false');
     });
@@ -3090,13 +3091,20 @@
   }
 
   /* ---------------------------------------------------------------- galeria de versoes (so previa, nada gravado) */
+  /* os textos de uma lista de avisos, cada frase uma vez so (revisao da 0.9.5): o motor avisa por par e por
+     conferencia, e a mesma frase repetida esconde o que o DA precisa decidir */
+  function frasesUnicas(lista) {
+    const vistas = [];
+    lista.forEach(function (f) { if (vistas.indexOf(f.texto) < 0) vistas.push(f.texto); });
+    return vistas.join(' ');
+  }
   function marcasDa(v) {
     const marcas = [];
     if (v.falhas && v.falhas.length) {
-      marcas.push([MARCA_FALHA, v.falhas.map(function (f) { return f.texto; }).join(' '), 'forte']);
+      marcas.push([MARCA_FALHA, frasesUnicas(v.falhas), 'forte']);
     }
     if (v.decisoes_do_da && v.decisoes_do_da.length) {
-      marcas.push([MARCA_DO_DA, v.decisoes_do_da.map(function (f) { return f.texto; }).join(' '), 'do-da']);
+      marcas.push([MARCA_DO_DA, frasesUnicas(v.decisoes_do_da), 'do-da']);
     }
     (v.avisos || []).forEach(function (a) { marcas.push([MARCAS[a.codigo] || MARCA_GERAL, a.texto, '']); });
     return marcas;
@@ -3288,8 +3296,13 @@
         mundo.style.transform = 'scale(' + k + ')';
         return;
       }
-      let k = opcoes.usarVista && vista.k ? vista.k :
-        Math.min((area.clientWidth - MARGEM) / Wm, (area.clientHeight - MARGEM) / Hm);
+      // revisao da 0.9.5: durante as edicoes o palco guarda a exibicao de antes da primeira (kDaEdicao). A faixa de
+      // avisos e o elemento que passa da borda nao mudam o tamanho do desenho, e o que o DA nao mexeu nao parece andar
+      // O editor de texto ou o controle da quebra que abre ou fecha muda o espaco de verdade e refaz a exibicao
+      if (area.id === 'palco' && ed.kDaEdicao && ed.kDaEdicao.paineis !== paineisDoPalco()) ed.kDaEdicao = null;
+      const kEd = opcoes.editavel && ed.kDaEdicao && ed.kDaEdicao.formato === vista.formato ? ed.kDaEdicao.k : null;
+      let k = opcoes.usarVista && vista.k ? vista.k : (kEd ||
+        Math.min((area.clientWidth - MARGEM) / Wm, (area.clientHeight - MARGEM) / Hm));
       if (!(k > 0)) k = 1;
       caixa.style.width = (Wm * k) + 'px';
       caixa.style.height = (Hm * k) + 'px';
@@ -3339,6 +3352,11 @@
     });
   }
   function reajustar(area) { const f = ajustes.get(area); if (f) f(); }
+  /* os paineis abertos que tiram espaco do palco: o editor de texto e o controle da quebra (revisao da 0.9.5,
+     kDaEdicao) */
+  function paineisDoPalco() {
+    return (document.getElementById('editor-texto').hidden ? '' : 'texto') + (controleAberto() ? ' quebra' : '');
+  }
   /* revisao do 0.9.2 (M2): as etiquetas que se cobrem no palco. A do escolhido, a destacada e a do grupo ficam
      primeiro; cada outra tenta o outro lado da caixa e, se ainda cobre uma etiqueta ja posta, sai da vista (o nome
      volta quando o DA escolhe o elemento). Assim o palco nunca mostra texto encavalado */
@@ -3634,6 +3652,12 @@
     ed.alinhou = null;
     const tamanho = ed.fraseTamanho;
     ed.fraseTamanho = null;
+    // revisao da 0.9.5: a exibicao do palco fica a de antes da primeira edicao; Ajustar, o zoom, trocar de formato e
+    // mudar o tamanho da janela a refazem
+    if (!vista.k && area.dataset.pronto === '1' && area.dataset.formato === vista.formato &&
+        !(ed.kDaEdicao && ed.kDaEdicao.formato === vista.formato) && area.querySelector('.mundo')) {
+      ed.kDaEdicao = { formato: vista.formato, k: atual(), paineis: paineisDoPalco() };
+    }
     return desenharPalco(area, m.palco, { usarVista: true, editavel: true }).then(function () {
       if (comEdicoes()) descreverMembro(m);
       atualizarSelo();
@@ -3711,12 +3735,12 @@
       b.appendChild(el('span', dimensao(m.palco.largura, m.palco.altura), 'membro-medida'));
       if (m.falhas.length) {
         const s = el('span', MARCA_FALHA, 'marca-aviso forte');
-        s.title = m.falhas.map(function (f) { return f.texto; }).join(' ');
+        s.title = frasesUnicas(m.falhas);
         b.appendChild(s);
       }
       if (decisoes(m).length) {
         const s = el('span', MARCA_DO_DA, 'marca-aviso do-da');
-        s.title = decisoes(m).map(function (f) { return f.texto; }).join(' ');
+        s.title = frasesUnicas(decisoes(m));
         b.appendChild(s);
       }
       b.addEventListener('click', function () { mostrarFormato(m.formato); });
@@ -3817,10 +3841,29 @@
      para mexer, nada e gravado e a tela diz por que */
   /* o ponto fixo de Tamanho, Diminuir, Aumentar e + e - (revisao 1 da fase D): o meio do escolhido, menos no lado em
      que ele chega a borda da peca no arquivo do palco. Ali ele fica preso a borda: o circulo que sangra na base muda
-     de tamanho sem sair dela, e o corte que ele tinha no KV nunca aparece. undefined: o meio nos dois eixos */
+     de tamanho sem sair dela, e o corte que ele tinha no KV nunca aparece. undefined: o meio nos dois eixos.
+     Revisao da 0.9.5: quando a ultima edicao dos escolhidos foi uma de tamanho deles (o Tamanho, Diminuir, Aumentar,
+     + e - ou o canto), o ponto fixo continua o dela. Cada passo escala em volta do mesmo ponto da peca, e ir a 1000% e
+     voltar a 100% devolve a caixa de partida, mesmo quando o elemento passou das bordas no caminho */
+  function fixoAnterior(ids) {
+    const lista = [].concat(ids);
+    const chave = lista.join(' ');
+    const edicoes = edicoesDa();
+    for (let i = edicoes.length - 1; i >= 0; i--) {
+      const e = edicoes[i];
+      const deles = membrosDa(e);
+      if (!deles.some(function (k) { return lista.indexOf(k) >= 0; })) continue;
+      if (e.acao === 'texto') continue; // o texto novo nao muda o lugar
+      if (e.acao !== 'escalar' || deles.join(' ') !== chave) return null;
+      return [e.fx === undefined ? 0.5 : e.fx, e.fy === undefined ? 0.5 : e.fy];
+    }
+    return null;
+  }
   function pontoFixo(ids) {
     const m = modeloDoPalco();
     if (!m) return undefined;
+    const velho = fixoAnterior(ids);
+    if (velho) return velho[0] === 0.5 && velho[1] === 0.5 ? undefined : velho;
     const c = caixaDoGrupo(ids);
     const lado = function (a, b, total) {
       const antes = a <= BORDA_PX;
@@ -4363,7 +4406,16 @@
     // depois da previa, o foco volta ao escolhido: as setas seguem mexendo no mesmo elemento ou grupo
     ed.focar = true;
     if (a.passou && !a.canto && Math.abs(a.dx) + Math.abs(a.dy) >= MEIO_PX) { moverPor(a.ids, a.dx, a.dy, false); return; }
-    if (a.passou && a.canto && Math.abs(a.f - 1) > FATOR_IGUAL) { escalarPor(a.ids, a.f, FIXO[a.canto][0], FIXO[a.canto][1]); return; }
+    if (a.passou && a.canto && Math.abs(a.f - 1) > FATOR_IGUAL) {
+      const feito = escalarPor(a.ids, a.f, FIXO[a.canto][0], FIXO[a.canto][1]);
+      // revisao da 0.9.5: o canto diz o tamanho final, como o Tamanho digitado (a previa ainda esta a caminho)
+      const s = tamanhoDaSelecao(a.ids);
+      if (feito && s !== null) {
+        ed.fraseTamanho = 'O tamanho ficou em ' + porcento(s * POR_CENTO) +
+          '% em todos os arquivos desta família. 100% é o tamanho antes das suas edições.';
+      }
+      return;
+    }
     ed.focar = false;
     a.nos.forEach(function (n) { n.style.transform = ''; n.classList.remove('arrastando'); });
     // com Shift ou "Escolher vários", o clique sem arrastar tira o elemento do grupo
@@ -5719,6 +5771,7 @@
   /* ---------------------------------------------------------------- controles do palco */
   function zoom(novo) {
     vista.k = novo;
+    ed.kDaEdicao = null;
     reajustar(document.getElementById('palco'));
   }
   function atual() {
@@ -5752,6 +5805,7 @@
     window.addEventListener('resize', function () {
       clearTimeout(espera);
       espera = setTimeout(function () {
+        ed.kDaEdicao = null; // a janela mudou: o palco se ajusta de novo (revisao da 0.9.5)
         reajustar(document.getElementById('palco'));
         reajustar(document.getElementById('palco-kv'));
         reajustar(document.getElementById('palco-ds'));

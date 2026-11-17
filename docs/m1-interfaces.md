@@ -952,7 +952,7 @@ Segunda revisão da fase B:
   - A frase da última mudança tem altura fixa: uma linha a partir de 1700 px de janela, duas abaixo disso; o que passar termina em reticências, com a frase inteira no `title`.
   - A etiqueta de quem não está escolhido mostra o cursor de clique; a mão de arrastar fica na etiqueta do escolhido.
   - Ctrl+Z no campo Tamanho, sem número sendo digitado, desfaz a última edição. Depois de Desfazer, o foco volta ao escolhido.
-  - No grupo de tamanhos diferentes, o número digitado é conferido pelo tamanho de cada elemento, nunca contra 25% a 400% direto.
+  - No grupo de tamanhos diferentes, o número digitado é conferido pelo tamanho de cada elemento, nunca contra os limites direto (25% a 400% na época; 25% a 1000% desde a 0.9.5).
   - O selo diz "Salvando no rascunho" enquanto a mudança espera a gravação. Ao fechar a janela com o rascunho por gravar (esperando, gravando ou em erro), a página manda a gravação na hora por um pedido `keepalive` (o mesmo POST `/api/rascunho`, com cookie, CSRF e o corpo de sempre). Com a última gravação em erro, ou o corpo acima de 60 000 bytes, o navegador pergunta antes de fechar.
 
 ### Botão "Nomes" (decisão 184)
@@ -1711,3 +1711,39 @@ Mudanças:
   - A proposta que o DA aprovou numa família confirmada continua como quebra dele, até "Voltar às linhas do texto".
   - O servidor não confere a borda em "Confirmar família". A página espera a medida das miniaturas, e o render recusa o formato no preparo.
   - O aviso de colisão do texto que cresce sobre outro elemento ficou de fora.
+
+## 0.9.5, o que o DA não mexeu fica parado
+
+Caso: o teste do KV A na 0.9.4, no passo das Famílias. No 970x250, o DA aumentou só o texto de apoio. O título e a barra do fundo subiram juntos, até o título sair do formato; ao diminuir o texto, o título voltava.
+
+Causa raiz: `proposta.layout_do_membro` chamava `galeria.reencaixar` (o solver do repositório, com as caixas editadas como mestre sintética) sempre que havia `mexidos` ou `apagados`. O solver reposicionava os elementos que o DA não mexeu para cumprir as relações do KV. Isso contradizia a decisão 185 (só o elemento que o DA acabou de mexer anda).
+
+Decisão do Duda (17/11, rascunho da decisão 197): depois de qualquer edição do DA (mover, escalar, alinhar, texto, apagar), o elemento que ele não mexeu fica com a caixa e o tamanho da versão de partida, ou da edição de antes. O motor não reposiciona nada por conta própria. Quando o resultado sobrepõe elementos, sai do formato, passa da área segura ou fica mais perto do que o KV pede, a tela avisa pelas `falhas` e `decisoes_do_da` de sempre, e o DA decide. O teto do Tamanho passa de 400% para 1000%.
+
+Mudanças:
+
+- `derivacao/proposta.py`, `layout_do_membro`: sem encaixe refeito. A ordem fica `edicao.editar` (as edições uma a uma, com a intenção de alinhamento só no mexido), sangria do DA, `cortes` e `soltos`, `edicao.firmar` (o alinhamento no quadro firmado), `conferir_edicao`, `corte_a_mostra`, `fora_da_peca` e `decisoes_do_da`. Saíram `para_o_solver`, a passada de `fora_da_peca` que só montava a sangria para o solver, `do_solver` e a falha `solver_nao_fecha` do layout editado. O retorno perdeu `falha_solver`. `TEXTO_SOLVER` saiu.
+- `derivacao/proposta.py`, `_derivacao`: saiu o ramo que marcava `origem_geometria: 'regra'` e `regra_aplicada.caminho: 'solver'` no elemento cuja caixa o encaixe refeito mudava. O elemento que o DA não mexeu fica com a origem da versão de partida (`ORIGEM_POR_CAMINHO[caminho]`).
+- `derivacao/galeria.py`: `reencaixar` saiu (ficou sem uso). `_resolver(cf, caixas, sangra)` perdeu `do_da`, que só o encaixe refeito usava; a variante da galeria continua passando pelo solver como antes. `decisoes_do_da(cf, falhas, do_da, da_partida=())` perdeu `do_solver`: sem encaixe refeito, nenhum elemento é tirado do lugar pelo solver depois da edição.
+- `tela/edicao.py`, `Editor.previa`: o membro sai sempre com `situacao: 'proposta'`. `'proposta_sem_solver'` continua só na variante da galeria (`galeria._saida`), quando o solver da variante não fecha.
+- O elemento cuja sangria o DA tirou da borda (`cortes`, `soltos`) e o que ficou inteiro fora da peça (`fora_da_peca`) continuam onde o DA os pôs, com as mesmas falhas (`corte_a_mostra`, `fora_do_quadro`). A família sem edição continua igual: o encaixe refeito já não rodava sem `mexidos` nem `apagados`.
+- A prévia e o "Salvar e seguir" seguem pela mesma função (`layout_do_membro`) e dão o mesmo layout.
+- `motor/fontes-de-limites.json`: `tela.escala_max` passa de 4 para 10, com a nota da origem. Os passos de `edicao.escala_fora` vão agora de `escala_min²/escala_max` a `escala_max²/escala_min` (1/160 e 400 com os limites de hoje).
+- `tela.js`: `ESCALA_PADRAO` (o valor usado só quando `estado.edicao` não traz os limites) passa a `[0.25, 10]`. A página continua lendo `escala_min` e `escala_max` do motor (`estado.edicao`), e as frases da faixa saem do limite lido ("O tamanho vai de 25% a 1000%.").
+- Ficam revistas por esta: o "Encaixe refeito" e o "Elemento do solver" da fase D do M7b, e as menções ao encaixe refeito em "Intenção que fica", "Conta" da sangria do DA e `decisoes_do_da(..., do_solver=())` acima.
+- Testes: `testes/test_tela_revisao_095.py` (novo). Ajustados à regra nova: `test_tela_piso_do_da.py` (os três testes do solver de mentira viraram um teste de que o não mexido fica parado; a chamada de `decisoes_do_da` sem `do_solver`), `test_tela_alinhar.py` (o teste do encaixe refeito que empurrava o bloco virou o do bloco na margem com o resto parado), `test_tela_salvar.py` (o formato de escala pura com edição deixa o resto em escala pura, sem origem `regra`), `test_tela_escala.py` (limites 0,25 e 10, e o Chromium com 1000%). `test_tela_sangria.py` (a marca que o DA arrasta para fora continua sem sangrar, fica onde ele a pôs e a derivação avisa; antes o encaixe refeito a trazia para dentro). Docstring em `test_impressao_formato.py`.
+- Texto e marca que o DA leva para além da borda: continuam sem sangrar, mas ficam onde o DA os pôs (antes, o encaixe refeito os trazia para dentro). A conferência avisa (`fora_do_quadro`, e a validação `enquadramento` devolve o formato).
+- Riscos declarados:
+  - O encaixe refeito também afastava elementos que a edição deixava sobrepostos. Agora a sobreposição fica e a tela avisa; o DA ajusta à mão.
+  - Com o teto em 1000%, um elemento pode crescer bem além do formato. A tela avisa (fora do formato ou sobreposição), sem bloqueio novo.
+
+Revisão da 0.9.5 (achados da revisão adversarial):
+
+- `tela/edicao.py`, `intencoes`: quando mover (no eixo), escalar, apagar ou um alinhamento novo tira um membro da intenção de um alinhamento de grupo, o grupo inteiro sai daquele eixo. Antes, `firmar` recalculava a linha só com quem sobrava (`caixa_da_linha`) e levava um elemento que a edição não tocou (no 970x250 do KV A, o título andava 15,7 px depois de alinhar título e apoio à direita e mexer só no apoio). O outro eixo do grupo continua valendo. Ajuste em `test_tela_alinhar.py::test_intencoes_que_ficam_depois_das_edicoes`: mover um só na largura e apagar um agora tiram o grupo da intenção, como a regra pede.
+- `tela.js`, `pontoFixo`: quando a última edição dos escolhidos foi uma de tamanho deles (Tamanho, Diminuir, Aumentar, + e -, ou o canto), o ponto fixo continua o dela (`fixoAnterior`). Cada passo escala em volta do mesmo ponto da peça; ir a 1000% e voltar a 100% devolve a conta da caixa de partida (o mexido ainda pode encostar na linha de um vizinho pela intenção de alinhamento, decisão 185). Antes, o elemento que passava das duas bordas trocava o ponto fixo para o meio, e a volta o levava para cima dos produtos.
+- `tela.js`, `desenharPalco.ajustar` e `desenharDaPrevia`: durante as edições, o palco guarda a exibição de antes da primeira (`ed.kDaEdicao`). A faixa "Com as suas edições" e o elemento que passa da borda não mudam mais o tamanho do desenho. Ajustar, o zoom, a troca de formato, mudar a janela e abrir ou fechar o editor de texto ou o controle da quebra (`paineisDoPalco`) refazem a exibição.
+- `tela.js`, soltar o canto: a mensagem diz o tamanho final ("O tamanho ficou em N% em todos os arquivos desta família."), como o Tamanho digitado.
+- `tela.js`, `marcasDa` e as marcas dos membros: cada frase aparece uma vez (`frasesUnicas`).
+- Comentário do topo de `tela.js` e `tela.previa_latencia_alvo_ms` em `fontes-de-limites.json` sem o encaixe refeito.
+- Testes novos em `test_tela_revisao_095.py`: o grupo alinhado e depois um membro mexido (apagar, mover, escalar), o alinhamento novo de um membro sozinho, a sobreposição que cita o título e o texto, e o Chromium no 970x250 (200%, 1000% e 100%: título e fundo parados, a mesma exibição do palco, a caixa do apoio igual à da prévia do motor, a frase do canto e os avisos sem frase repetida). `test_tela_sangria.py::test_texto_e_marca_nunca_sangram` confere agora o aviso da própria marca (o `enquadramento` dela reprovado ou `fora_do_quadro`).
+- Fica como estava: a distância de um par que passa a se sobrepor (zero ou menos) continua falha sem número (revisão 1 da fase D), ao lado da sobreposição. Juntar os avisos por elemento e dar o nome da camada quando há mais de um elemento com a mesma função fica para depois.
