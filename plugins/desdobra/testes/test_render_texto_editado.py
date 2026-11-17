@@ -2,12 +2,13 @@
 """M7b, A7: o render do texto editado pelo DA no palco (decisoes-v1.md, 169 e 171).
 
 Criterios de pronto cobertos aqui:
-  - a derivacao nunca junta as quebras da proposta com o texto editado: o texto do DA leva so as quebras dele (o \\n)
-    e as da medida na largura da caixa;
+  - a derivacao nunca junta as quebras da proposta com o texto editado: o texto do DA leva so as quebras dele (o \\n);
+    Linhas do DA (0.9.4): nada quebra na largura da caixa, e a derivacao guarda a caixa medida da tinta
+    (caixa_texto_editado), que o contrato usa como caixa validada;
   - o contrato do render leva o texto editado num trecho so, com o estilo do primeiro trecho com tinta, e confere o
     cmap da face do job como a edicao na tela: caractere que a fonte nao tem e recusado com motivo claro;
-  - no Chromium, o texto com \\n sai exatamente nas linhas pedidas, e a linha que passa da largura da caixa quebra no
-    espaco, como na previa;
+  - no Chromium, o texto com \\n sai exatamente nas linhas pedidas, e a linha mais larga que a caixa do KV fica numa
+    linha so, com o mesmo corpo (0.9.4);
   - a tinta do render bate com a previa da tela dentro da tolerancia da tinta do texto (render.tolerancia_tinta_texto);
   - a quebra de linha da familia da tela (M7b, C2) chega a todo membro da familia: no texto do KV, a derivacao mede a
     caixa no Chromium e o render junta as linhas dentro dela; no texto editado, o render insere a quebra do DA no
@@ -134,13 +135,14 @@ def test_contrato_leva_o_texto_editado_num_trecho_so(job, modelo):
     assert e['texto']['runs'][0]['inicio'] == 0 and e['texto']['runs'][0]['fim'] == len(DUAS_LINHAS)
     assert list(e['cores_por_trecho']) == ['0'] and e['cores'] == [e['cores_por_trecho']['0']]
     assert 'quebras_juntadas' not in e and 'quebras_inseridas' not in e
-    # a largura da quebra e a da caixa de tinta da camada no espaco do texto (a mesma largura da previa)
-    laudo = contratos.ler(job / mb.ARQUIVO_LAUDO, 'laudo/1')
-    ct = mb.camadas_do_laudo(laudo)[modelo['layer_id']]['geometria']['caixa_tinta']
-    assert e['largura_quebra'] == pytest.approx((ct[2] - ct[0]) / tp.ESCALA_DUAS, abs=1e-6)
-    # a tinta do texto novo e conferida na borda do formato: a pagina cobre o formato inteiro, sem corte calado
+    # Linhas do DA (0.9.4): sem largura de quebra; a caixa validada e a tinta medida na derivacao, e a pagina a cobre
+    # com folga (a tinta alem dela e conferida depois de compor, nunca cortada calada)
+    assert 'largura_quebra' not in e and e['linhas_do_da'] is True
+    x = next(y for y in _deriv(job, 'mesma')['elementos'] if y['id'] == el)
+    assert e['caixa_validada'] == pytest.approx(x['caixa_texto_editado'], abs=0.01)
     W, H = contrato['formato']['largura'], contrato['formato']['altura']
-    assert e['regiao'] == [0, 0, W, H] and e['caixa_validada'] == [0, 0, W, H]
+    r, cv = e['regiao'], e['caixa_validada']
+    assert 0 <= r[0] <= cv[0] and 0 <= r[1] <= cv[1] and cv[2] <= r[2] <= W and cv[3] <= r[3] <= H, (r, cv)
     assert any(r['codigo'] == 'texto_editado_desenhado' and r['layer_id'] == modelo['layer_id']
                for r in contrato['registros'])
     contratos.validar(contrato, 'composicao/1')
@@ -193,17 +195,25 @@ def test_texto_com_quebra_sai_exatamente_nas_linhas_pedidas(job, modelo):
     assert any(p['entrada'] == e['id'] for p in paginas)
 
 
-def test_linha_mais_larga_que_a_caixa_quebra_no_espaco(job, modelo):
-    _editar(job, REFLOW)
-    contrato, _b, _c = rd.montar(job, 'mesma')
+def test_linha_mais_larga_que_a_caixa_fica_numa_linha_so(job, modelo):
+    # Linhas do DA (0.9.4; antes a terceira palavra descia na largura da caixa): o texto editado nunca quebra sozinho
+    el = _editar(job, REFLOW)
+    contrato, bloqueios, _c = rd.montar(job, 'mesma')
+    assert bloqueios == [], bloqueios
     e = _entrada_editada(contrato, modelo['layer_id'])
     corpo = e['texto']['runs'][0]['corpo_espaco_texto']
-    largura = e['largura_quebra']
-    palavra = REFLOW.split(' ')[0]
-    # duas palavras cabem na largura da caixa, tres nao: a terceira desce
-    assert _avanco(palavra + ' ' + palavra, corpo) < largura < _avanco(REFLOW, corpo)
+    laudo = contratos.ler(job / mb.ARQUIVO_LAUDO, 'laudo/1')
+    ct = mb.camadas_do_laudo(laudo)[modelo['layer_id']]['geometria']['caixa_tinta']
+    # a linha passa da largura da caixa de tinta do KV no espaco do texto, com o mesmo corpo
+    assert _avanco(REFLOW, corpo) > (ct[2] - ct[0]) / tp.ESCALA_DUAS
+    x = next(y for y in _deriv(job, 'mesma')['elementos'] if y['id'] == el)
+    tinta_kv = rd._caixa(x['transformacao'], ct)
+    cx = x['caixa_texto_editado']
+    assert cx[2] - cx[0] > tinta_kv[2] - tinta_kv[0]
+    # uma linha so: a caixa fica mais baixa que a tinta das duas linhas do KV
+    assert cx[3] - cx[1] < tinta_kv[3] - tinta_kv[1]
     _texto_no_chromium(job, contrato)
-    assert _linhas(e) == [palavra + ' ' + palavra, palavra]
+    assert _linhas(e) == [REFLOW] and not e.get('quebras_automaticas')
 
 
 # ------------------------------------------------------------------ a quebra de linha da familia (M7b, C2)

@@ -152,10 +152,9 @@
         <div class="mesa-palco">
           <div id="variante-palco" class="variante-palco" aria-live="polite" hidden></div>
           <div id="palco" class="area-palco" aria-label="Palco"></div>
-          <div id="quebra-proposta" class="faixa-quebra" role="status" hidden>
-            <p id="quebra-proposta-texto"></p>
-            <button type="button" id="ver-quebra" class="botao">Ver a quebra</button>
-            <button type="button" id="aprovar-quebra" class="botao botao-acento">Aprovar quebra</button>
+          <div id="texto-borda" class="faixa-quebra" role="status" hidden>
+            <p id="texto-borda-texto"></p>
+            <button type="button" id="ver-borda" class="botao">Ver o arquivo</button>
           </div>
           <div id="barra-edicao" class="barra-edicao" role="toolbar" aria-label="Edição do elemento escolhido" hidden>
             <div class="linha-escolhido">
@@ -167,10 +166,11 @@
               <ul class="ajuda-lista">
                 <li>Clique num elemento para escolher. Arraste para mover.</li>
                 <li>Puxe um canto para mudar o tamanho. Para um tamanho exato, digite a porcentagem em Tamanho e aperte Enter.</li>
+                <li>Clique duas vezes num texto para escrever nele no palco. Enter quebra a linha. Ctrl+Enter ou um clique fora aplica, e Esc desiste.</li>
                 <li>Para mexer em vários juntos, segure Shift e clique em cada um. O botão Escolher vários faz o mesmo.</li>
                 <li>Você também pode arrastar um retângulo em volta dos elementos. Comece o arraste num espaço livre do palco.</li>
                 <li>Para encostar na margem ou centralizar, use os botões de Alinhar.</li>
-                <li>Pelo teclado, as setas movem, + e - mudam o tamanho e Delete apaga.</li>
+                <li>Pelo teclado, as setas movem, + e - mudam o tamanho, F2 abre o texto escolhido e Delete apaga.</li>
                 <li>Ctrl+Z ou Desfazer volta a última edição. Esc tira a escolha.</li>
                 <li>Cada mudança vale para todos os arquivos da família.</li>
               </ul>
@@ -215,7 +215,7 @@
           <div id="editor-texto" class="editor-texto" hidden>
             <label for="ed-campo-texto" class="editor-rotulo">Texto deste elemento, só nesta família</label>
             <textarea id="ed-campo-texto" rows="3" spellcheck="false"></textarea>
-            <p class="nota">As quebras de linha que você fizer ficam; as outras a tela refaz na largura da caixa, com a fonte do job.</p>
+            <p class="nota">As linhas são as que você escrever. O desdobra não quebra o texto sozinho. Para mudar de linha, use Enter.</p>
             <p id="ed-erro-texto" class="erro-campo" role="alert"></p>
             <div class="editor-acoes">
               <button type="button" id="ed-texto-cancelar" class="botao">Cancelar</button>
@@ -231,7 +231,6 @@
             <div class="quebra-pe">
               <p id="quebra-situacao" class="quebra-situacao" role="status" aria-live="polite"></p>
               <div class="editor-acoes">
-                <button type="button" id="ed-quebra-aprovar" class="botao botao-acento" hidden>Aprovar quebra</button>
                 <button type="button" id="ed-quebra-kv" class="botao" hidden>Voltar às quebras do KV</button>
                 <button type="button" id="ed-quebra-fechar" class="botao">Fechar</button>
               </div>

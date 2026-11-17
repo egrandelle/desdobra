@@ -6,12 +6,14 @@ Criterios de pronto cobertos aqui:
   - a previa da familia leva, para cada texto que o DA pode quebrar, o texto de agora (o do KV ou o editado na
     familia) com as posicoes das quebras gravadas e dos espacos: a pagina monta o controle a partir dela;
   - o texto editado no palco sai nas linhas da quebra da familia (as juntadas e as inseridas), como o render o desenha;
-  - a quebra que o desdobra propos e o DA ainda nao aprovou impede "Confirmar familia", na janela e no motor;
+  - a quebra que o desdobra propos e o DA ainda nao aprovou impede "Confirmar familia", na janela e no motor (a do
+    rascunho de antes da 0.9.4 num texto que nao foi editado);
   - a quebra mudada conta como edicao da familia: a frase da familia que mudou de formatos diz que ela tinha edicao;
   - na pagina: o DA clica entre duas palavras para pôr ou tirar a quebra e ve a previa nos membros (a previa espera
-    300 ms sem clique); a quebra que o desdobra propos fica marcada no palco e sai com um clique em "Aprovar quebra";
-    a lista do que falta leva a ela; mover, mudar a quebra, aprovar, confirmar, "Salvar e seguir", fechar e reabrir
-    mostram tudo igual, e a derivacao gravada traz as duas quebras.
+    300 ms sem clique); mover, mudar a quebra, confirmar, "Salvar e seguir", fechar e reabrir mostram tudo igual, e a
+    derivacao gravada traz a quebra do DA.
+  - Linhas do DA (0.9.4): o texto editado nunca quebra sozinho na largura da caixa. O desdobra nao propoe quebra nele,
+    a pagina nao tem "Aprovar quebra", e "Confirmar familia" so espera a previa (antes: a proposta e a aprovacao).
 Tudo sintetico: o PSD de test_tela_palco (o texto de apoio 'VOX AH', o titulo 'HOAX') e a fonte de autoteste."""
 import json
 import sys
@@ -30,7 +32,7 @@ from desdobra.tela import rascunho as tr
 modelo = tsv.modelo
 job = tsv.job
 APOIO = 'VOX AH'
-TITULO = 'HOAX HOAX HOAX'  # o titulo editado: duas palavras cabem na caixa, tres nao
+TITULO = 'HOAX HOAX HOAX'  # o titulo editado: mais largo que a caixa do KV, fica numa linha so (0.9.4)
 
 
 def _quebra(el, lid, inseridas=(3,), manter=(), origem='da', aprovada=True):
@@ -67,6 +69,9 @@ def test_quebra_por_aprovar_so_na_proposta_sem_aprovacao():
     assert tr.por_aprovar({'quebras': [da, proposta, aprovada]}) == [proposta]
     assert tr.por_aprovar({'quebras': [da, aprovada]}) == []
     assert tr.por_aprovar({}) == [] and tr.por_aprovar(None) == []
+    # Linhas do DA (0.9.4): a proposta de antes num texto editado nunca espera aprovacao
+    editado = [{'elemento': 'el2', 'acao': 'texto', 'texto': 'VOX AH'}]
+    assert tr.por_aprovar({'quebras': [da, proposta, aprovada], 'edicoes': editado}) == []
 
 
 # ------------------------------------------------------------------ a previa da familia
@@ -311,30 +316,21 @@ def test_quebra_na_tela_do_clique_a_reabertura(job, modelo):
             assert len(previas) == antes + 1
             assert pg.evaluate(JS_LINHAS, apoio) == ['VOX', 'AH']
             assert _do_elemento(ted._rascunho_gravado(job), gm, apoio) == [_quebra(apoio, lid)]
-            # a quebra proposta pelo desdobra: o texto editado do titulo nao cabe na caixa e quebra na largura dela
+            # Linhas do DA (0.9.4; antes o desdobra propunha a quebra na largura da caixa e pedia "Aprovar quebra"): o
+            # titulo editado mais largo que a caixa do KV fica numa linha so, sem proposta nem aprovacao
             _escolher(pg, titulo)
             pg.evaluate('() => document.getElementById("ed-texto").click()')
             pg.fill('#ed-campo-texto', TITULO)
             pg.evaluate('() => document.getElementById("ed-texto-aplicar").click()')
-            tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "" : "1"')
+            tp._esperar(pg, '() => document.getElementById("editor-texto").hidden ? "1" : ""')
+            tp._esperar(pg, PREVIA_PRONTA)
             ted._esperar_salvo(pg)
-            [proposta] = _do_elemento(ted._rascunho_gravado(job), gm, titulo)
-            assert proposta == _quebra(titulo, proposta['layer_id'], inseridas=(9,), origem='proposta',
-                                       aprovada=False)
-            assert pg.evaluate(JS_LINHAS, titulo) == ['HOAX HOAX', 'HOAX']
-            # marcada no palco, sem confirmar a familia, e a lista do que falta leva a ela
-            assert pg.evaluate('i => document.querySelector(\'#palco .rotulo[data-elemento="\' + i + \'"]\')'
-                               '.classList.contains("quebra-proposta")', titulo)
-            assert pg.evaluate('() => document.getElementById("confirmar-familia").disabled') is True
-            faltam = pg.evaluate('() => Array.from(document.querySelectorAll("#itens-faltam .texto-item"))'
-                                 '.map(x => x.textContent)')
-            assert any('quebra de linha' in t for t in faltam), faltam
-            pg.evaluate('() => document.getElementById("aprovar-quebra").click()')
-            tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "1" : ""')
-            ted._esperar_salvo(pg)
-            assert _do_elemento(ted._rascunho_gravado(job), gm, titulo) == [dict(proposta, aprovada=True)]
-            assert not pg.evaluate('i => document.querySelector(\'#palco .rotulo[data-elemento="\' + i + \'"]\')'
-                                   '.classList.contains("quebra-proposta")', titulo)
+            assert _do_elemento(ted._rascunho_gravado(job), gm, titulo) == []
+            assert pg.evaluate(JS_LINHAS, titulo) == [TITULO]
+            assert pg.evaluate('() => !document.getElementById("quebra-proposta") && '
+                               '!document.getElementById("aprovar-quebra") && '
+                               '!document.getElementById("ed-quebra-aprovar")') is True
+            assert pg.evaluate('() => document.getElementById("texto-borda").hidden') is True
             assert pg.evaluate('() => document.getElementById("confirmar-familia").disabled') is False
             # confirmar e "Salvar e seguir"
             tfe._confirmar_na_pagina(pg, '#confirmar-familia')
@@ -353,7 +349,7 @@ def test_quebra_na_tela_do_clique_a_reabertura(job, modelo):
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
             assert ted._rascunho_gravado(job)['familias'][gm] == gravado
             assert {e: pg.evaluate(JS_LINHAS, e) for e in (apoio, titulo)} == linhas
-            assert pg.evaluate('() => document.getElementById("quebra-proposta").hidden') is True
+            assert pg.evaluate('() => document.getElementById("texto-borda").hidden') is True
             assert pg.evaluate('() => document.getElementById("confirmar-familia").textContent') == 'Família confirmada'
             assert pg.evaluate('() => document.getElementById("salvo").hidden') is False
             _abrir_controle(pg, apoio)
@@ -361,17 +357,17 @@ def test_quebra_na_tela_do_clique_a_reabertura(job, modelo):
         finally:
             nav.close()
     assert gravado['confirmada'] is True and len(gravado['edicoes']) == 2  # numero-neutro: mover e o texto
-    # a derivacao gravada traz as duas quebras: a do DA e a proposta que ele aprovou, com a caixa do DA
+    # a derivacao gravada traz a quebra do DA no apoio; o titulo editado leva so as linhas do DA e a caixa medida
     d = contratos.ler(job / nd.PASTA / 'mesma.json', nd.ESQUEMA)
     por_id = {e['id']: e for e in d['elementos']}
     assert por_id[apoio]['quebras_origem'] == 'da' and por_id[apoio]['origem_geometria'] == 'da'
     assert por_id[apoio]['quebras']['familia'][0]['inseridas'] == [3]
-    assert por_id[titulo]['texto_editado'] == TITULO and por_id[titulo]['quebras_origem'] == 'proposta'
-    assert por_id[titulo]['origem_geometria'] == 'da'
-    assert por_id[titulo]['quebras']['familia'][0]['inseridas'] == [9]
+    assert por_id[titulo]['texto_editado'] == TITULO and 'quebras_origem' not in por_id[titulo]
+    assert por_id[titulo]['origem_geometria'] == 'da' and por_id[titulo]['quebras'] == 'do_texto_editado'
+    assert len(por_id[titulo]['caixa_texto_editado']) == 4
     b = mb.ler(job)
     assert sorted((q['layer_id'], q['origem'], q['aprovada']) for q in b['quebras_por_familia']
-                  if q.get('familia') == gm) == sorted([(lid, 'da', True), (proposta['layer_id'], 'proposta', True)])
+                  if q.get('familia') == gm) == [(lid, 'da', True)]
     assert json.loads(json.dumps(b)) == mb.ler(job)
 
 
@@ -389,7 +385,7 @@ JS_MEDIDAS = '''() => {
     return b.offsetParent !== null && r && r.width > 0 && r.height > 0 && r.top >= 0 && r.left >= 0 &&
       r.bottom <= window.innerHeight && r.right <= window.innerWidth;
   });
-  return {palco: alto('palco'), faixa: alto('quebra-proposta'), controle: alto('editor-quebra'),
+  return {palco: alto('palco'), faixa: alto('texto-borda'), controle: alto('editor-quebra'),
           barra: alto('barra-edicao'), membros: alto('membros'), variante: alto('variante-palco'),
           largura: escala ? escala.getBoundingClientRect().width : 0,
           miniaturas: document.querySelectorAll('#membros-lista .membro').length,
@@ -420,14 +416,15 @@ def _preparar_pagina(job, modelo, srv, conteudo, gm, confirmar_gm=False, edicoes
 
 
 def _editar_titulo(pg, titulo):
-    """O DA edita o titulo para o texto que nao cabe na caixa: o desdobra propoe a quebra."""
+    """O DA edita o titulo para um texto mais largo que a caixa do KV (0.9.4: fica numa linha so)."""
     import test_tela_edicao as ted
     import test_tela_palco as tp
     _escolher(pg, titulo)
     pg.evaluate('() => document.getElementById("ed-texto").click()')
     pg.fill('#ed-campo-texto', TITULO)
     pg.evaluate('() => document.getElementById("ed-texto-aplicar").click()')
-    tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "" : "1"')
+    tp._esperar(pg, '() => document.getElementById("editor-texto").hidden ? "1" : ""')
+    tp._esperar(pg, PREVIA_PRONTA)
     ted._esperar_salvo(pg)
 
 
@@ -495,9 +492,10 @@ def test_quebra_nao_gravada_nao_e_confirmada_pela_janela(job, modelo):
 
 @pytest.mark.skipif(sys.platform != 'win32', reason='o isolador dos filhos roda no Windows')
 @pytest.mark.parametrize('janela', [(2048, 720), (1280, 800)])  # numero-neutro: a janela da decisao 157 e uma menor
-def test_palco_continua_legivel_com_o_controle_e_a_proposta(job, modelo, janela):
-    """Com a quebra proposta no titulo e o controle da quebra aberto no apoio, o palco guarda o espaco para o DA ler
-    a quebra que fez: as miniaturas saem da frente, como no editor de texto, e o controle fica baixo."""
+def test_palco_continua_legivel_com_o_titulo_editado_e_o_controle(job, modelo, janela):
+    """Com o titulo editado e o controle da quebra aberto no apoio, o palco guarda o espaco para o DA ler a quebra que
+    fez: as miniaturas saem da frente, como no editor de texto, e o controle fica baixo. 0.9.4: sem a faixa da quebra
+    proposta (o desdobra nao propoe mais quebra no texto editado)."""
     import test_tela_palco as tp
     apoio, _lid = tsv._apoio(modelo)
 
@@ -509,7 +507,7 @@ def test_palco_continua_legivel_com_o_controle_e_a_proposta(job, modelo, janela)
         pg.wait_for_timeout(400)  # numero-neutro: ms, a animacao do controle
         return antes, pg.evaluate(JS_MEDIDAS)
     antes, depois = _na_pagina(job, modelo, janela, passos)
-    assert depois['faixa'] > 0 and depois['controle'] > 0
+    assert depois['faixa'] == 0 and depois['controle'] > 0
     assert not depois['rola_x']
     medidas = json.dumps({'antes': antes, 'depois': depois})
     assert depois['palco'] >= 0.8 * antes['palco'], medidas  # numero-neutro: o palco perde no maximo 20%
@@ -559,9 +557,9 @@ def _esperar_pedido(pg, acao):
 @pytest.mark.skipif(sys.platform != 'win32', reason='o isolador dos filhos roda no Windows')
 def test_confirmar_familia_espera_a_previa_do_texto_editado(job, modelo):
     """Revisao 2 do C: a previa demora (a familia grande, ou a medida nova da quebra). O DA edita o titulo para um
-    texto que nao cabe na caixa; enquanto a previa nao volta, "Confirmar familia" fica desligado, porque o DA ainda
-    nao viu a familia. Quando ela volta, a quebra que o desdobra fez na largura da caixa aparece como proposta, e o
-    botao espera o clique em "Aprovar quebra"."""
+    texto mais largo que a caixa do KV; enquanto a previa nao volta, "Confirmar familia" fica desligado, porque o DA
+    ainda nao viu a familia. Quando ela volta, o botao liga (0.9.4: o texto fica nas linhas do DA, sem a quebra
+    proposta que antes esperava "Aprovar quebra")."""
     import test_tela_edicao as ted
     import test_tela_palco as tp
 
@@ -578,70 +576,61 @@ def test_confirmar_familia_espera_a_previa_do_texto_editado(job, modelo):
         durante = pg.evaluate('() => [document.documentElement.dataset.previa, '
                               'document.getElementById("confirmar-familia").disabled, '
                               'document.getElementById("confirmar-familia").title]')
-        tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "" : "1"')
+        tp._esperar(pg, PREVIA_PRONTA)
         pg.evaluate('() => { window.__atraso = 0; }')
         ted._esperar_salvo(pg)
+        tp._esperar(pg, '() => document.getElementById("confirmar-familia").disabled ? "" : "1"')
         depois = pg.evaluate('() => document.getElementById("confirmar-familia").disabled')
         return gm, titulo, durante, depois, ted._rascunho_gravado(job)['familias'][gm]
     gm, titulo, durante, depois, gravada = _na_pagina(job, modelo, (1280, 800), passos)  # numero-neutro
     assert durante[0] == 'pedindo' and durante[1] is True and durante[2], durante
-    assert depois is True
-    assert gravada['confirmada'] is False
-    [q] = gravada['quebras']
-    assert (q['elemento'], q['origem'], q['aprovada'], q['inseridas']) == (titulo, 'proposta', False, [9])
+    assert depois is False
+    assert gravada['confirmada'] is False and not gravada.get('quebras')
+
+
 
 
 @pytest.mark.skipif(sys.platform != 'win32', reason='o isolador dos filhos roda no Windows')
-def test_juntar_a_linha_que_nao_cabe_volta_a_ser_proposta(job, modelo):
-    """O titulo editado nao cabe numa linha; o DA aprova a quebra proposta e depois junta as linhas no controle. O
-    render quebra de novo na largura da caixa, e essa quebra do desdobra volta marcada como proposta: o controle e o
-    palco mostram as mesmas linhas, e "Confirmar familia" espera o clique do DA."""
+def test_juntar_as_linhas_do_texto_editado_fica_numa_linha(job, modelo):
+    """0.9.4 (Linhas do DA; antes a linha juntada que nao cabia voltava a ser quebra proposta): o DA escreve o titulo
+    em duas linhas e junta as duas no controle. O texto fica numa linha so, com o mesmo corpo, no controle e no palco;
+    a quebra e do DA, sem proposta, e "Confirmar familia" liga depois da previa."""
     import test_tela_edicao as ted
     import test_tela_palco as tp
 
     def passos(pg, conteudo, gm):
         titulo = tsv._titulo(conteudo, gm)
-        _editar_titulo(pg, titulo)
-        pg.evaluate('() => document.getElementById("aprovar-quebra").click()')
-        tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "1" : ""')
-        ted._esperar_salvo(pg)
-        _abrir_controle(pg, titulo)
-        assert pg.evaluate(JS_LINHAS_DO_CONTROLE) == ['HOAX HOAX', 'HOAX']
-        marcado = ('() => document.querySelector(\'#palco .rotulo[data-elemento=%s]\').classList.contains('
-                   '"quebra-proposta") ? "1" : ""' % json.dumps(titulo))
-        pg.evaluate('() => document.querySelector("#quebra-linhas .quebra-marca").click()')
-        tp._esperar(pg, marcado)
-        ted._esperar_salvo(pg)
+        _escolher(pg, titulo)
+        pg.evaluate('() => document.getElementById("ed-texto").click()')
+        pg.fill('#ed-campo-texto', 'HOAX\nHOAX HOAX')
+        pg.evaluate('() => document.getElementById("ed-texto-aplicar").click()')
+        tp._esperar(pg, '() => document.getElementById("editor-texto").hidden ? "1" : ""')
         tp._esperar(pg, PREVIA_PRONTA)
-        vista = {'controle': pg.evaluate(JS_LINHAS_DO_CONTROLE),
-                 'marcas': pg.evaluate('() => Array.from(document.querySelectorAll("#quebra-linhas .quebra-marca"))'
-                                       '.map(b => b.className)'),
-                 'no_palco': pg.evaluate('i => document.querySelector(\'#palco .rotulo[data-elemento="\' + i + \'"]\')'
-                                         '.classList.contains("quebra-proposta")', titulo),
-                 'familia_off': pg.evaluate('() => document.getElementById("confirmar-familia").disabled'),
-                 'rascunho': _do_elemento(ted._rascunho_gravado(job), gm, titulo)}
-        # um clique aprova de novo, no botao que a tela mostra (a faixa, ou o controle aberto no texto da proposta)
-        pg.evaluate('() => Array.from(document.querySelectorAll("#aprovar-quebra, #ed-quebra-aprovar"))'
-                    '.find(b => b.offsetParent !== null).click()')
-        tp._esperar(pg, marcado.replace('"1" : ""', '"" : "1"'))
         ted._esperar_salvo(pg)
-        vista['aprovada'] = _do_elemento(ted._rascunho_gravado(job), gm, titulo)
-        return titulo, vista
+        antes = pg.evaluate(JS_LINHAS, titulo)
+        _abrir_controle(pg, titulo)
+        _esperar_pedido(pg, lambda: pg.evaluate('() => document.querySelector("#quebra-linhas .quebra-marca").click()'))
+        tp._esperar(pg, PREVIA_PRONTA)
+        ted._esperar_salvo(pg)
+        tp._esperar(pg, '() => document.getElementById("confirmar-familia").disabled ? "" : "1"')
+        return titulo, {'antes': antes, 'controle': pg.evaluate(JS_LINHAS_DO_CONTROLE),
+                        'palco': pg.evaluate(JS_LINHAS, titulo),
+                        'aprovar': pg.evaluate('() => !!document.getElementById("ed-quebra-aprovar")'),
+                        'familia_off': pg.evaluate('() => document.getElementById("confirmar-familia").disabled'),
+                        'rascunho': _do_elemento(ted._rascunho_gravado(job), gm, titulo)}
     titulo, vista = _na_pagina(job, modelo, (1600, 900), passos)  # numero-neutro: janela do teste
-    assert vista['controle'] == ['HOAX HOAX', 'HOAX'], vista
-    assert any('proposta' in c for c in vista['marcas']), vista
-    assert vista['no_palco'] is True and vista['familia_off'] is True, vista
+    assert vista['antes'] == ['HOAX', 'HOAX HOAX'], vista
+    assert vista['controle'] == [TITULO] and vista['palco'] == [TITULO], vista
+    assert vista['aprovar'] is False and vista['familia_off'] is False, vista
     [q] = vista['rascunho']
-    assert (q['origem'], q['aprovada'], q['inseridas']) == ('proposta', False, [9]), vista
-    [q] = vista['aprovada']
-    assert (q['origem'], q['aprovada'], q['inseridas']) == ('proposta', True, [9]), vista
+    assert (q['origem'], q['aprovada'], q['manter'], q['inseridas']) == ('da', True, [], []), vista
 
 
 @pytest.mark.skipif(sys.platform != 'win32', reason='o isolador dos filhos roda no Windows')
 def test_abrir_a_familia_confirmada_nao_tira_a_confirmacao(job, modelo):
-    """A familia confirmada no rascunho, com o titulo editado que nao cabe na caixa e sem quebra (o rascunho de antes
-    do C4). So abrir a familia na tela nunca tira a confirmacao do DA nem grava a proposta. Quando o DA mexe na
-    familia, a confirmacao cai pela edicao dele, e o desdobra propoe a quebra."""
+    """A familia confirmada no rascunho, com o titulo editado mais largo que a caixa e sem quebra. So abrir a familia
+    na tela nunca tira a confirmacao do DA. Quando o DA mexe na familia, a confirmacao cai pela edicao dele. 0.9.4:
+    o desdobra nao propoe quebra no titulo editado (antes propunha), e nenhuma faixa aparece."""
     import test_tela_edicao as ted
     import test_tela_palco as tp
     titulo_de = {}
@@ -653,10 +642,12 @@ def test_abrir_a_familia_confirmada_nao_tira_a_confirmacao(job, modelo):
     def passos(pg, conteudo, gm):
         pg.wait_for_timeout(1500)  # numero-neutro: ms, mais que a espera do rascunho
         depois_de_abrir = ted._rascunho_gravado(job)['familias'][gm]
-        faixa = pg.evaluate('() => document.getElementById("quebra-proposta").hidden')
+        faixa = pg.evaluate('() => document.getElementById("texto-borda").hidden')
         ted._focar(pg, titulo_de[gm])
         pg.keyboard.press('ArrowDown')
-        tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "" : "1"')
+        tp._esperar(pg, '() => document.getElementById("confirmar-familia").textContent === "Família confirmada" '
+                        '? "" : "1"')
+        tp._esperar(pg, PREVIA_PRONTA)
         ted._esperar_salvo(pg)
         return gm, depois_de_abrir, faixa, ted._rascunho_gravado(job)['familias'][gm]
     conteudo = te.montar(job)
@@ -665,6 +656,4 @@ def test_abrir_a_familia_confirmada_nao_tira_a_confirmacao(job, modelo):
                                            edicoes_gm=edicoes(conteudo, gm0))
     assert aberta['confirmada'] is True and aberta.get('confirmacao') and not aberta.get('quebras'), aberta
     assert faixa is True
-    assert mexida['confirmada'] is False
-    [q] = mexida['quebras']
-    assert (q['origem'], q['aprovada'], q['inseridas']) == ('proposta', False, [9])
+    assert mexida['confirmada'] is False and not mexida.get('quebras'), mexida

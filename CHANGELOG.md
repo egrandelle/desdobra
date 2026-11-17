@@ -2,6 +2,29 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.9.4 (17/11/2026): as linhas do texto editado são as do DA
+
+Correção do teste do KV A na 0.9.3, no passo das Famílias. O texto editado quebrava sozinho na largura da caixa, o "Aprovar quebra" não mudava nada, e o render do 970x250 parava com a mensagem genérica. Também ficou mais rápido escrever no texto. Tudo foi conferido em arquivos sintéticos.
+
+- Clique duas vezes num texto do palco para escrever nele ali mesmo. O campo aparece sobre o texto, com a mesma fonte, o mesmo tamanho e a mesma cor. Enter quebra a linha. Ctrl+Enter, Tab ou um clique fora aplica, e Esc desiste.
+- Pelo teclado, F2 abre o texto do elemento. Enter também abre, quando o texto já está escolhido.
+- O campo cresce com a linha mais longa e nunca quebra sozinho. Se a fonte do job não tem uma letra, o aviso aparece e o texto que você escreveu continua no campo.
+- Abrir o texto e sair sem mudar nada não grava edição. O botão "Editar texto" da barra continua abrindo o editor embaixo do palco.
+- Um tremor da mão no clique não move mais o elemento. O arraste começa depois de 3 pixels na tela.
+
+- O texto que você edita nunca quebra sozinho. As linhas são as que você escreve, com Enter no texto ou com o controle de quebra de linha.
+- O texto fica com o mesmo corpo de letra. A caixa cresce até a linha mais longa, em volta do ponto de alinhamento do texto do KV.
+- A proposta de quebra do desdobra e o botão "Aprovar quebra" saíram do texto editado. Um rascunho antigo com essa proposta numa família ainda não confirmada volta às linhas do texto e não trava a confirmação. A família já confirmada fica como você a confirmou.
+- Quando o texto editado passa da borda de um arquivo da família, a miniatura dele fica marcada, uma faixa diz qual é o arquivo e leva até ele, e "Confirmar família" espera o ajuste.
+- Antes do render, o desdobra confere o texto editado de novo. Se ele passa da borda de um formato, o render não começa, e a tela diz o formato e o que fazer. Nada muda no job.
+- Se o render parar porque um texto passou da borda, a tela diz isso com o nome do formato. A mensagem genérica de problema fica só para o que o desdobra não sabe explicar.
+- Uma família confirmada na 0.9.3 com texto editado pede "Salvar e seguir" de novo antes do render, para o desdobra medir o texto com as linhas novas. A tela diz isso com o nome do formato.
+- O texto editado que encosta na borda do formato, dentro da folga que a tela aceita, também passa no render.
+- A moldura do texto editado cresce com ele. O duplo clique na parte nova do texto abre a escrita.
+- Na escrita no palco, a prévia fica na mesma altura do render, também com uma primeira linha vazia.
+- No formato exibido pequeno, o palco aproxima antes de abrir a escrita, para as letras ficarem legíveis. A etiqueta de outro elemento não impede o duplo clique no texto.
+- A faixa da borda diz "Ver o arquivo", como o resto do passo Famílias.
+
 ## 0.9.3 (16/11/2026): as famílias aparecem depois do Design system
 
 Correção do teste do KV A na 0.9.2: com as funções e o Design system feitos, as famílias não apareciam, o "Salvar e seguir" não dava retorno e o passo das Famílias mandava de volta para Funções. Tudo foi conferido em arquivos sintéticos.

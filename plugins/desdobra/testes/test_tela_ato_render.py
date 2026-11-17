@@ -249,7 +249,8 @@ def test_formato_bloqueado_para_o_pedido_sem_dialogo(srv, job, monkeypatch):
 
     def bloquear(pasta, formato='origem', funcoes=None):
         if formato == 'perto':
-            return None, [{'codigo': 'derivacao_desatualizada', 'descricao': 'x', 'medidas': {}}], []
+            # revisao 0.9.4: derivacao_desatualizada sozinha tem motivo proprio (derivacao_velha, test_tela_revisao_094)
+            return None, [{'codigo': 'formato_devolvido', 'descricao': 'x', 'medidas': {}}], []
         return original(pasta, formato, funcoes)
     monkeypatch.setattr(execucao, 'montar_contrato', bloquear)
     biscoito = tts._entrar(srv)

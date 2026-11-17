@@ -94,7 +94,64 @@ TEXTOS_POR_MOTIVO = {
     'sentido_recusado': 'O lado do giro escolhido não serve para este formato. Nada mudou no job.',
     'mudou_durante_a_confirmacao': 'Um formato mudou depois que a confirmação abriu. Nada foi gravado. Peça a '
                                    'aprovação de novo.',
+    # Linhas do DA (0.9.4): o preparo do render recusa o formato em que o texto editado passa da borda, e o render que
+    # para porque um texto passou da borda diz isso, nunca o problema generico
+    # revisao 0.9.4: a familia salva antes (a derivacao gravada nao e a de agora) pede "Salvar e seguir" de novo
+    'derivacao_velha': 'A família de um formato precisa ser salva de novo. Clique em Salvar e seguir e peça o render '
+                       'de novo. Nada mudou no job.',
+    'texto_passa_da_borda': 'O texto que você editou passa da borda de um formato. Ajuste o texto ou o tamanho dele '
+                            'na família antes do render. Nada mudou no job.',
+    'texto_editado_cortado': 'O render de um formato parou porque um texto passou da borda dele. Volte à família, '
+                             'ajuste o texto e peça o render de novo. Os formatos prontos ficaram renderizados.',
+    'tinta_fora_da_caixa_validada': 'O render de um formato parou porque um texto saiu do lugar que a família mostra. '
+                                    'Volte à família, confira o texto e peça o render de novo. Os formatos prontos '
+                                    'ficaram renderizados.',
 }
+# o mesmo texto com o nome do formato (0.9.4): a resposta da tarefa diz quais formatos ('formatos' do preparo, ou
+# 'pararam' e 'nomes' do render). {motivo: (um formato, varios formatos)}, com {formatos} no lugar dos nomes
+TEXTOS_POR_MOTIVO_COM_FORMATO = {
+    'derivacao_velha': (
+        'A família do formato {formatos} precisa ser salva de novo. Clique em Salvar e seguir e peça o render de '
+        'novo. Nada mudou no job.',
+        'As famílias dos formatos {formatos} precisam ser salvas de novo. Clique em Salvar e seguir e peça o render '
+        'de novo. Nada mudou no job.'),
+    'texto_passa_da_borda': (
+        'O texto que você editou passa da borda do formato {formatos}. Ajuste o texto ou o tamanho dele na família '
+        'antes do render. Nada mudou no job.',
+        'O texto que você editou passa da borda dos formatos {formatos}. Ajuste o texto ou o tamanho dele na família '
+        'antes do render. Nada mudou no job.'),
+    'texto_editado_cortado': (
+        'O render do formato {formatos} parou porque um texto passou da borda dele. Volte à família, ajuste o texto '
+        'e peça o render de novo. Os formatos prontos ficaram renderizados.',
+        'O render dos formatos {formatos} parou porque um texto passou da borda deles. Volte à família, ajuste o '
+        'texto e peça o render de novo. Os formatos prontos ficaram renderizados.'),
+    'tinta_fora_da_caixa_validada': (
+        'O render do formato {formatos} parou porque um texto saiu do lugar que a família mostra. Volte à família, '
+        'confira o texto e peça o render de novo. Os formatos prontos ficaram renderizados.',
+        'O render dos formatos {formatos} parou porque um texto saiu do lugar que a família mostra. Volte à família, '
+        'confira o texto e peça o render de novo. Os formatos prontos ficaram renderizados.'),
+}
+
+
+def _lista_de_nomes(nomes):
+    return nomes[0] if len(nomes) == 1 else '%s e %s' % (', '.join(nomes[:-1]), nomes[-1])
+
+
+def texto_do_motivo(motivo, resposta):
+    """O texto para o DA da tarefa que parou pelo motivo, com o nome dos formatos quando a resposta os diz (0.9.4), ou
+    None sem texto para o motivo."""
+    par = TEXTOS_POR_MOTIVO_COM_FORMATO.get(motivo)
+    r = resposta if isinstance(resposta, dict) else {}
+    nomes = []
+    if par is not None:
+        if isinstance(r.get('formatos'), list):
+            nomes = [str(x.get('nome') or x.get('id')) for x in r['formatos'] if isinstance(x, dict)]
+        elif isinstance(r.get('pararam'), dict):
+            por_nome = r.get('nomes') if isinstance(r.get('nomes'), dict) else {}
+            nomes = [str(por_nome.get(f, f)) for f, m in r['pararam'].items() if m == motivo]
+    if nomes:
+        return par[0 if len(nomes) == 1 else 1].format(formatos=_lista_de_nomes(nomes))
+    return TEXTOS_POR_MOTIVO.get(motivo)
 ETAPAS = {'contrato': 'Preparando o formato', 'pilhas': 'Montando as imagens', 'texto': 'Desenhando os textos',
           'composicao': 'Juntando a peça', 'gravacao': 'Gravando o arquivo',
           'portao': 'Conferindo o arquivo final', 'aprovacao': 'Gravando a aprovação'}
@@ -173,7 +230,7 @@ class Tarefa:
         textos = dict(TEXTOS, **TEXTOS_POR_TAREFA.get(self.nome, {}))
         with self._trava:
             decorrido = self._decorrido if self._decorrido is not None else time.monotonic() - self._inicio
-            texto = TEXTOS_POR_MOTIVO.get(self.motivo) if self.situacao == 'parou' else None
+            texto = texto_do_motivo(self.motivo, self.resposta) if self.situacao == 'parou' else None
             return {'id': self.id, 'nome': self.nome, 'situacao': self.situacao, 'etapa': self.etapa,
                     'etapa_texto': ETAPAS.get(self.etapa) if self.situacao == 'rodando' else None,
                     'formato': self.formato, 'formatos': list(self.formatos), 'feitos': list(self.feitos),

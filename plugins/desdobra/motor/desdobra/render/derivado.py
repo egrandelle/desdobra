@@ -9,9 +9,11 @@ transformacao do elemento a que a camada pertence (escala uniforme e deslocament
   - texto: a matriz da camada recebe a escala e o deslocamento do elemento (as quebras e o tracking ficam os da
     mestre, so o tamanho muda); a regiao da pagina e a da origem transformada, com a margem do render;
   - texto editado pelo DA no palco (decisoes-v1.md, 169 e 171; M7b, A7): o texto novo num trecho so, com o estilo do
-    primeiro trecho com tinta, as linhas do DA e a quebra no espaco na largura da caixa de tinta da camada (a mesma
-    da previa da tela), medida no Chromium pelo render; o cmap da face do job e conferido como na edicao, e a tinta
-    e conferida na borda do formato (a pagina cobre o formato inteiro: nada e cortado calado);
+    primeiro trecho com tinta e so as linhas do DA (Linhas do DA, 0.9.4: nunca quebra na largura da caixa); a caixa
+    validada e a tinta medida na derivacao (caixa_texto_editado), e o texto que passa da borda do formato e recusado
+    antes de desenhar (texto_editado_passa_do_formato). Sem a medida, a pagina cobre o formato inteiro. O cmap da face
+    do job e conferido como na edicao, e a tinta e conferida depois de compor: a que encosta na borda da pagina e
+    corte (nada e cortado calado);
   - quebra de linha da familia da tela (M7b, C2): junta as quebras gravadas e insere quebra nos espacos (a mesma
     insercao por posicao da mestre propria), no texto do KV ou no texto editado pelo DA na familia;
   - linkado: o quadrilatero de colocacao e a caixa recebem a transformacao.
@@ -40,6 +42,9 @@ DESCRICOES = {
                              'deriva os formatos.',
     'formato_devolvido': 'A derivação devolveu este formato ao DA (veja derivacao/devolucoes.json): não há layout '
                          'para renderizar.',
+    'texto_editado_passa_do_formato': 'O texto editado na tela, com as linhas do DA e o mesmo corpo, passa da borda '
+                                      'deste formato e sairia cortado. Mude as linhas ou o tamanho do texto na família '
+                                      'antes do render.',
     'texto_editado_fora_da_fonte': 'O texto editado na tela tem caractere que a fonte do job não tem, e o render não '
                                    'desenha o texto sem ele. Troque o caractere na tela ou envie a fonte que o tenha.',
     'derivacao_desatualizada': 'A derivação gravada não é a que o briefing, as specs, os parâmetros e os limites de agora '
@@ -217,20 +222,29 @@ def tinta_fora_da_caixa(entradas, estatisticas, W, H):
                   if not ({'esq': reg[0] <= 0 and cv[0] <= tol, 'topo': reg[1] <= 0 and cv[1] <= tol,
                            'dir': reg[2] >= W and cv[2] >= W - tol, 'base': reg[3] >= H and cv[3] >= H - tol}[lado])]
         if e.get('texto_editado'):
-            # o texto editado nao tem caixa validada pela derivacao: a pagina e o formato, e tinta na borda e corte
+            # o texto editado nunca sangra: tinta na borda da pagina (o formato, ou a caixa medida com folga) e corte.
+            # O excesso sobre a caixa medida (caixa_texto_editado, 0.9.4) e conferido como nos outros textos.
+            # Revisao 0.9.4: com a caixa medida, a regra da borda e a da derivacao, do preparo e da tela
+            # (proposta.lados_fora com derivacao.enquadramento_tolerancia_px): a caixa que chega a borda do formato
+            # dentro dessa tolerancia passou, e a tinta na ultima linha ou coluna de pixel ali nao para o render. Sem a
+            # medida (a caixa e o formato inteiro), toda tinta na borda e corte
             cortes = list(st.get('toca_regiao') or [])
+            if [float(v) for v in cv] != [0.0, 0.0, float(W), float(H)]:
+                te = float(limites.valor('derivacao.enquadramento_tolerancia_px'))
+                cortes = [lado for lado in cortes
+                          if not ({'esq': reg[0] <= 0 and cv[0] <= te, 'topo': reg[1] <= 0 and cv[1] <= te,
+                                   'dir': reg[2] >= W and cv[2] >= W - te, 'base': reg[3] >= H and cv[3] >= H - te}[lado])]
         if excesso > tol or cortes:
             saida.append({'layer_id': e['layer_id'], 'excesso_px': round(excesso, 2), 'tolerancia_px': round(tol, 2),
                           'cortada_na_regiao': cortes})
     return saida
 
 
-def texto_editado_na_entrada(entrada, texto, caixa_tinta):
+def texto_editado_na_entrada(entrada, texto):
     """A entrada de texto do contrato com o texto editado pelo DA (M7b, A7): um trecho so, com o estilo, a cor e a
-    face do primeiro trecho com tinta (como a previa da tela, desdobra.tela.edicao.trocar_texto), o paragrafo dele e
-    largura_quebra: a largura da caixa de tinta da camada no formato (caixa_tinta), levada ao espaco do texto, onde o
-    render quebra a linha no espaco (desdobra.render.texto.quebras_da_caixa), como a previa quebra na largura da
-    caixa. A matriz e a da entrada (ja no formato)."""
+    face do primeiro trecho com tinta (como a previa da tela, desdobra.tela.edicao.trocar_texto) e o paragrafo dele.
+    Linhas do DA (0.9.4): linhas_do_da, e nunca largura_quebra; o render nao quebra a linha na largura da caixa
+    (desdobra.render.texto.largura_da_quebra), nem na caixa de paragrafo. A matriz e a da entrada (ja no formato)."""
     from desdobra.render import texto as rt
     texto = texto.replace('\r\n', '\n').replace('\r', '\n')
     t = entrada['texto']
@@ -245,9 +259,8 @@ def texto_editado_na_entrada(entrada, texto, caixa_tinta):
     novo['cores_por_trecho'] = {'0': cor}
     novo['valores_cor'] = {cor: entrada['valores_cor'][cor]}
     novo['faces'] = {k: v for k, v in entrada['faces'].items() if k == r0.get('fonte_ps')}
-    xx, xy = (float(v) for v in t['matriz'][:2])
-    largura = (float(caixa_tinta[2]) - float(caixa_tinta[0])) / math.hypot(xx, xy)
-    novo['largura_quebra'] = round(largura, 4)  # numero-neutro: casas do px
+    novo.pop('largura_quebra', None)
+    novo['linhas_do_da'] = True
     novo['texto_editado'] = True
     return novo
 
@@ -343,7 +356,7 @@ def montar(pasta_job, formato):
             elemento_de[lid] = elemento_de[base]
     entradas, mesclas = [], []
     kv = origem['origem']['kv_sha256']
-    faces_do_job, fora_da_fonte = None, {}
+    faces_do_job, fora_da_fonte, passa = None, {}, []
 
     def nova_id():
         return 'e%02d' % (len(entradas) + 1)
@@ -378,17 +391,27 @@ def montar(pasta_job, formato):
             novo['texto']['matriz'] = [xx * s, xy * s, yx * s, yy * s, nx, ny]
             ct = (camadas_laudo.get(e['layer_id']) or {}).get('geometria') or {}
             if el.get('texto_editado') is not None:
-                tinta_no_formato = _caixa(tr, ct.get('caixa_tinta') or e['regiao'])
-                novo = texto_editado_na_entrada(novo, el['texto_editado'], tinta_no_formato)
+                novo = texto_editado_na_entrada(novo, el['texto_editado'])
                 novo.update(quebras_do_texto_editado(el, e['layer_id']))
                 if faces_do_job is None:
                     faces_do_job = mc.faces_do_job(pasta, contratos.ler(pasta / 'estado.json', 'estado/1'))
                 for ch in caracteres_fora_da_face(novo, faces_do_job):
                     if ch not in fora_da_fonte.setdefault(el['id'], []):
                         fora_da_fonte[el['id']].append(ch)
-                # sem caixa validada para o texto novo: a pagina e o formato inteiro, e a tinta e conferida na borda
-                # dele depois de compor (tinta_fora_da_caixa)
-                cv = alvo = [0, 0, W, H]
+                medida = el.get('caixa_texto_editado')
+                if medida is not None:
+                    # Linhas do DA (0.9.4): a caixa validada e a tinta medida das linhas do DA, com o mesmo corpo. O
+                    # texto que passa da borda do formato sairia cortado: o formato e recusado antes de desenhar
+                    cv = [float(v) for v in medida]
+                    from desdobra.derivacao import proposta as mp
+                    lados = mp.lados_fora(cv, W, H, float(limites.valor('derivacao.enquadramento_tolerancia_px')))
+                    if lados:
+                        passa.append({'elemento': el['id'], 'layer_id': e['layer_id'], 'lados': lados})
+                    alvo = regiao_da_pagina_de_texto(tr, e['regiao'], cv, W, H)
+                else:
+                    # sem a medida: a pagina e o formato inteiro, e a tinta e conferida na borda dele depois de compor
+                    # (tinta_fora_da_caixa)
+                    cv = alvo = [0, 0, W, H]
                 registros.append({'codigo': 'texto_editado_desenhado', 'layer_id': e['layer_id'],
                                   'medidas': {'elemento': el['id']}})
             else:
@@ -426,6 +449,8 @@ def montar(pasta_job, formato):
     if fora_da_fonte:
         return None, [_bloqueio('texto_editado_fora_da_fonte', elementos=sorted(fora_da_fonte),
                                 caracteres=[c for k in sorted(fora_da_fonte) for c in fora_da_fonte[k]])], []
+    if passa:
+        return None, [_bloqueio('texto_editado_passa_do_formato', textos=passa)], []
     partidos = _efeitos_partidos(entradas, regs)
     if partidos:
         return None, [_bloqueio('elemento_partido_no_render', camadas=partidos)], []

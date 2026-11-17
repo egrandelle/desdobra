@@ -17,8 +17,14 @@ da familia, juntando quebras gravadas (os indices que ficam) e inserindo quebra 
 como a mestre propria). As posicoes contam no texto de agora: o do KV, ou o editado pelo DA na familia
 (texto_editado). Na derivacao (M7b, C2), a quebra da familia vence a da faixa nos formatos da familia, e a caixa do
 texto do KV e medida como a da faixa, com as linhas juntadas e as inseridas (com_juntadas, caixa_medida: uma entrelinha
-a mais por quebra inserida). No texto editado, a quebra vale sobre o texto novo, sem medida: o render quebra na largura
-da caixa (render.derivado.quebras_do_texto_editado).
+a mais por quebra inserida). No texto editado, a quebra vale sobre o texto novo (render.derivado.
+quebras_do_texto_editado).
+
+Linhas do DA (0.9.4): o texto editado nunca quebra sozinho na largura da caixa. As linhas sao as do DA (Enter no texto
+e a quebra da familia), com o mesmo corpo, e a caixa cresce em volta da ancora do texto ate a linha mais longa. A
+tinta do texto editado e medida no Chromium pela mesma pagina de medida (pedidos_editados, camada_do_editado,
+caixa_do_editado; derivacao.medida_quebras.medir_editados), e a caixa medida vai a derivacao (caixa_texto_editado) e
+ao render (a caixa validada do texto).
 
 O controle da quebra no palco (M7b, C4) le o texto de agora com as posicoes que pode quebrar (texto_para_quebrar), e a
 previa desenha o texto editado nas linhas da quebra da familia (linhas_do_editado).
@@ -163,7 +169,7 @@ def texto_para_quebrar(camada, editado=None):
 def linhas_do_editado(texto, manter, inseridas):
     """As linhas do texto editado pelo DA com a quebra da familia (M7b, C4), como o render as desenha
     (render.derivado.quebras_do_texto_editado): a quebra gravada fora de manter vira espaco, e o espaco inserido vira
-    quebra. O render ainda quebra na largura da caixa a linha que nao cabe."""
+    quebra. As linhas sao so estas: o texto editado nunca quebra sozinho (Linhas do DA, 0.9.4)."""
     t = normalizar_editado(texto)
     juntar = set(juntadas({'texto': {'conteudo': t}}, manter))
     novas = set(inseridas or ())
@@ -305,3 +311,74 @@ def caixa_medida(camada, caixa, manter, medida, inseridas=()):
 
 def linhas_do_texto(camada):
     return len(posicoes_de_quebra(camada)) + 1
+
+
+# ------------------------------------------------------------------ Linhas do DA no texto editado (0.9.4)
+def linhas_editadas(texto, item=None):
+    """As linhas do texto editado pelo DA como o render as desenha: as do texto (Enter) ou, com a quebra da familia
+    (item: {'aprovadas', 'inseridas'}, o item de quebras.familia do elemento), as de linhas_do_editado. Nunca ha
+    quebra na largura da caixa."""
+    if item is not None:
+        return linhas_do_editado(texto, item.get('aprovadas') or (), item.get('inseridas') or ())
+    return normalizar_editado(texto).split('\n')
+
+
+def chave_editado(layer_id, linhas):
+    """A chave da medida do texto editado (as linhas do DA na camada), separada das chaves de chave()."""
+    import hashlib
+    sha = hashlib.sha256('\n'.join(linhas).encode('utf-8')).hexdigest()
+    return 'ed:%d:%s' % (int(layer_id), sha)
+
+
+def _trecho_e_paragrafo(camada):
+    from desdobra.render import texto as rt
+    t = camada.get('texto') or {}
+    r0 = next((r for r in t.get('runs') or [] if r.get('tem_tinta')), None)
+    if r0 is None:
+        return None, None
+    return r0, rt._paragrafo_de(t.get('paragrafos') or [], r0['inicio'])
+
+
+def camada_do_editado(camada, linhas):
+    """Copia da camada de texto do laudo com o texto editado num trecho so: o estilo do primeiro trecho com tinta, sem
+    kerning manual, o paragrafo dele e as linhas do DA (como desdobra.render.derivado.texto_editado_na_entrada). Para a
+    pagina de medida e para a conta da caixa (caixa_do_editado). None sem trecho com tinta."""
+    import copy
+    r0, par = _trecho_e_paragrafo(camada)
+    if r0 is None:
+        return None
+    c = copy.deepcopy(camada)
+    s = '\r'.join(linhas)
+    t = c.setdefault('texto', {})
+    t['conteudo'] = s
+    t['runs'] = [dict(r0, inicio=0, fim=len(s), texto=s, kerning=None, tem_tinta=True)]
+    t['paragrafos'] = [dict(par, inicio=0, fim=len(s) + 1)] if par else []
+    return c
+
+
+def caixa_do_editado(camada_editada, tinta, faces_por_ps):
+    """A caixa da tinta do texto editado no espaco do documento (a da camada no KV), com as linhas do DA e o mesmo
+    corpo, ou None. tinta: {'esq', 'dir', 'sobe', 'desce'} do bloco medido no Chromium (fontes.medicao.tinta_do_bloco:
+    x a partir da ancora da linha, subida da primeira linha e descida da ultima). A ancora e a do render
+    (render.texto.origem_das_linhas): a origem da matriz no texto de ponto, a borda ou o meio da caixa de paragrafo,
+    com a primeira linha de base no topo dela mais a ascendente. As linhas de base descem uma entrelinha por linha
+    (render.texto._entrelinha). Os quatro cantos passam pela matriz do texto."""
+    from desdobra.render import texto as rt
+    t = camada_editada.get('texto') or {}
+    if not isinstance(tinta, dict) or not t.get('runs') or not t.get('matriz'):
+        return None
+    linhas = rt.linhas_da_camada(t)
+    cheias = [n for n, ln in enumerate(linhas) if ln['pedacos']]
+    if not cheias:
+        return None
+    ancoras, y0 = rt.origem_das_linhas(t, linhas, faces_por_ps or {})
+    just = linhas[cheias[0]]['just']
+    x = ancoras[rt.ANCORA.get(just, 'start')]
+    bases = [y0]
+    for ln in linhas[1:]:
+        bases.append(bases[-1] + ln['entrelinha'])
+    u0, u1 = x + float(tinta['esq']), x + float(tinta['dir'])
+    v0, v1 = bases[cheias[0]] - float(tinta['sobe']), bases[cheias[-1]] + float(tinta['desce'])
+    xx, xy, yx, yy, tx, ty = (float(v) for v in t['matriz'][:6])  # numero-neutro: os seis termos da matriz
+    pts = [(xx * u + yx * v + tx, xy * u + yy * v + ty) for u in (u0, u1) for v in (v0, v1)]
+    return [min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts)]

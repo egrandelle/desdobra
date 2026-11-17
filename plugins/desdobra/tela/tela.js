@@ -155,9 +155,14 @@
   const ed = { previa: null, pedido: 0, selecionado: null, tecla: 0, arraste: null, esperaQuebra: null,
     /* M7b, D1: os elementos escolhidos juntos (o selecionado e o ultimo deles) e o modo "Escolher vários" */
     selecao: [], varios: false,
+    /* 0.9.4 (Linhas do DA): os membros da previa em que o texto editado passa da borda, medidos no palco */
+    bordas: { previa: null, formatos: {} },
     /* M7b, D2: por onde alinhar no quadro (a margem ou a area segura de cada arquivo) e o ultimo alinhamento pedido,
        para a linha no palco e a frase quando a previa volta */
     referencia: 'margem', alinhou: null,
+    /* 0.9.4: o texto escrito no palco (duplo clique, F2 ou Enter no texto escolhido): { id, familia, valor, erro,
+       aplicando }, ou null com o campo fechado */
+    noPalco: null,
     /* revisao 1 da fase D: o tamanho de cada um quando o grupo de tamanhos diferentes foi escolhido (o 100 do campo) */
     baseGrupo: null };
   /* M7b, D2: os botoes de alinhar no quadro, o alvo de cada um e a frase depois do alinhamento */
@@ -178,6 +183,13 @@
   const ESCALA_MIN = 0.05;
   const ALCA = 10; // lado da alca do canto, em px da tela
   const MEIO_PX = 0.5; // arraste menor que isto e so um clique
+  /* 0.9.4: o arraste so comeca depois desta distancia, em px da tela. Com o palco em 30%, 1 px de tremor na tela vira
+     3 px na peca: sem a folga, o clique tremido (e o segundo clique do duplo clique) gravava um mover */
+  const ARRASTE_MIN_PX = 3;
+  const CURSOR_PX = 2; // a folga do campo de texto no palco para o cursor depois da ultima letra, em px da tela
+  // revisao 0.9.4: o corpo minimo do campo de texto no palco, em px da tela (abaixo dele o palco aproxima antes de
+  // abrir o campo). numero-neutro: legibilidade da tela, nao e regra do desdobra
+  const CAMPO_CORPO_MIN_PX = 14;
   // a folga, em px da peca, do escolhido que chega a borda (a de derivacao.enquadramento_tolerancia_px no desdobra)
   const BORDA_PX = 0.5;
   const FRASE_GRUPO_MISTO = 'Os elementos escolhidos têm tamanhos diferentes. Em Tamanho, 100% é o tamanho de cada ' +
@@ -1949,8 +1961,7 @@
   }
   function atualizarFaltam() {
     const doP2 = p2idx.opcoes ? pendenciasP2() : [];
-    montarFaltam((estado.faltam || []).concat(doP2, doP2.length ? [] : pendenciaDaEspera(),
-      escrita ? pendenciasDasQuebras() : []));
+    montarFaltam((estado.faltam || []).concat(doP2, doP2.length ? [] : pendenciaDaEspera()));
     atualizarSalvar();
   }
   /* revisao 0.9.3: com o passo 2 e o Design system completos na pagina, o motivo da espera do servidor conta no
@@ -2797,7 +2808,7 @@
       document.getElementById('palco').dataset.pronto = '1';
       // sem familia (o passo 3 espera o passo 2): nada de familia antiga no palco
       ['palco', 'fichas'].forEach(function (id) { limpar(document.getElementById(id)); });
-      ['galeria', 'membros', 'variante-palco', 'barra-edicao', 'editor-texto', 'editor-quebra', 'quebra-proposta'].forEach(function (id) {
+      ['galeria', 'membros', 'variante-palco', 'barra-edicao', 'editor-texto', 'editor-quebra', 'texto-borda'].forEach(function (id) {
         document.getElementById(id).hidden = true;
       });
       vista.familia = null;
@@ -3031,7 +3042,7 @@
     ed.selecao = [];
     fecharEditorTexto();
     fecharControle();
-    mostrarProposta();
+    mostrarBorda();
     mostrarFormato(fid);
   }
   function mostrarSelo(texto, tipo) {
@@ -3230,6 +3241,13 @@
           r.setAttribute('aria-label', 'Mexer em ' + rotuloElemento(e));
           if (CONTEUDO.indexOf(e.funcao) >= 0) r.classList.add('de-conteudo'); // o conteudo fica por cima do fundo
           if (e.id === ed.selecionado) r.classList.add('selecionado');
+          // 0.9.4: o elemento com um texto so se escreve no palco, pelo duplo clique ou por F2
+          if (m.pecas.filter(function (p) {
+            return p.elemento === e.id && p.tipo === 'texto' && !p.como_imagem && p.linhas && p.linhas.length;
+          }).length === 1) {
+            r.setAttribute('aria-keyshortcuts', 'F2');
+            r.title = 'Clique duas vezes para escrever no texto.';
+          }
         }
         if (e.raiz !== null && e.raiz !== undefined) r.dataset.raiz = String(e.raiz);
         const et = el('span', etiquetaElemento(e), 'etiqueta');
@@ -3290,6 +3308,25 @@
         medida.title = medida.textContent; // 0.9.2 (M4): na janela estreita a frase termina em reticencias
         area.dataset.vista = opcoes.usarVista && vista.k ? 'zoom' : 'ajustar';
       }
+      // 0.9.4: o campo do texto no palco segue o zoom e o tamanho da janela
+      if (area.id === 'palco' && ed.noPalco) posicionarCampoNoPalco();
+    }
+    /* revisao 0.9.4: o texto editado cresce alem da caixa do KV (Linhas do DA). O rotulo (moldura, alcas, area de
+       clique e etiqueta) cobre a uniao da caixa do elemento com a tinta medida (medirTexto, dataset.caixaTinta): o
+       duplo clique na parte nova do texto abre o campo, e o arraste por ali pega o elemento */
+    function estenderRotulos() {
+      textos.forEach(function (t) {
+        if (!t.peca.texto_editado || !t.peca.elemento) return;
+        const c = (t.no.dataset.caixaTinta || '').split(',').map(parseFloat);
+        if (c.length !== 4 || c.some(function (v) { return !isFinite(v); })) return;
+        const r = mundo.querySelector('.rotulo[data-elemento="' + t.peca.elemento + '"]');
+        const e = m.elementos.find(function (x) { return x.id === t.peca.elemento; });
+        if (!r || !e) return;
+        const u = [Math.min(e.caixa[0], c[0]), Math.min(e.caixa[1], c[1]), Math.max(e.caixa[2], c[2]),
+          Math.max(e.caixa[3], c[3])];
+        pos(r, u);
+        etiquetas.forEach(function (par) { if (par[0].parentNode === r) par[1] = u; });
+      });
     }
     ajustes.set(area, ajustar);
     mundos.set(area, { mundo: mundo, pos: pos, pecas: m.pecas, modelo: m, x0: x0, y0: y0, k: function () {
@@ -3297,6 +3334,7 @@
     return document.fonts.ready.then(function () {
       mundo.style.transform = 'none';
       textos.forEach(medirTexto);
+      if (!mini) estenderRotulos();
       ajustar();
     });
   }
@@ -3377,7 +3415,13 @@
       t.style.top = (alvo[1] - p.recorte[1]) + 'px';
       t.style.width = Math.max(0, alvo[2] - alvo[0]) + 'px';
       t.style.textAlign = { esquerda: 'left', centro: 'center', direita: 'right' }[p.alinhamento] || 'left';
-      if (p.texto_editado) t.classList.add('editado');
+      if (p.texto_editado) {
+        t.classList.add('editado');
+        /* Linhas do DA (0.9.4): o texto editado nunca quebra sozinho. O bloco fica da largura da linha mais longa,
+           cada linha alinhada nele pela justificacao, e medirTexto leva a tinta para a ancora da caixa do KV: a
+           caixa cresce em volta dela com o mesmo corpo, como no render */
+        t.style.width = 'max-content';
+      }
       if (p.faltando && p.faltando.length) t.classList.add('sem-fonte');
       p.linhas.forEach(function (ln) {
         const linha = el('div', null, 'linha');
@@ -3391,8 +3435,6 @@
           linha.appendChild(s);
         });
         if (ln.entrelinha) linha.dataset.entrelinha = String(ln.entrelinha);
-        /* a linha do texto editado que quebra na largura da caixa desce uma entrelinha, como no render */
-        if (p.texto_editado && ln.entrelinha) linha.style.lineHeight = ln.entrelinha + 'px';
         t.appendChild(linha);
       });
       textos.push({ no: t, peca: p, x: alvo[0] - p.recorte[0], y: alvo[1] - p.recorte[1], largura: alvo[2] - alvo[0] });
@@ -3441,7 +3483,19 @@
     let dx = -tinta[0];
     if (t.peca.alinhamento === 'centro') dx = (t.largura - w) / 2 - tinta[0];
     else if (t.peca.alinhamento === 'direita') dx = t.largura - tinta[2];
-    const dy = -tinta[1];
+    let dy = -tinta[1];
+    const ancora = t.peca.texto_editado && t.peca.ancora_kv;
+    const primeiro = t.no.querySelector('.trecho');
+    if (ancora && primeiro && bases.length) {
+      /* revisao 0.9.4: o texto editado ancora pela primeira linha de base, como o render. A linha de base do KV e o
+         topo da tinta dele (t.y) mais a ascendente da primeira linha do KV com tinta, menos as entrelinhas acima
+         dela; a primeira linha do DA (vazia ou nao, marco na linha de base bases[0]) cai nela */
+      const cs = getComputedStyle(primeiro);
+      regua.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+      regua.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+      const sobe = regua.measureText(ancora.texto).actualBoundingBoxAscent;
+      if (isFinite(sobe) && sobe > 0) dy = sobe - ancora.acima - bases[0];
+    }
     t.no.style.left = (t.x + dx) + 'px';
     t.no.style.top = (t.y + dy) + 'px';
     t.no.dataset.tinta = w.toFixed(2) + ',' + (tinta[3] - tinta[1]).toFixed(2);
@@ -3507,7 +3561,11 @@
       if (n !== ed.pedido) return null;
       ed.previa = r;
       if (r.recusas && r.recusas.length) tirarRecusadas(r.recusas);
-      else if (ed.textoPendente) { fecharEditorTexto(); mensagem('O texto novo vale só nesta família.'); }
+      else if (ed.textoPendente) {
+        fecharEditorTexto();
+        if (ed.noPalco) fecharTextoNoPalco(false);
+        mensagem('O texto novo vale só nesta família.');
+      }
       ed.textoPendente = null;
       return desenharDaPrevia();
     }).then(function () {
@@ -3518,6 +3576,12 @@
       if (n !== ed.pedido) return;
       raiz.dataset.previa = 'erro';
       atualizarBotaoFamilia();
+      // o campo do texto no palco volta a aceitar a escrita (o texto dele ja esta no rascunho)
+      if (ed.noPalco) {
+        ed.noPalco.aplicando = false;
+        const campo = campoNoPalco();
+        if (campo) campo.readOnly = false;
+      }
       mensagem('A tela não conseguiu refazer a família. A última mudança continua no rascunho; tente de novo.');
     });
   }
@@ -3539,7 +3603,13 @@
     f.edicoes = f.edicoes.filter(function (e) { return !(e.acao === 'texto' && ids.has(e.elemento)); });
     ids.forEach(tirarQuebra);
     mudouRascunho();
-    if (!document.getElementById('editor-texto').hidden) {
+    if (ed.noPalco && ids.has(ed.noPalco.id)) {
+      // 0.9.4: o texto escrito no palco volta ao campo, com o texto do DA e o motivo (montarCampoNoPalco)
+      ed.noPalco.erro = recusas[0].texto;
+      ed.noPalco.aplicando = false;
+      ed.focar = false;
+      mensagem(recusas[0].texto, true);
+    } else if (!document.getElementById('editor-texto').hidden) {
       const campo = document.getElementById('ed-campo-texto');
       document.getElementById('ed-erro-texto').textContent = recusas[0].texto;
       campo.setAttribute('aria-invalid', 'true');
@@ -3580,12 +3650,12 @@
         const alvo = area.querySelector('.rotulo[data-elemento="' + ed.selecionado + '"]');
         if (alvo) alvo.focus();
       }
-      // a quebra de linha (M7b, C4): a proposta do desdobra marcada no palco, o controle com o texto de agora e o
-      // texto editado que quebrou na largura da caixa, que vira proposta e pede a previa com ela
-      marcarQuebrasNoPalco();
-      mostrarProposta();
+      // Linhas do DA (0.9.4): o texto editado nunca quebra sozinho. A tinta medida no palco diz se ele passa da
+      // borda deste formato (conferirBorda); o controle da quebra mostra o texto de agora
+      conferirBorda(area, m);
       if (controleAberto()) desenharControle(null);
-      if (proporQuebras()) return pedirPrevia();
+      // 0.9.4: o campo do texto no palco aberto volta sobre o texto desenhado de novo
+      if (ed.noPalco) montarCampoNoPalco();
       return null;
     });
   }
@@ -3623,6 +3693,7 @@
     const sec = document.getElementById('membros');
     const lista = document.getElementById('membros-lista');
     limpar(lista);
+    ed.bordas = { previa: r, formatos: {} };
     sec.hidden = !r.membros.length;
     r.membros.forEach(function (m, i) {
       const b = botao(null, 'membro');
@@ -3650,7 +3721,20 @@
       }
       b.addEventListener('click', function () { mostrarFormato(m.formato); });
       lista.appendChild(b);
-      desenharPalco(mini, m.palco, { miniatura: true });
+      desenharPalco(mini, m.palco, { miniatura: true }).then(function () {
+        // Linhas do DA (0.9.4): a tinta medida do texto editado neste membro passa da borda dele?
+        if (ed.previa !== r) return;
+        if (!textoPassaDaBorda(mini, m)) return;
+        ed.bordas.formatos[m.formato] = true;
+        b.classList.add('na-borda');
+        const s = el('span', MARCA_BORDA, 'marca-aviso forte');
+        s.title = TEXTO_NA_BORDA;
+        b.appendChild(s);
+        b.setAttribute('aria-label', b.getAttribute('aria-label') + ', ' + MARCA_BORDA);
+        atualizarBotaoFamilia();
+        mostrarBorda();
+        marcarBordaNoPalco();
+      });
     });
   }
   function nomes(lista) { return lista.map(function (x) { return x.nome || 'sem nome'; }).join(', '); }
@@ -3679,17 +3763,16 @@
     const semSpecProprio = doGrupo.some(function (x) { return x.motivo === MOTIVO_SEM_SPEC; });
     const semSpecDaMestre = doGrupo.some(function (x) { return x.motivo === MOTIVO_SEM_SPEC_DA_MESTRE; });
     const semSpec = semSpecProprio || semSpecDaMestre;
-    // a quebra de linha proposta pelo desdobra espera o clique do DA (M7b, C4): o servidor recusa tambem
-    const semQuebra = porAprovar(vista.familia).length > 0;
-    // a previa da ultima mudanca ainda nao voltou (revisao 2 do C): o DA confirma a familia que viu, e a quebra que o
-    // texto editado ganha na largura da caixa so vira proposta quando a previa volta
+    // Linhas do DA (0.9.4): o texto editado que passa da borda de um membro pede ajuste antes da confirmacao
+    const semBorda = formatosNaBorda().length > 0;
+    // a previa da ultima mudanca ainda nao voltou (revisao 2 do C): o DA confirma a familia que viu
     const semPrevia = esperandoPrevia();
     // o rascunho que nao gravou (revisao 1 da fase D): a familia confirmada seria a gravada antes, sem a ultima escolha
     const semGravar = raiz.dataset.rascunho === 'erro';
     b.textContent = conf ? SELO_CONFIRMADA : 'Confirmar família';
-    b.disabled = conf || semEscolha || semSpec || semQuebra || semPrevia || semGravar;
+    b.disabled = conf || semEscolha || semSpec || semBorda || semPrevia || semGravar;
     b.title = semSpecProprio ? FAMILIA_SEM_SPEC : (semSpecDaMestre ? FAMILIA_SEM_SPEC_DA_MESTRE :
-      (semEscolha ? 'Escolha uma versão na galeria antes de confirmar a família.' : (semQuebra ? QUEBRA_SEM_APROVAR :
+      (semEscolha ? 'Escolha uma versão na galeria antes de confirmar a família.' : (semBorda ? TEXTO_NA_BORDA :
         (semPrevia ? FAMILIA_ESPERA_PREVIA : (semGravar ? FAMILIA_SEM_GRAVAR : '')))));
     b.dataset.ato = 'familia';
     b.dataset.dados = JSON.stringify({ familia: vista.familia, versao: versao });
@@ -3936,8 +4019,8 @@
     ed.selecao = [];
     fecharControle();
     tirarQuebra(id); // o texto apagado nao tem mais linha para quebrar
-    marcarQuebrasNoPalco();
-    mostrarProposta();
+    marcarBordaNoPalco();
+    mostrarBorda();
     mensagem('O elemento saiu de todos os arquivos desta família. Desfazer traz de volta.');
     return novaEdicao({ elemento: id, acao: 'apagar' }, false);
   }
@@ -3959,6 +4042,7 @@
     ed.selecionado = id;
     ed.selecao = id ? [id] : [];
     fecharEditorTexto();
+    if (ed.noPalco && ed.noPalco.id !== id) fecharTextoNoPalco(false);
     // o controle da quebra aberto segue o texto escolhido, e fecha no elemento sem texto para quebrar
     if (controleAberto()) { if (id && textoDaQuebra(id)) desenharControle(null); else fecharControle(); }
     marcarSelecao();
@@ -3979,6 +4063,7 @@
     ed.selecionado = ids.length ? ids[ids.length - 1] : null;
     if (ids.length > 1) {
       fecharEditorTexto();
+      if (ed.noPalco) fecharTextoNoPalco(false);
       fecharControle();
       ed.baseGrupo = null; // o grupo novo comeca em 100 no campo Tamanho
       mensagem('Os ' + ids.length + ' elementos escolhidos andam e mudam de tamanho juntos, em volta do mesmo ponto.' +
@@ -4138,6 +4223,8 @@
   function eDeFundo(id) { const e = elementoDoPalco(id); return !!e && e.funcao === 'fundo'; }
   function aoApertar(ev) {
     if (!editavel() || ev.button !== 0) return;
+    // 0.9.4: dentro do campo do texto no palco, o clique e da escrita (cursor e selecao)
+    if (ev.target.closest && ev.target.closest('.texto-no-palco')) return;
     const area = document.getElementById('palco');
     const g = mundos.get(area);
     if (!g) return;
@@ -4197,7 +4284,7 @@
       fixo: fx ? [c[0] + fx[0] * (c[2] - c[0]), c[1] + fx[1] * (c[3] - c[1])] : null,
       movel: fx ? [c[0] + (1 - fx[0]) * (c[2] - c[0]), c[1] + (1 - fx[1]) * (c[3] - c[1])] : null,
       caixa: c, nos: nos, dx: 0, dy: 0, f: 1, faixa: faixaDoFator(ids),
-      clicado: alcaDoGrupo || canto ? null : r.dataset.elemento, tirar: canto ? null : tirar };
+      clicado: alcaDoGrupo || canto ? null : r.dataset.elemento, tirar: canto ? null : tirar, passou: false };
     const alvo = alcaDoGrupo || r;
     if (alvo.setPointerCapture) alvo.setPointerCapture(ev.pointerId);
     nos.forEach(function (n) { if (n.classList.contains('rotulo')) n.classList.add('arrastando'); });
@@ -4237,6 +4324,12 @@
     const a = ed.arraste;
     if (!a) return;
     if (a.retangulo) { moverRetangulo(a, ev); return; }
+    // 0.9.4: o tremor da mao no clique nao vira arraste (ARRASTE_MIN_PX); passada a folga, o arraste segue o ponteiro
+    // a partir do ponto em que comecou
+    if (!a.passou) {
+      if (Math.hypot(ev.clientX - a.x, ev.clientY - a.y) < ARRASTE_MIN_PX) return;
+      a.passou = true;
+    }
     let dx = (ev.clientX - a.x) / a.k;
     let dy = (ev.clientY - a.y) / a.k;
     if (!a.canto) {
@@ -4269,8 +4362,8 @@
     a.g.mundo.querySelectorAll('.guia').forEach(function (x) { x.remove(); });
     // depois da previa, o foco volta ao escolhido: as setas seguem mexendo no mesmo elemento ou grupo
     ed.focar = true;
-    if (!a.canto && Math.abs(a.dx) + Math.abs(a.dy) >= MEIO_PX) { moverPor(a.ids, a.dx, a.dy, false); return; }
-    if (a.canto && Math.abs(a.f - 1) > FATOR_IGUAL) { escalarPor(a.ids, a.f, FIXO[a.canto][0], FIXO[a.canto][1]); return; }
+    if (a.passou && !a.canto && Math.abs(a.dx) + Math.abs(a.dy) >= MEIO_PX) { moverPor(a.ids, a.dx, a.dy, false); return; }
+    if (a.passou && a.canto && Math.abs(a.f - 1) > FATOR_IGUAL) { escalarPor(a.ids, a.f, FIXO[a.canto][0], FIXO[a.canto][1]); return; }
     ed.focar = false;
     a.nos.forEach(function (n) { n.style.transform = ''; n.classList.remove('arrastando'); });
     // com Shift ou "Escolher vários", o clique sem arrastar tira o elemento do grupo
@@ -4291,6 +4384,19 @@
     const id = r.dataset.elemento;
     const passo = ev.shiftKey ? PASSO_SETA_LONGO : PASSO_SETA;
     const setas = { ArrowLeft: [-passo, 0], ArrowRight: [passo, 0], ArrowUp: [0, -passo], ArrowDown: [0, passo] };
+    // 0.9.4: F2 escreve no texto do elemento; Enter tambem, no texto que ja e o unico escolhido (Enter no elemento
+    // ainda nao escolhido so escolhe, como antes)
+    if (ev.key === 'F2') {
+      ev.preventDefault();
+      if (!ev.shiftKey && !ed.varios) abrirTextoNoPalco(id);
+      return;
+    }
+    if (ev.key === 'Enter' && !ev.shiftKey && !ed.varios && escolhidos().length === 1 && escolhidos()[0] === id &&
+        podeEscreverNoPalco(id).peca) {
+      ev.preventDefault();
+      abrirTextoNoPalco(id);
+      return;
+    }
     if (ev.key === 'Enter' || ev.key === ' ') {
       ev.preventDefault();
       if (ev.shiftKey || ed.varios) alternarNaSelecao(id); else selecionarElemento(id);
@@ -4326,10 +4432,9 @@
     const ps = ed.selecionado ? pecasDeTexto(ed.selecionado) : [];
     if (ps.length !== 1) return;
     fecharControle();
+    if (ed.noPalco) fecharTextoNoPalco(false);
     const campo = document.getElementById('ed-campo-texto');
-    campo.value = ps[0].linhas.map(function (ln) {
-      return ln.trechos.map(function (t) { return t.texto; }).join('');
-    }).join('\n');
+    campo.value = textoDasLinhas(ps[0]);
     campo.removeAttribute('aria-invalid');
     document.getElementById('ed-erro-texto').textContent = '';
     document.getElementById('editor-texto').hidden = false;
@@ -4347,19 +4452,270 @@
     const campo = document.getElementById('ed-campo-texto');
     const erro = document.getElementById('ed-erro-texto');
     if (!id) return null;
-    if (!campo.value.trim()) {
-      erro.textContent = 'O texto ficou vazio. Para tirar o elemento, use Apagar.';
+    const r = gravarTexto(id, campo.value);
+    if (r.erro) {
+      erro.textContent = r.erro;
       campo.setAttribute('aria-invalid', 'true');
       return null;
     }
     erro.textContent = '';
     campo.removeAttribute('aria-invalid');
+    if (r.igual) {
+      // o texto igual ao de agora nao vira edicao: o editor fecha e nada muda no rascunho
+      fecharEditorTexto();
+      const rot = document.querySelector('#palco .rotulo[data-elemento="' + id + '"]');
+      if (rot) rot.focus();
+    }
+    return null;
+  }
+  const TEXTO_VAZIO = 'O texto ficou vazio. Para tirar o elemento, use Apagar.';
+  const TEXTO_PALCO_DICA = 'Escreva no palco. Enter quebra a linha. Ctrl+Enter ou um clique fora aplica. Esc desiste.';
+  const TEXTO_VARIOS = 'Este elemento tem mais de um texto. A tela só escreve no elemento com um texto.';
+  const TEXTO_COMO_IMAGEM = 'Texto como imagem: o texto e a quebra não se mexem aqui.';
+  /* o texto da peca nas linhas de agora, separadas por \n */
+  function textoDasLinhas(p) {
+    return p.linhas.map(function (ln) {
+      return ln.trechos.map(function (t) { return t.texto; }).join('');
+    }).join('\n');
+  }
+  /* o caminho comum do editor de baixo e do texto no palco: {erro}, {igual: true} (nada a gravar) ou {} (a edicao
+     foi ao rascunho e a previa foi pedida) */
+  function gravarTexto(id, valor) {
+    const t = String(valor).replace(/\r\n?/g, '\n');
+    if (!t.trim()) return { erro: TEXTO_VAZIO };
+    const ps = pecasDeTexto(id);
+    if (ps.length === 1 && t === textoDasLinhas(ps[0])) return { igual: true };
     const f = familiaAtual();
     f.edicoes = f.edicoes.filter(function (e) { return !(e.acao === 'texto' && e.elemento === id); });
     // as posicoes da quebra contam no texto de antes: a quebra deste texto sai, e a tela olha o texto novo de novo
     tirarQuebra(id);
     ed.textoPendente = id;
-    return novaEdicao({ elemento: id, acao: 'texto', texto: campo.value.replace(/\r\n?/g, '\n') }, false);
+    novaEdicao({ elemento: id, acao: 'texto', texto: t }, false);
+    return {};
+  }
+
+  /* ------------------------------------------------ texto no palco (0.9.4)
+     O duplo clique num texto, F2 ou Enter no texto ja escolhido abrem um campo sobre o texto, com a face, o corpo, a
+     cor, o espacamento e a entrelinha dele, na escala do palco. O campo fica fora do .mundo (filho de .escala, sem a
+     escala): o cursor e o contorno ficam em px da tela, legiveis em qualquer zoom. Linhas do DA: o campo nunca quebra
+     sozinho (wrap off) e cresce ate a linha mais longa; Enter quebra a linha. Ctrl+Enter, Tab ou um clique fora
+     aplicam pelo mesmo caminho do editor de baixo (gravarTexto), e Esc desiste. O estado fica em ed.noPalco e o campo
+     e montado de novo a cada desenho do palco: a recusa do servidor (caractere fora da fonte) volta ao campo com o
+     texto do DA. O texto do cliente entra so por value. */
+  function campoNoPalco() { return document.querySelector('#palco .texto-no-palco'); }
+  function textoNoPalco(id) { return document.querySelector('#palco .recorte[data-elemento="' + id + '"] .texto'); }
+  /* {peca} quando o elemento se escreve no palco, {motivo} quando a tela diz por que nao, {} quando nada acontece
+     (logo, imagem, palco fora da edicao) */
+  function podeEscreverNoPalco(id) {
+    if (!editavel() || !id) return {};
+    if (pecasComoImagem(id).length) return { motivo: TEXTO_COMO_IMAGEM };
+    const ps = pecasDeTexto(id);
+    if (!ps.length) return {};
+    if (ps.length > 1) return { motivo: TEXTO_VARIOS };
+    return textoNoPalco(id) ? { peca: ps[0] } : {};
+  }
+  function abrirTextoNoPalco(id) {
+    const x = podeEscreverNoPalco(id);
+    if (x.motivo) { mensagem(x.motivo); return; }
+    if (!x.peca) return;
+    if (ed.noPalco && ed.noPalco.id === id) { const c = campoNoPalco(); if (c) c.focus(); return; }
+    if (escolhidos().length !== 1 || ed.selecionado !== id) selecionarElemento(id);
+    if (ed.noPalco) fecharTextoNoPalco(false);
+    fecharControle();
+    fecharEditorTexto();
+    aproximarParaEscrever(id);
+    const valor = textoDasLinhas(x.peca);
+    ed.noPalco = { id: id, familia: vista.familia, valor: valor, erro: '', aplicando: false };
+    montarCampoNoPalco();
+    const campo = campoNoPalco();
+    if (campo) campo.select();
+    mensagem(TEXTO_PALCO_DICA);
+  }
+  /* revisao 0.9.4: no formato exibido pequeno (o 970x250 ajustado a 20%), o campo ficaria com letras ilegiveis. O
+     palco aproxima ate o corpo do texto chegar a CAMPO_CORPO_MIN_PX na tela e traz o texto para a vista */
+  function aproximarParaEscrever(id) {
+    const g = mundos.get(document.getElementById('palco'));
+    const no = textoNoPalco(id);
+    const tr0 = no ? no.querySelector('.trecho') : null;
+    if (!g || !tr0) return;
+    const corpo = parseFloat(getComputedStyle(tr0).fontSize) || 0;
+    const k = g.k() || 1;
+    if (!(corpo > 0) || corpo * k >= CAMPO_CORPO_MIN_PX) return;
+    zoom(CAMPO_CORPO_MIN_PX / corpo);
+    if (no.scrollIntoView) no.scrollIntoView({ block: 'center', inline: 'center' });
+  }
+  function montarCampoNoPalco() {
+    const s = ed.noPalco;
+    if (!s) return;
+    const area = document.getElementById('palco');
+    const g = mundos.get(area);
+    const e = elementoDoPalco(s.id);
+    if (!g || !e || !textoNoPalco(s.id) || s.familia !== vista.familia || !editavel()) {
+      fecharTextoNoPalco(false);
+      return;
+    }
+    let campo = campoNoPalco();
+    if (!campo) {
+      campo = document.createElement('textarea');
+      campo.className = 'texto-no-palco';
+      campo.setAttribute('wrap', 'off');
+      campo.setAttribute('autocomplete', 'off');
+      campo.spellcheck = false;
+      campo.dataset.elemento = s.id;
+      campo.setAttribute('aria-label', 'Texto de ' + rotuloElemento(e) + ', só nesta família');
+      campo.setAttribute('aria-describedby', 'ed-mensagem');
+      campo.addEventListener('input', function () {
+        if (ed.noPalco) { ed.noPalco.valor = campo.value; ed.noPalco.erro = ''; }
+        campo.removeAttribute('aria-invalid');
+        posicionarCampoNoPalco();
+      });
+      campo.addEventListener('keydown', teclaNoCampo);
+      g.mundo.parentNode.appendChild(campo);
+    }
+    campo.value = s.valor;
+    campo.readOnly = !!s.aplicando;
+    if (s.erro) { campo.setAttribute('aria-invalid', 'true'); mensagem(s.erro, true); }
+    else campo.removeAttribute('aria-invalid');
+    area.querySelectorAll('.em-escrita').forEach(function (n) { n.classList.remove('em-escrita'); });
+    nosDoElemento(area, s.id).forEach(function (n) { n.classList.add('em-escrita'); });
+    posicionarCampoNoPalco();
+    campo.focus({ preventScroll: true });
+  }
+  /* o campo sobre o texto do palco: o mesmo estilo do primeiro trecho, em px da tela (o do mundo vezes a escala). A
+     primeira linha de base do campo cai na do texto (o espelho mede onde ela fica no campo), as outras descem uma
+     entrelinha, como no render. Na horizontal, o campo se prende pela ponta do alinhamento do texto: a esquerda, o
+     meio ou a direita das linhas desenhadas */
+  function posicionarCampoNoPalco() {
+    const s = ed.noPalco;
+    const area = document.getElementById('palco');
+    const campo = campoNoPalco();
+    const g = mundos.get(area);
+    const no = s ? textoNoPalco(s.id) : null;
+    if (!s || !campo || !g || !no) return;
+    const linhas = Array.from(no.querySelectorAll('.linha'));
+    const tr0 = no.querySelector('.trecho');
+    if (!linhas.length || !tr0) return;
+    const k = g.k() || 1;
+    const cs = getComputedStyle(tr0);
+    const corpo = parseFloat(cs.fontSize) || 0;
+    const espaco = cs.letterSpacing === 'normal' ? 0 : (parseFloat(cs.letterSpacing) || 0);
+    const marcos = linhas.map(function (ln) { return ln.querySelector('.marco').getBoundingClientRect().bottom; });
+    let entrelinha = parseFloat(linhas.length > 1 ? linhas[1].dataset.entrelinha : '') ||
+      parseFloat(linhas[0].dataset.entrelinha) || 0;
+    if (!(entrelinha > 0) && linhas.length > 1) entrelinha = (marcos[1] - marcos[0]) / k;
+    if (!(entrelinha > 0)) entrelinha = 1.2 * corpo; // a entrelinha automatica do Photoshop
+    const estilo = { fontFamily: cs.fontFamily, fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
+      fontSize: (corpo * k) + 'px', lineHeight: (entrelinha * k) + 'px', letterSpacing: (espaco * k) + 'px' };
+    Object.keys(estilo).forEach(function (c) { campo.style[c] = estilo[c]; });
+    campo.style.color = cs.color;
+    const alinhamento = no.style.textAlign || 'left';
+    campo.style.textAlign = alinhamento;
+    const n = campo.value.split('\n').length;
+    campo.rows = n;
+    campo.style.height = (n * entrelinha * k) + 'px';
+    campo.style.width = '0px';
+    const w = campo.scrollWidth + CURSOR_PX;
+    campo.style.width = w + 'px';
+    campo.scrollLeft = 0;
+    campo.scrollTop = 0;
+    // as pontas das linhas desenhadas (pelo avanco das letras, como no campo)
+    let esq = Infinity, dir = -Infinity, meio = null;
+    linhas.forEach(function (ln) {
+      const ts = ln.querySelectorAll('.trecho');
+      if (!ts.length) return;
+      const a = ts[0].getBoundingClientRect(), b = ts[ts.length - 1].getBoundingClientRect();
+      if (b.right - a.left <= 0) return;
+      esq = Math.min(esq, a.left);
+      dir = Math.max(dir, b.right);
+      if (meio === null) meio = (a.left + b.right) / 2;
+    });
+    if (meio === null) { const r = no.getBoundingClientRect(); esq = r.left; dir = r.right; meio = (esq + dir) / 2; }
+    const ref = g.mundo.parentNode.getBoundingClientRect();
+    const ancora = alinhamento === 'right' ? dir - w : (alinhamento === 'center' ? meio - w / 2 : esq);
+    // o espelho: onde fica a primeira linha de base dentro do campo, com o mesmo estilo
+    const espelho = el('div', null, 'texto-espelho');
+    Object.keys(estilo).forEach(function (c) { espelho.style[c] = estilo[c]; });
+    const marco = el('span', null, 'marco');
+    espelho.appendChild(marco);
+    espelho.appendChild(document.createTextNode('H'));
+    g.mundo.parentNode.appendChild(espelho);
+    const baseNoCampo = marco.getBoundingClientRect().bottom - espelho.getBoundingClientRect().top;
+    espelho.remove();
+    campo.style.left = (ancora - ref.left) + 'px';
+    campo.style.top = (marcos[0] - ref.top - baseNoCampo) + 'px';
+  }
+  function teclaNoCampo(ev) {
+    // as teclas do campo sao da escrita: Delete, as setas, + e - nunca chegam ao palco
+    ev.stopPropagation();
+    if (ev.isComposing) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); fecharTextoNoPalco(true); return; }
+    if ((ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) || ev.key === 'Tab') {
+      ev.preventDefault();
+      aplicarTextoNoPalco();
+    }
+  }
+  function aplicarTextoNoPalco() {
+    const s = ed.noPalco;
+    if (!s || s.aplicando) return;
+    const campo = campoNoPalco();
+    if (campo) s.valor = campo.value;
+    const r = gravarTexto(s.id, s.valor);
+    if (r.erro) {
+      s.erro = r.erro;
+      if (campo) { campo.setAttribute('aria-invalid', 'true'); campo.focus(); }
+      mensagem(r.erro, true);
+      return;
+    }
+    if (r.igual) { fecharTextoNoPalco(true); return; }
+    s.aplicando = true;
+    s.erro = '';
+    if (campo) campo.readOnly = true;
+    // depois da previa, o foco volta ao elemento: as setas e Esc seguem valendo
+    ed.focar = true;
+  }
+  function fecharTextoNoPalco(focar) {
+    const s = ed.noPalco;
+    ed.noPalco = null;
+    const area = document.getElementById('palco');
+    if (!area) return;
+    area.querySelectorAll('.texto-no-palco, .texto-espelho').forEach(function (n) { n.remove(); });
+    area.querySelectorAll('.em-escrita').forEach(function (n) { n.classList.remove('em-escrita'); });
+    if (!s) return;
+    mensagem('');
+    const r = focar ? area.querySelector('.rotulo[data-elemento="' + s.id + '"]') : null;
+    if (r) r.focus();
+  }
+  function aoDuploClique(ev) {
+    // com a escrita aberta (ou aplicando), o duplo clique fora dela so a fechou (aoApertarFora)
+    if (!editavel() || !ev.target.closest || ed.noPalco) return;
+    if (ev.target.closest('.texto-no-palco, .alca, .caixa-grupo')) return;
+    if (ev.shiftKey || ed.varios) return;
+    let r = ev.target.closest('.rotulo.editavel');
+    const doAlvo = r ? podeEscreverNoPalco(r.dataset.elemento) : {};
+    if (!r || ev.target.closest('.etiqueta') || !(doAlvo.peca || doAlvo.motivo)) {
+      /* revisao 0.9.4: a etiqueta de um elemento (a do logo) pode cobrir o texto de outro. O duplo clique passa por ela
+         ate o texto que esta embaixo, quando ha um. O clique na etiqueta escolhe o elemento dela (o retangulo), e o
+         alvo do duplo clique vira o rotulo dele: o ponto diz o que esta embaixo */
+      const embaixo = document.elementsFromPoint(ev.clientX, ev.clientY).map(function (n) {
+        return n.closest && !n.closest('.etiqueta') ? n.closest('#palco .rotulo.editavel') : null;
+      }).find(function (x) { return x && podeEscreverNoPalco(x.dataset.elemento).peca; });
+      if (embaixo) r = embaixo;
+    }
+    if (!r) return;
+    ev.preventDefault();
+    abrirTextoNoPalco(r.dataset.elemento);
+  }
+  /* o clique fora do campo aplica o texto. No palco, esse clique so fecha a escrita: nao escolhe outro elemento, nao
+     comeca arraste nem retangulo, e nao corre com a previa que vai desenhar o palco de novo. Fora do palco (a barra,
+     as miniaturas), o clique segue: Desfazer logo depois desfaz o texto recem aplicado */
+  function aoApertarFora(ev) {
+    const s = ed.noPalco;
+    if (!s || !ev.target || !ev.target.closest || ev.target.closest('.texto-no-palco')) return;
+    if (!s.aplicando) aplicarTextoNoPalco();
+    if (ev.target.closest('#palco')) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
   }
 
   /* ------------------------------------------------ quebra de linha (M7b, C4; decisoes 167 e 171)
@@ -4367,22 +4723,22 @@
      nesta familia), nas linhas de agora e com a fonte do job. O clique entre duas palavras poe a quebra ali, e o
      clique na marca da quebra junta as linhas. A quebra vale para a familia inteira, como o texto editado, e fica no
      rascunho (quebras, uma por texto), aprovada pelo proprio clique do DA. A previa dos membros espera 300 ms sem
-     clique (pedirPreviaDaQuebra). O texto editado que nao cabe na caixa quebra na largura dela, como no render: a tela
-     le onde o Chromium quebrou e grava a quebra como proposta do desdobra, marcada no palco ate o DA aprovar com um
-     clique ou mudar a quebra. "Confirmar familia" espera a aprovacao (o servidor recusa tambem). As posicoes vem do
-     motor (textos_da_quebra da previa); o texto do cliente entra so por textContent. */
-  const QUEBRA_UMA = 'O texto editado não coube na caixa. O desdobra quebrou a linha na largura dela. Aprove a quebra ou mude a quebra antes de confirmar a família.';
-  const QUEBRA_FALTA_UMA = 'Uma quebra de linha proposta pelo desdobra espera a sua aprovação.';
-  const QUEBRA_SEM_APROVAR = 'Aprove a quebra de linha proposta pelo desdobra, ou mude a quebra, antes de confirmar a família.';
+     clique (pedirPreviaDaQuebra). As posicoes vem do motor (textos_da_quebra da previa); o texto do cliente entra so
+     por textContent.
+     Linhas do DA (0.9.4): o texto editado nunca quebra sozinho na largura da caixa. As linhas sao as que o DA escreveu
+     (Enter no texto, ou este controle), com o mesmo corpo, e a caixa cresce ate a linha mais longa. O desdobra nao
+     propoe quebra nem pede aprovacao. Quando a tinta do texto editado passa da borda de um membro, o membro fica
+     marcado, a faixa de aviso leva ao formato e "Confirmar familia" espera o ajuste (o render tambem recusa). */
   const FAMILIA_ESPERA_PREVIA = 'Espere a família aparecer com a sua última mudança.';
   const FAMILIA_SEM_GRAVAR = 'A sua última mudança ainda não foi salva no rascunho. Espere o desdobra salvar.';
-  const MARCA_QUEBRA = 'quebra proposta';
+  const TEXTO_NA_BORDA = 'O texto que você editou passa da borda de um arquivo desta família. Mude as linhas ou o tamanho do texto antes de confirmar a família.';
+  const MARCA_BORDA = 'passa da borda';
+  /* a folga, em px da peca, da tinta do texto editado na borda (a de derivacao.enquadramento_tolerancia_px no desdobra) */
+  const TEXTO_BORDA_PX = 1;
   const SITUACAO_QUEBRA = {
     kv: 'As quebras são as do KV.',
-    editado: 'As linhas são as que você escreveu.',
-    da: 'Esta quebra é sua e vale para todos os arquivos desta família.',
-    proposta: 'O desdobra propôs esta quebra. Aprove a quebra ou mude a quebra.',
-    aprovada: 'Você aprovou a quebra proposta pelo desdobra. Ela vale para todos os arquivos desta família.'
+    editado: 'As linhas são as que você escreveu. O desdobra não quebra o texto sozinho.',
+    da: 'Esta quebra é sua e vale para todos os arquivos desta família.'
   };
   function textosDaQuebra() { return (ed.previa && ed.previa.textos_da_quebra) || []; }
   function textoDaQuebra(id) {
@@ -4390,9 +4746,6 @@
   }
   function quebrasDa(gid) { const f = rascunho.familias[gid]; return (f && f.quebras) || []; }
   function quebraDo(id) { return quebrasDa(vista.familia).find(function (q) { return q.elemento === id; }) || null; }
-  function porAprovar(gid) {
-    return quebrasDa(gid).filter(function (q) { return q.origem === 'proposta' && !q.aprovada; });
-  }
   function emOrdem(s) { return Array.from(s).sort(function (a, b) { return a - b; }); }
   function todasGravadas(t) { return t.gravadas.map(function (_p, k) { return k; }); }
   /* tira a quebra do texto sem gravar: quem chama grava (a edicao de texto, apagar, desfazer) */
@@ -4413,8 +4766,6 @@
     mudouRascunho();
     atualizarBotaoFamilia();
     atualizarFaltam();
-    marcarQuebrasNoPalco();
-    mostrarProposta();
   }
   /* as quebras que valem agora no texto: as gravadas que ficam e as inseridas */
   function quebrasAtivas(t, q) {
@@ -4436,9 +4787,9 @@
     if (lista.has(valor)) lista.delete(valor); else lista.add(valor);
     const novo = { elemento: id, layer_id: t.layer_id, manter: emOrdem(manter), inseridas: emOrdem(inseridas),
       origem: 'da', aprovada: true };
-    // de volta as quebras do KV, a quebra sai do rascunho; no texto editado ela fica, para a tela nao propor de novo
-    const comoNoKv = !novo.inseridas.length && novo.manter.length === t.gravadas.length;
-    guardarQuebra(id, comoNoKv && !t.editado ? null : novo);
+    // de volta as linhas de agora (as quebras do KV, ou as linhas do texto editado), a quebra sai do rascunho
+    const comoAgora = !novo.inseridas.length && novo.manter.length === t.gravadas.length;
+    guardarQuebra(id, comoAgora ? null : novo);
     contarNoCronometro('quebras');
     desenharControle(pos);
     pedirPreviaDaQuebra();
@@ -4464,7 +4815,6 @@
     if (mesa) mesa.classList.remove('quebrando');
     const b = document.getElementById('ed-quebra');
     if (b) b.setAttribute('aria-pressed', 'false');
-    if (document.getElementById('quebra-proposta')) mostrarProposta();
   }
   function botaoDaQuebra(pos, classe, rotulo) {
     const b = botao(null, classe);
@@ -4482,8 +4832,8 @@
     b.appendChild(svg);
     return b;
   }
-  /* o texto em linhas, com o vao entre as palavras e a marca no fim de cada linha quebrada: a do KV discreta, a do DA
-     no acento e a proposta do desdobra tracejada. foco: a posicao do botao que fica com o foco depois */
+  /* o texto em linhas, com o vao entre as palavras e a marca no fim de cada linha quebrada: a do KV discreta e a do
+     DA no acento. foco: a posicao do botao que fica com o foco depois */
   function desenharControle(foco) {
     const caixa = document.getElementById('quebra-linhas');
     const t = ed.selecionado ? textoDaQuebra(ed.selecionado) : null;
@@ -4491,7 +4841,6 @@
     const tinhaFoco = caixa.contains(document.activeElement);
     const q = quebraDo(t.elemento);
     const ativas = quebrasAtivas(t, q);
-    const propostas = new Set(q && q.origem === 'proposta' && !q.aprovada ? q.inseridas : []);
     const separa = new Set(t.gravadas.concat(t.espacos));
     limpar(caixa);
     const p = pecasDeTexto(t.elemento)[0];
@@ -4505,7 +4854,7 @@
       if (!separa.has(i)) { palavra += t.texto[i]; continue; }
       fecharPalavra();
       if (ativas.has(i)) {
-        const tipo = propostas.has(i) ? 'proposta' : (t.gravadas.indexOf(i) >= 0 && !t.editado ? 'do-kv' : '');
+        const tipo = t.gravadas.indexOf(i) >= 0 && !t.editado ? 'do-kv' : '';
         linha.appendChild(marcaDaQuebra(i, tipo));
         caixa.appendChild(linha);
         linha = el('div', null, 'quebra-linha');
@@ -4515,158 +4864,75 @@
     }
     fecharPalavra();
     caixa.appendChild(linha);
-    let situacao = t.editado ? 'editado' : 'kv';
-    if (q) situacao = q.origem === 'da' ? 'da' : (q.aprovada ? 'aprovada' : 'proposta');
+    // a proposta aprovada de antes da 0.9.4 (numa familia confirmada) e decisao do DA: ela fala como a quebra dele
+    const situacao = q ? 'da' : (t.editado ? 'editado' : 'kv');
     document.getElementById('quebra-situacao').textContent = SITUACAO_QUEBRA[situacao];
     const volta = document.getElementById('ed-quebra-kv');
     volta.hidden = !q;
     volta.textContent = t.editado ? 'Voltar às linhas do texto' : 'Voltar às quebras do KV';
-    // a proposta deste texto se aprova aqui mesmo; a faixa de cima sai quando so ela esperava (mostrarProposta)
-    document.getElementById('ed-quebra-aprovar').hidden = situacao !== 'proposta';
-    mostrarProposta();
     if (tinhaFoco && foco !== null && foco !== undefined) {
       const alvo = caixa.querySelector('button[data-pos="' + foco + '"]');
       if (alvo) alvo.focus();
     }
   }
-  /* as linhas do texto de agora com a quebra da familia q (ou sem ela), como o motor as manda ao palco
-     (desdobra.derivacao.quebras.linhas_do_editado): a quebra gravada fora de manter vira espaco e o espaco inserido
-     vira quebra. Cada linha leva a posicao do texto onde ela comeca */
-  function linhasComQuebra(t, q) {
-    const juntar = new Set();
-    const novas = new Set(q ? q.inseridas : []);
-    if (q) t.gravadas.forEach(function (p, k) { if (q.manter.indexOf(k) < 0) juntar.add(p); });
-    const linhas = [];
-    let atual = '';
-    let inicio = 0;
-    for (let i = 0; i < t.texto.length; i++) {
-      const quebra = (t.gravadas.indexOf(i) >= 0 && !juntar.has(i)) || (novas.has(i) && t.texto[i] === ' ');
-      if (quebra) {
-        linhas.push({ texto: atual, inicio: inicio });
-        atual = '';
-        inicio = i + 1;
-      } else {
-        atual += juntar.has(i) ? ' ' : t.texto[i];
-      }
-    }
-    linhas.push({ texto: atual, inicio: inicio });
-    return linhas;
-  }
-  /* onde o Chromium quebrou o texto editado na largura da caixa: a posicao do espaco antes de cada palavra que desceu
-     de linha, no texto de agora (o espaco, ou a quebra gravada que o DA juntou). So com o palco desenhado com a
-     quebra q de agora, linha a linha como o motor o mandou; o palco de um pedido anterior da null */
-  function quebrasDaLargura(no, t, q) {
-    const linhas = linhasComQuebra(t, q);
-    const nos = Array.from(no.querySelectorAll('.linha'));
-    if (nos.length !== linhas.length) return null;
-    const r = document.createRange();
-    const saida = [];
-    for (let i = 0; i < linhas.length; i++) {
-      const parte = linhas[i].texto;
-      const s = nos[i].querySelector('.trecho');
-      const tn = s ? s.firstChild : null;
-      if (!parte) continue;
-      if (!tn || tn.nodeType !== 3 || tn.data !== parte) return null;
-      let topo = null;
-      for (let k = 0; k < parte.length; k++) {
-        if (parte[k] === ' ' || (k > 0 && parte[k - 1] !== ' ')) continue;
-        r.setStart(tn, k);
-        r.setEnd(tn, k + 1);
-        const c = r.getClientRects()[0];
-        if (!c) continue;
-        const pos = linhas[i].inicio + k - 1;
-        const cabe = t.espacos.indexOf(pos) >= 0 || t.gravadas.indexOf(pos) >= 0;
-        if (topo !== null && c.top > topo + c.height / 2 && cabe) saida.push(pos);
-        topo = c.top;
-      }
-    }
-    return saida;
-  }
-  /* o texto editado que quebrou na largura da caixa vira a quebra proposta pelo desdobra, com as quebras que ja
-     valiam. Tambem quando o DA juntou ou aprovou as linhas e uma delas ainda nao cabe: o render quebra ali do mesmo
-     jeito, e essa quebra volta marcada ate o DA aprovar ou mudar (revisao do C). Abrir a familia confirmada nao
-     propoe: a confirmacao e do DA, e so cai quando ele mexe na familia */
-  const QUEBRA_DE_NOVO = 'Uma linha não coube na caixa. O desdobra quebrou a linha de novo na largura dela. Aprove a quebra ou mude a quebra.';
-  function proporQuebras() {
-    if (!editavel() || familiaConfirmada()) return false;
-    const area = document.getElementById('palco');
-    let propos = false;
-    let deNovo = false;
-    textosDaQuebra().forEach(function (t) {
-      if (!t.editado) return;
-      const q = quebraDo(t.elemento);
-      const no = area.querySelector('.recorte[data-elemento="' + t.elemento + '"] .texto.editado');
-      const pos = no ? quebrasDaLargura(no, t, q) : null;
-      if (!pos || !pos.length) return;
-      const manter = new Set(q ? q.manter : todasGravadas(t));
-      const inseridas = new Set(q ? q.inseridas : []);
-      pos.forEach(function (p) {
-        const k = t.gravadas.indexOf(p);
-        if (k >= 0) manter.add(k); else inseridas.add(p);
-      });
-      const novo = { elemento: t.elemento, layer_id: t.layer_id, manter: emOrdem(manter), inseridas: emOrdem(inseridas),
-        origem: 'proposta', aprovada: false };
-      if (q && JSON.stringify([q.manter, q.inseridas]) === JSON.stringify([novo.manter, novo.inseridas])) return;
-      guardarQuebra(t.elemento, novo);
-      propos = true;
-      if (q) deNovo = true;
+  /* Linhas do DA (0.9.4): a tinta medida do texto editado (medirTexto, dataset.caixaTinta, em px da peca) passa da
+     borda do quadro do membro m? area: o palco ou a miniatura em que ele foi desenhado */
+  function textoPassaDaBorda(area, m) {
+    const W = m.palco.largura, H = m.palco.altura;
+    return Array.from(area.querySelectorAll('.texto.editado')).some(function (no) {
+      const c = (no.dataset.caixaTinta || '').split(',').map(parseFloat);
+      if (c.length !== 4 || c.some(function (v) { return !isFinite(v); })) return false;
+      return c[0] < -TEXTO_BORDA_PX || c[1] < -TEXTO_BORDA_PX || c[2] > W + TEXTO_BORDA_PX || c[3] > H + TEXTO_BORDA_PX;
     });
-    if (deNovo) mensagem(QUEBRA_DE_NOVO);
-    return propos;
   }
-  function aprovarQuebra() {
-    const lista = porAprovar(vista.familia);
-    const q = lista.find(function (x) { return x.elemento === ed.selecionado; }) || lista[0];
-    if (!q) return;
-    guardarQuebra(q.elemento, Object.assign({}, q, { aprovada: true }));
-    mensagem('A quebra proposta pelo desdobra está aprovada. Ela vale para todos os arquivos desta família.');
-    if (controleAberto()) desenharControle(null);
+  /* os membros da previa de agora em que o texto editado passa da borda */
+  function formatosNaBorda() {
+    if (!ed.previa || ed.bordas.previa !== ed.previa) return [];
+    return Object.keys(ed.bordas.formatos);
   }
-  function verQuebraProposta() {
-    const q = porAprovar(vista.familia)[0];
-    if (!q) return;
-    selecionarElemento(q.elemento);
-    abrirControle();
+  /* o palco do membro escolhido confere de novo (ele e desenhado no tamanho de verdade) */
+  function conferirBorda(area, m) {
+    if (ed.bordas.previa === ed.previa && textoPassaDaBorda(area, m) && !ed.bordas.formatos[m.formato]) {
+      ed.bordas.formatos[m.formato] = true;
+      atualizarBotaoFamilia();
+    }
+    mostrarBorda();
+    marcarBordaNoPalco();
   }
-  /* a faixa da quebra proposta, acima da barra, e a marca no palco no elemento dela. Com o controle aberto no texto
-     da unica proposta, a faixa sai: o controle diz o mesmo e tem o "Aprovar quebra" */
-  function mostrarProposta() {
-    const no = document.getElementById('quebra-proposta');
-    const lista = editavel() ? porAprovar(vista.familia) : [];
-    const n = lista.length;
-    const noControle = controleAberto() && lista.every(function (q) { return q.elemento === ed.selecionado; });
-    no.hidden = !n || noControle;
-    document.getElementById('quebra-proposta-texto').textContent = n === 1 ? QUEBRA_UMA :
-      'O desdobra propôs ' + n + ' quebras de linha nesta família. Aprove cada quebra ou mude a quebra antes de confirmar a família.';
+  /* a faixa de aviso acima da barra: o texto editado passa da borda de um membro, com o botao que leva a ele */
+  function mostrarBorda() {
+    const no = document.getElementById('texto-borda');
+    const fs = editavel() ? formatosNaBorda() : [];
+    no.hidden = !fs.length;
+    if (!fs.length) return;
+    const nomesFs = fs.map(function (f) {
+      const m = ed.previa.membros.find(function (x) { return x.formato === f; });
+      return m ? dimensao(m.palco.largura, m.palco.altura) : f;
+    });
+    document.getElementById('texto-borda-texto').textContent = (fs.length === 1 ?
+      'O texto que você editou passa da borda do arquivo ' + nomesFs[0] + '.' :
+      'O texto que você editou passa da borda dos arquivos ' + listaDeNomes(nomesFs) + '.') +
+      ' Mude as linhas ou o tamanho do texto antes de confirmar a família.';
+    const ver = document.getElementById('ver-borda');
+    ver.hidden = fs.length === 1 && fs[0] === vista.formato;
+    ver.dataset.formato = fs.find(function (f) { return f !== vista.formato; }) || fs[0];
   }
-  function marcarQuebrasNoPalco() {
+  /* a marca no rotulo do texto editado, no palco do membro que passa da borda */
+  function marcarBordaNoPalco() {
     const area = document.getElementById('palco');
-    const pendentes = new Set((editavel() ? porAprovar(vista.familia) : []).map(function (q) { return q.elemento; }));
+    const naBorda = editavel() && formatosNaBorda().indexOf(vista.formato) >= 0;
     area.querySelectorAll('.rotulo.editavel').forEach(function (r) {
-      const sim = pendentes.has(r.dataset.elemento);
       const e = elementoDoPalco(r.dataset.elemento);
+      const editado = !!area.querySelector('.recorte[data-elemento="' + r.dataset.elemento + '"] .texto.editado');
+      const sim = naBorda && editado;
       const et = r.querySelector('.etiqueta');
-      if (r.classList.contains('quebra-proposta') === sim || !e) return;
-      r.classList.toggle('quebra-proposta', sim);
-      const rotulo = rotuloElemento(e) + (sim ? ' · ' + MARCA_QUEBRA : '');
+      if (r.classList.contains('passa-da-borda') === sim || !e) return;
+      r.classList.toggle('passa-da-borda', sim);
+      const rotulo = rotuloElemento(e) + (sim ? ' · ' + MARCA_BORDA : '');
       r.setAttribute('aria-label', 'Mexer em ' + rotulo);
-      if (et) { et.textContent = etiquetaElemento(e) + (sim ? ' · ' + MARCA_QUEBRA : ''); et.title = rotulo; }
+      if (et) { et.textContent = etiquetaElemento(e) + (sim ? ' · ' + MARCA_BORDA : ''); et.title = rotulo; }
     });
     reajustar(area);
-  }
-  /* o que falta: a familia com quebra proposta ainda sem aprovacao leva a ela */
-  function pendenciasDasQuebras() {
-    const out = [];
-    (estado.orientacoes || []).forEach(function (o) {
-      o.grupos.forEach(function (g) {
-        const n = porAprovar(g.id).length;
-        const fs = formatosDoGrupo(g);
-        if (!n || !fs.length) return;
-        out.push({ texto: n === 1 ? QUEBRA_FALTA_UMA : n + ' quebras de linha propostas pelo desdobra esperam a sua aprovação.',
-          detalhe: fs.map(function (x) { return x.id; }).join(', '), ir: { passo: 'pecas', formato: fs[0].id } });
-      });
-    });
-    return out;
   }
   function ligarEdicao() {
     const area = document.getElementById('palco');
@@ -4675,6 +4941,9 @@
     area.addEventListener('pointerup', aoSoltar);
     area.addEventListener('pointercancel', aoSoltar);
     area.addEventListener('keydown', aoTeclar);
+    // 0.9.4: o duplo clique escreve no texto, e o clique fora do campo aplica
+    area.addEventListener('dblclick', aoDuploClique);
+    document.addEventListener('pointerdown', aoApertarFora, true);
     // Ctrl+Z (Cmd+Z no Mac) desfaz a ultima edicao da familia, fora dos campos de texto
     document.addEventListener('keydown', function (ev) {
       if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey || String(ev.key).toLowerCase() !== 'z') return;
@@ -4799,16 +5068,14 @@
       fecharControle();
       document.getElementById('ed-quebra').focus();
     });
-    document.getElementById('aprovar-quebra').addEventListener('click', aprovarQuebra);
-    document.getElementById('ed-quebra-aprovar').addEventListener('click', function () {
-      aprovarQuebra();
-      // o botao some com a proposta aprovada: o foco fica no controle
-      document.getElementById('ed-quebra-fechar').focus();
+    // Linhas do DA (0.9.4): a faixa do texto que passa da borda leva ao membro dela
+    document.getElementById('ver-borda').addEventListener('click', function (ev) {
+      const fid = ev.currentTarget.dataset.formato;
+      if (fid) mostrarFormato(fid);
     });
-    document.getElementById('ver-quebra').addEventListener('click', verQuebraProposta);
     depoisDoAto.familia = function () {
       return lerRascunho().then(function () {
-        atualizarSelo(); atualizarBotaoFamilia(); atualizarSalvar(); mostrarProposta(); marcarQuebrasNoPalco();
+        atualizarSelo(); atualizarBotaoFamilia(); atualizarSalvar(); mostrarBorda(); marcarBordaNoPalco();
       });
     };
     depoisDoAto.salvar = function () {

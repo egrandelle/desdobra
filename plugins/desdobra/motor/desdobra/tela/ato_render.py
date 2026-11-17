@@ -32,6 +32,14 @@ SIM = 'Confirmar'
 NAO = 'Cancelar'
 MOTIVO_BLOQUEADO = 'formato_bloqueado'
 MOTIVO_MUDOU = 'contrato_mudou'
+# Linhas do DA (0.9.4): o bloqueio do contrato do texto editado que passa da borda (desdobra.render.derivado.montar)
+# e o motivo dito ao DA, com o nome do formato (desdobra.tela.tarefas.TEXTOS_POR_MOTIVO_COM_FORMATO)
+BLOQUEIO_BORDA = 'texto_editado_passa_do_formato'
+MOTIVO_BORDA = 'texto_passa_da_borda'
+# revisao 0.9.4: o formato cuja derivacao gravada e de antes (a familia confirmada numa versao anterior, sem a medida
+# do texto editado) pede "Salvar e seguir" de novo; o motivo dito ao DA, com o nome do formato
+BLOQUEIOS_VELHOS = frozenset({'derivacao_desatualizada', 'briefing_desatualizado'})
+MOTIVO_VELHO = 'derivacao_velha'
 # as decisoes que o contrato pede ao DA (desdobra.render.contrato e desdobra.render.derivado, pede_confirmacao), ditas
 # para o DA. A descricao do motor fala com a Trezion e cita o terminal; esta nunca
 DECISOES = {
@@ -120,19 +128,32 @@ def ato_de_render(pasta):
     def preparar(d, tarefa):
         from desdobra.render import execucao
         nomes = _formatos_do_briefing(pasta)
-        itens, bloqueados, guardado = [], [], {}
+        itens, bloqueados, guardado, na_borda, velhos = [], [], {}, [], []
         for f in d['formatos']:
             if tarefa.parar():
                 raise ErroAtoRender('O preparo foi parado.', tarefas.MOTIVO_PARADO)
             tarefa.progresso('contrato')
             contrato, bloqueios, confirmar = execucao.montar_contrato(pasta, f)
             nome = nomes.get(f, f)
+            if any(b.get('codigo') == BLOQUEIO_BORDA for b in bloqueios or ()):
+                # Linhas do DA (0.9.4): o texto editado passa da borda do formato; o DA ajusta na familia
+                na_borda.append({'id': f, 'nome': nome})
+                continue
+            if bloqueios and all(b.get('codigo') in BLOQUEIOS_VELHOS for b in bloqueios):
+                # a derivacao gravada e de antes: o "Salvar e seguir" da familia deriva de novo
+                velhos.append({'id': f, 'nome': nome})
+                continue
             if bloqueios or contrato is None:
                 bloqueados.append({'id': f, 'nome': nome})
                 continue
             aceites = sorted({c['codigo'] for c in confirmar})
             guardado[f] = {'contrato': impressao(contrato), 'aceites': aceites}
             itens.append({'id': f, 'nome': nome, 'decisoes': aceites})
+        if na_borda:
+            raise ErroAtoRender('O texto editado passa da borda de um formato.', MOTIVO_BORDA,
+                                resposta={'formatos': na_borda})
+        if velhos:
+            raise ErroAtoRender('A derivação de um formato é de antes.', MOTIVO_VELHO, resposta={'formatos': velhos})
         if bloqueados:
             raise ErroAtoRender('Um formato tem bloqueio.', MOTIVO_BLOQUEADO, resposta={'bloqueados': bloqueados})
         decisoes = {}
@@ -182,6 +203,10 @@ def ato_de_render(pasta):
                                     n_textos=rel['textos']['camadas'], n_paginas_pdf=rel['textos']['paginas_pdf'],
                                     meio=disparo.meio)
         resposta = {'feitos': feitos, 'mudaram': mudaram, 'pararam': pararam, 'tempos_s': tempos}
+        if pararam:
+            # o nome de cada formato parado, para a tela dizer o motivo por formato (tarefas.Tarefa.vista)
+            nomes = _formatos_do_briefing(pasta)
+            resposta['nomes'] = {f: nomes.get(f, f) for f in pararam}
         # o Cancelar que chegou depois do ultimo formato nao esconde o formato que mudou ou parou por um problema
         if not cortou and (mudaram or pararam):
             motivo = next(iter(pararam.values())) if pararam else MOTIVO_MUDOU

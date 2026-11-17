@@ -334,6 +334,18 @@ def varrer_pdfs_no_job(pasta_job):
 
 
 # ------------------------------------------------------------------ render do job
+def motivo_da_tinta_fora(fora_da_caixa, editados):
+    """O motivo do render que para pela tinta fora da caixa (derivado.tinta_fora_da_caixa), ou None sem tinta fora.
+    O texto editado pelo DA que foi cortado na borda (Linhas do DA, 0.9.4) tem um motivo proprio, que a tela diz ao DA
+    (desdobra.tela.tarefas.TEXTOS_POR_MOTIVO), e nunca o problema generico. O excesso sobre a caixa medida sem corte
+    na borda (a medida e o render divergem dentro do formato) fica com tinta_fora_da_caixa_validada (revisao 0.9.4)."""
+    if not fora_da_caixa:
+        return None
+    if all(x['layer_id'] in editados and x.get('cortada_na_regiao') for x in fora_da_caixa):
+        return 'texto_editado_cortado'
+    return 'tinta_fora_da_caixa_validada'
+
+
 def montar_contrato(pasta, formato=mod_contrato.FORMATO_ORIGEM, funcoes=None):
     """(contrato, bloqueios, pede_confirmacao) do formato: o da origem (M4) ou o de um formato derivado (M5)."""
     if formato == mod_contrato.FORMATO_ORIGEM:
@@ -477,6 +489,12 @@ def _renderizar(pasta_job, *, disparo, aceites=(), plat=None, funcoes=None, guar
         from desdobra.render import derivado as mod_derivado
         fora_da_caixa = mod_derivado.tinta_fora_da_caixa(contrato['entradas'], saida.get('entradas') or [],
                                                          contrato['formato']['largura'], contrato['formato']['altura'])
+        editados = {e['layer_id'] for e in contrato['entradas'] if e['tipo'] == 'texto' and e.get('texto_editado')}
+        if motivo_da_tinta_fora(fora_da_caixa, editados) == 'texto_editado_cortado':
+            raise ErroRender('A tinta de um texto editado pelo DA passou da borda do formato e seria cortada.',
+                             'texto_editado_cortado', medidas={'textos': fora_da_caixa},
+                             o_que_fazer='Para a Trezion: compare a caixa_texto_editado da derivacao com a tinta '
+                                         'medida no render.json.')
         if fora_da_caixa:
             raise ErroRender('A tinta de um texto passou da caixa que a derivação validou (ou foi cortada na página).',
                              'tinta_fora_da_caixa_validada', medidas={'textos': fora_da_caixa},

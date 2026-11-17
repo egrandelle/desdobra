@@ -7,7 +7,8 @@ familia vertical (tres membros, caminho da galeria):
   - abre a aba da familia;
   - move uma caixa (o titulo desce pela seta);
   - muda uma quebra de linha (um clique entre as duas palavras do texto de apoio);
-  - edita o texto do titulo, que nao cabe mais na caixa: o desdobra propoe a requebra, e o DA a aprova com um clique;
+  - edita o texto do titulo numa linha mais longa que a caixa do KV: nas Linhas do DA (0.9.4) o desdobra nao quebra o
+    texto sozinho nem propoe quebra; a caixa cresce com o mesmo corpo e a derivacao grava a caixa medida;
   - confirma a familia e clica em "Salvar e seguir";
   - fecha a janela (o servidor da tela para) e reabre (um servidor novo, montado do zero).
 Conferencias:
@@ -39,7 +40,7 @@ from desdobra.tela import rascunho as tr
 modelo = tsv.modelo
 job = tsv.job
 APOIO = 'VOX AH'
-TITULO = 'HOAX HOAX HOAX'  # o titulo editado: duas palavras cabem na caixa, tres nao
+TITULO = 'HOAX HOAX'  # o titulo editado: uma linha so, mais larga que a caixa do KV e dentro dos membros
 MEMBROS = tuple(fid for fid, _w, _h in tsv.VERTICAIS)
 VARIAVEL_MEDICAO = 'DESDOBRA_MEDICAO_EDITOR_MESTRE'
 FOLGA_CAIXA = 0.01  # numero-neutro: px, a folga entre a previa da tela e a derivacao gravada (test_tela_salvar)
@@ -95,7 +96,8 @@ def _esperados(conteudo, gid, f, titulo, apoio):
         assert caixa != pytest.approx(antes, abs=FOLGA_CAIXA), (fid, 'o movimento nao mudou a previa')
         campos += [(fid, titulo, 'caixa (mover)', _caixa_igual(caixa)),
                    (fid, titulo, 'texto', lambda e: e.get('texto_editado') == TITULO),
-                   (fid, titulo, 'quebra proposta aprovada', _quebra_igual(quebra[titulo])),
+                   (fid, titulo, 'linhas do DA (caixa medida, sem quebra)',
+                    lambda e: len(e.get('caixa_texto_editado') or []) == 4 and not e.get('quebras_origem')),
                    (fid, apoio, 'quebra do DA', _quebra_igual(quebra[apoio]))]
     return campos
 
@@ -204,20 +206,18 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
             _esperar_pedido(pg, previas, antes + 1)  # a previa da quebra, 300 ms depois do clique
             ted._esperar_salvo(pg)
             assert pg.evaluate(tqt.JS_LINHAS, apoio) == ['VOX', 'AH']
-            # o texto novo do titulo nao cabe na caixa: o desdobra propoe a requebra, marcada no palco
+            # o texto novo do titulo, mais largo que a caixa do KV: Linhas do DA (0.9.4), uma linha so, sem proposta de
+            # quebra nem aprovacao; o texto cabe nos membros, entao a faixa da borda fica escondida
             tqt._escolher(pg, titulo)
             pg.evaluate('() => document.getElementById("ed-texto").click()')
             pg.fill('#ed-campo-texto', TITULO)
             pg.evaluate('() => document.getElementById("ed-texto-aplicar").click()')
-            tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "" : "1"')
+            tp._esperar(pg, '() => document.getElementById("editor-texto").hidden ? "1" : ""')
             ted._esperar_salvo(pg)
-            [proposta] = tqt._do_elemento(ted._rascunho_gravado(job), gv, titulo)
-            assert proposta['origem'] == 'proposta' and proposta['aprovada'] is False and proposta['inseridas']
-            assert pg.evaluate('() => document.getElementById("confirmar-familia").disabled') is True
-            # aprovar a requebra com um clique
-            pg.evaluate('() => document.getElementById("aprovar-quebra").click()')
-            tp._esperar(pg, '() => document.getElementById("quebra-proposta").hidden ? "1" : ""')
-            ted._esperar_salvo(pg)
+            tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
+            assert tqt._do_elemento(ted._rascunho_gravado(job), gv, titulo) == []
+            assert pg.evaluate(tqt.JS_LINHAS, titulo) == [TITULO]
+            assert pg.evaluate('() => document.getElementById("texto-borda").hidden') is True
             assert pg.evaluate('() => document.getElementById("confirmar-familia").disabled') is False
             # o ultimo sinal do cronometro chega antes da confirmacao
             tp._esperar(pg, '() => document.documentElement.dataset.sinal === "enviado" ? "1" : ""')
@@ -240,13 +240,12 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
     assert f['confirmada'] is True
     assert [e['acao'] for e in f['edicoes']] == ['mover', 'texto']
     quebras = sorted((q['elemento'], q['origem'], q['aprovada'], tuple(q['inseridas'])) for q in f['quebras'])
-    assert quebras == sorted([(apoio, 'da', True, (3,)), (titulo, 'proposta', True, tuple(proposta['inseridas']))])
+    assert quebras == [(apoio, 'da', True, (3,))]
     b = mb.ler(job)
     comp = {c['familia']: c for c in b['composicoes']}[gv]
     assert (comp['versao'], comp['edicoes'], comp['confirmada']) == (f['versao'], f['edicoes'], True)
     assert sorted((q['layer_id'], q['origem'], q['aprovada'], tuple(q['inseridas'])) for q in b['quebras_por_familia']
-                  if q.get('familia') == gv) == \
-        sorted([(lid, 'da', True, (3,)), (proposta['layer_id'], 'proposta', True, tuple(proposta['inseridas']))])
+                  if q.get('familia') == gv) == [(lid, 'da', True, (3,))]
     derivacoes = _derivacoes(job)
     for fid, d in derivacoes.items():
         assert d['situacao'] == 'derivado' and d['caminho'] == 'galeria', (fid, d.get('devolucao'))
@@ -268,7 +267,7 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
         try:
             _abrir_familia(pg, conteudo2, MEMBROS[0])
             assert {e: pg.evaluate(tqt.JS_LINHAS, e) for e in (apoio, titulo)} == linhas
-            assert pg.evaluate('() => document.getElementById("quebra-proposta").hidden') is True
+            assert pg.evaluate('() => document.getElementById("texto-borda").hidden') is True
             assert pg.evaluate('() => document.getElementById("confirmar-familia").textContent') == 'Família confirmada'
             assert pg.evaluate('() => document.getElementById("salvo").hidden') is False
             tqt._abrir_controle(pg, apoio)
@@ -313,16 +312,13 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
         '%s, Python %s.' % (platform.platform(), platform.python_version()),
         'Familia vertical (%s), caminho da galeria, versao %s.' % (', '.join(MEMBROS), f['versao']),
         'Roteiro: abrir a aba, mover o titulo (seta), quebrar o apoio entre as palavras, editar o titulo (%r,' % TITULO,
-        '  a requebra proposta em %s), aprovar a quebra, confirmar a familia, Salvar e seguir, fechar e reabrir.'
-        % proposta['inseridas'],
+        '  nas linhas do DA, sem quebra automatica), confirmar a familia, Salvar e seguir, fechar e reabrir.',
         '',
         'Campos editados refletidos na derivacao: %d de %d (%.0f%%); com origem_geometria "da": %d de %d (%.0f%%).'
         % (refletidos, total, 100.0 * refletidos / total, origem_da, total, 100.0 * origem_da / total),
-        '  por membro: caixa do titulo movida (igual a previa da tela, folga %.2f px), texto do titulo, quebra proposta'
+        '  por membro: caixa do titulo movida (igual a previa da tela, folga %.2f px), texto do titulo, linhas do DA'
         % FOLGA_CAIXA,
-        '  aprovada (inseridas %s, quebras_origem "proposta"), quebra do DA no apoio (inseridas [3], quebras_origem'
-        % proposta['inseridas'],
-        '  "da").',
+        '  (caixa_texto_editado medida, sem quebra), quebra do DA no apoio (inseridas [3], quebras_origem "da").',
         'Relido depois de reabrir: arquivos com o mesmo sha %d de %d (rascunho, briefing e a derivacao dos membros);'
         % (len(iguais['arquivos']), len(shas)),
         '  campos editados %d de %d; derivacoes iguais %d de %d; derivacao refeita em memoria igual %d de %d.'

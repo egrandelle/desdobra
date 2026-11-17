@@ -138,7 +138,11 @@ def eh_caixa_de_paragrafo(t):
 
 def largura_da_quebra(entrada):
     """A largura em que o texto da entrada quebra no espaco, no espaco do texto, ou None: a do texto editado pelo DA
-    (largura_quebra, a da caixa de tinta da camada, como a previa da tela) ou a da caixa de paragrafo."""
+    (largura_quebra, a da caixa de tinta da camada, como a previa da tela, so na derivacao de antes da 0.9.4) ou a da
+    caixa de paragrafo. O texto editado com as linhas do DA (linhas_do_da, 0.9.4) nunca quebra sozinho: None, tambem
+    na caixa de paragrafo."""
+    if entrada.get('linhas_do_da'):
+        return None
     if entrada.get('largura_quebra') is not None:
         return float(entrada['largura_quebra'])
     t = entrada['texto']

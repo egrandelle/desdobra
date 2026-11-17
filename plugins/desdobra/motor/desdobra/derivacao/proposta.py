@@ -16,13 +16,14 @@ formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A deri
   - o elemento apagado sai do formato e fica em apagados_pelo_da, com a origem de quem confirmou a familia; ele deixa
     de contar no inventario igual entre formatos;
   - o texto editado vale so na familia onde o DA mexeu (171) e vai em texto_editado, com as quebras dele (as linhas
-    do DA e as que a medida do render da na largura da caixa, M7b, A7): nunca as quebras da proposta (quebras
+    do DA, M7b, A7, sem quebra na largura da caixa: Linhas do DA, 0.9.4) e a caixa medida da tinta delas
+    (caixa_texto_editado, com o mesmo corpo): nunca as quebras da proposta (quebras
     'do_texto_editado');
   - a quebra de linha da familia (quebras_por_familia com familia, M7b, C2; decisoes-v1.md, 167 e 171) vale em todo
     membro: a mestre de onde o membro parte tem a caixa medida do texto com a quebra (mestre_do_membro; na galeria, a
     mesma mestre para todos os membros, mestre_da_galeria), e a escala do texto sai dela. O elemento leva
     quebras_origem ('da', ou 'proposta' na quebra que o motor propos) e origem_geometria 'da' quando a quebra e do DA
-    ou foi aprovada por ele. No texto editado, a quebra vale sobre o texto novo (sem medida: o render quebra na caixa);
+    ou foi aprovada por ele. No texto editado, a quebra vale sobre o texto novo, e a caixa e a da tinta medida;
   - a validacao obrigatoria do motor continua valendo: o layout confirmado que reprova volta ao DA com o nome da
     validacao, como na derivacao sem tela;
   - o piso de escala (133) ou de distancia (135) que o elemento mexido pelo DA fura e decisao dele (M7b, D5): o
@@ -292,6 +293,71 @@ def _quebras_do_editado(ctx, x, fid):
     x['quebras_origem'] = mq.origem_das([f for _lid, f in fams])
 
 
+def _caixas_editadas(ctx, elementos):
+    """A caixa medida do texto editado de cada elemento (Linhas do DA, 0.9.4), no espaco do documento: {id do elemento:
+    (caixa_doc ou None, motivo da falta ou None)}. As linhas sao as do DA (derivacao.quebras.linhas_editadas, com a
+    quebra da familia do elemento), com o mesmo corpo; a tinta e medida no Chromium com o cache
+    (derivacao.medida_quebras.medir_editados). O elemento com mais de um texto fica com a caixa que junta todos."""
+    from pathlib import Path
+
+    from desdobra import contratos
+    from desdobra.briefing import modelo as mb
+    from desdobra.derivacao import medida_quebras
+    from desdobra.derivacao import quebras as mq
+    cam = mb.camadas_do_laudo(ctx['laudo'])
+    pedidos, por_el = [], {}
+    for x in elementos:
+        if x.get('texto_editado') is None:
+            continue
+        fam = {i['layer_id']: i for i in ((x.get('quebras') or {}).get('familia') or [])} \
+            if isinstance(x.get('quebras'), dict) else {}
+        por_el[x['id']] = []
+        for lid in x['layer_ids']:
+            if (cam.get(lid) or {}).get('tipo') != 'texto':
+                continue
+            linhas = mq.linhas_editadas(x['texto_editado'], fam.get(lid))
+            pedidos.append((lid, linhas))
+            por_el[x['id']].append(mq.chave_editado(lid, linhas))
+    if not pedidos:
+        return {}
+    medidas, motivo = {}, None
+    pasta = ctx.get('pasta')
+    try:
+        estado = contratos.ler(Path(pasta) / 'estado.json', 'estado/1') if pasta else None
+        if estado is None:
+            motivo = 'sem_job'
+        else:
+            medidas = medida_quebras.medir_editados(pasta, ctx['laudo'], estado, pedidos)
+    except (contratos.ErroContrato, OSError, ValueError, KeyError):
+        motivo = 'sem_medida'
+    saida = {}
+    for eid, chaves in por_el.items():
+        caixa, falta = None, motivo
+        for ch in chaves:
+            m = medidas.get(ch) or {}
+            if 'caixa_doc' not in m:
+                falta = falta or m.get('erro') or 'sem_medida'
+                continue
+            c = m['caixa_doc']
+            caixa = list(c) if caixa is None else [min(caixa[0], c[0]), min(caixa[1], c[1]), max(caixa[2], c[2]),
+                                                  max(caixa[3], c[3])]
+        saida[eid] = (None, falta or 'sem_medida') if caixa is None or falta else (caixa, None)
+    return saida
+
+
+def _no_formato(tr, c):
+    s = float(tr['s'])
+    o, d = tr['origem_doc'], tr['destino']
+    return [s * (float(c[0]) - o[0]) + d[0], s * (float(c[1]) - o[1]) + d[1],
+            s * (float(c[2]) - o[0]) + d[0], s * (float(c[3]) - o[1]) + d[1]]
+
+
+def lados_fora(caixa, W, H, tol):
+    """Os lados em que a caixa passa da borda do formato W x H alem de tol."""
+    return [lado for lado, fora in (('esq', caixa[0] < -tol), ('topo', caixa[1] < -tol), ('dir', caixa[2] > W + tol),
+                                    ('base', caixa[3] > H + tol)) if fora]
+
+
 def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
     """A derivacao/1 do membro a partir do layout com as edicoes (layout_do_membro). cf: o contexto do formato, com a
     mestre de onde o membro partiu (mestre_do_membro)."""
@@ -341,6 +407,21 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
             x['sangria_do_da'] = list(lay['sangria_do_da'][e['id']])
         elementos.append(x)
     registros = list(d['registros'])
+    # Linhas do DA (0.9.4): a caixa do texto editado e a tinta medida das linhas dele, com o mesmo corpo. O render a
+    # usa como caixa validada; o texto que passa da borda do formato fica registrado aqui e o render recusa o formato
+    # antes de desenhar (desdobra.render.derivado.montar)
+    from desdobra import limites
+    tol = float(limites.valor('derivacao.enquadramento_tolerancia_px'))
+    for eid, (caixa, falta) in sorted(_caixas_editadas(ctx, elementos).items()):
+        x = next(e for e in elementos if e['id'] == eid)
+        if caixa is None:
+            registros.append({'codigo': 'texto_editado_sem_medida', 'medidas': {'elemento': eid, 'motivo': falta}})
+            continue
+        c = [round(v, 2) for v in _no_formato(x['transformacao'], caixa)]  # numero-neutro: casas do px
+        x['caixa_texto_editado'] = c
+        lados = lados_fora(c, cf['W'], cf['H'], tol)
+        if lados:
+            registros.append({'codigo': 'texto_editado_passa_da_borda', 'medidas': {'elemento': eid, 'lados': lados}})
     if d['situacao'] == 'devolvido':
         registros.append({'codigo': 'proposta_da_galeria', 'medidas': {'motivo_da_devolucao': d['devolucao']['motivo']}})
         novo['mestre'] = {'id': kv['id'], 'tipo': 'kv', 'largura': kv['largura'], 'altura': kv['altura']}

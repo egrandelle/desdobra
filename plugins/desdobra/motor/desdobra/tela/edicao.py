@@ -49,8 +49,10 @@ as decisoes do DA de uma vez so, nunca peca a peca:
   - o encaixe de cada membro e refeito pelo solver do repositorio, com as caixas editadas como mestre sintetica (como a
     galeria faz com a variante), e o layout e conferido contra a mestre verdadeira (desdobra.derivacao.galeria);
   - o texto editado precisa de todos os caracteres na face do job que o desenha (a cobertura do cmap lida pelo filho
-    das fontes; o processo principal nunca abre a fonte); a previa leva o texto novo com a face real, e as quebras
-    sao refeitas pela pagina na largura da caixa, com a fonte carregada. O texto vale so na familia editada (171);
+    das fontes; o processo principal nunca abre a fonte); a previa leva o texto novo com a face real, e as linhas
+    sao as do DA (Linhas do DA, 0.9.4): nada quebra na largura da caixa, e o texto cresce em volta da ancora com o
+    mesmo corpo. A pagina mede a tinta e avisa quando ela passa da borda do formato. O texto vale so na familia
+    editada (171);
   - o elemento apagado sai de todos os membros, fica registrado com a origem do rascunho ('da', ou fixture_de_teste no
     modo de teste da tela) e deixa de reprovar o inventario (desdobra.derivacao.validacao, apagados);
   - a quebra de linha da familia (M7b, C3; decisoes-v1.md, 167 e 171): o pedido pode levar as quebras do rascunho da
@@ -572,9 +574,10 @@ def _texto_da_recusa(faltam):
 
 def trocar_texto(palco, elemento, texto, quebra=None):
     """As pecas de texto do elemento no palco levam o texto novo, linha a linha (as quebras do DA), com o estilo do
-    primeiro trecho (face, cor, corpo e tracking ja na escala do formato); a pagina refaz as quebras na largura da
-    caixa com a fonte real. quebra: a quebra de linha da familia no texto (o item do rascunho, M7b, C4): as linhas
-    juntadas e as inseridas, como o render desenha (desdobra.derivacao.quebras.linhas_do_editado)."""
+    primeiro trecho (face, cor, corpo e tracking ja na escala do formato); a pagina desenha so as linhas do DA, sem
+    quebra na largura da caixa (Linhas do DA, 0.9.4). quebra: a quebra de linha da familia no texto (o item do
+    rascunho, M7b, C4): as linhas juntadas e as inseridas, como o render desenha
+    (desdobra.derivacao.quebras.linhas_do_editado)."""
     from desdobra.derivacao import quebras as mq
     if quebra is not None:
         linhas = mq.linhas_do_editado(texto, quebra['manter'], quebra['inseridas'])
@@ -585,8 +588,24 @@ def trocar_texto(palco, elemento, texto, quebra=None):
             continue
         t0 = p['linhas'][0]['trechos'][0]
         ent = next((ln['entrelinha'] for ln in p['linhas'] if ln.get('entrelinha')), None)
+        if 'ancora_kv' not in p:
+            # revisao 0.9.4: o render ancora o texto editado pela primeira linha de base do KV. A pagina so tem a caixa
+            # de tinta do KV (caixa_tinta), cujo topo e o da primeira linha do KV com tinta: leva o texto dessa linha e
+            # a distancia da primeira linha de base ate a dela (as entrelinhas acima), para medirTexto achar a linha
+            # de base do KV e por nela a primeira linha do DA, vazia ou nao
+            kv = [''.join(str(t.get('texto') or '') for t in ln.get('trechos') or []) for ln in p['linhas']]
+            j = next((i for i, s in enumerate(kv) if s.strip()), None)
+            acima = [p['linhas'][i].get('entrelinha') for i in range(1, j + 1)] if j is not None else None
+            if j is not None and all(isinstance(a, (int, float)) and a > 0 for a in acima):
+                p['ancora_kv'] = {'texto': kv[j], 'acima': round(float(sum(acima)), 4)}
         p['linhas'] = [{'trechos': [dict(t0, texto=ln)], 'entrelinha': ent} for ln in linhas]
         p['texto_editado'] = True
+        # Linhas do DA (0.9.4): o texto cresce ate a linha mais longa, entao o recorte dele vai alem do mundo do palco
+        # (um formato para cada lado): a pagina mede a tinta inteira e mostra a que passa da borda (o membro fica
+        # marcado)
+        W, H = float(palco.get('largura') or 0), float(palco.get('altura') or 0)
+        mundo = palco.get('mundo') or [0.0, 0.0, W, H]
+        p['recorte'] = [float(mundo[0]) - W, float(mundo[1]) - H, float(mundo[2]) + W, float(mundo[3]) + H]
         p['modo'] = 'texto'
     return palco
 

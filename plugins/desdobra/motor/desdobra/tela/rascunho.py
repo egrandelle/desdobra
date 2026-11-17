@@ -18,8 +18,10 @@ fica salvo sozinho, a cada mudanca, neste arquivo. Regras:
   - a quebra de linha que o DA poe ou tira na familia (M7b, C1; decisoes-v1.md, 167 e 171) e edicao da familia: muda a
     familia como a versao e as edicoes, e a posicao inserida tem de cair num espaco do texto de agora (o do KV ou o
     editado na familia; _conferir_quebras). A quebra que o DA poe ou tira vale aprovada pelo proprio ato (origem da);
-    a que o desdobra propos (origem proposta, o texto editado que quebra na largura da caixa, M7b, C4) espera o clique
-    "Aprovar quebra" da pagina, e a familia com quebra por aprovar nunca e confirmada (por_aprovar);
+    a que o desdobra propos (origem proposta, M7b, C4) espera o clique "Aprovar quebra" da pagina, e a familia com
+    quebra por aprovar nunca e confirmada (por_aprovar). Linhas do DA (0.9.4): o texto editado nunca quebra sozinho e
+    o desdobra nao propoe quebra nele; a proposta de antes num texto editado sai na leitura da familia que nao esta
+    confirmada (sem_proposta_velha);
   - cada familia guarda os formatos que a tela mostrava quando o DA mexeu nela pela ultima vez (revisao do M7b, fase
     A; so o servidor grava, _com_os_formatos): a tela casa o id com o grupo que divide mais formatos com eles
     (desdobra.tela.estado.abas), e a familia que a tela nao mostra mais fica aqui com as edicoes dela;
@@ -72,7 +74,25 @@ def ler(pasta, laudo_atual):
         return None, True
     if laudo_atual is None or dados['laudo_sha256'] != laudo_atual:
         return None, True
-    return dados, False
+    return sem_proposta_velha(dados), False
+
+
+def _proposta_no_editado(f, q):
+    """A quebra q da familia f e a proposta do desdobra (aprovada ou nao) num texto editado pelo DA na familia."""
+    from desdobra.derivacao import quebras as mq
+    return q.get('origem') == 'proposta' and mq.texto_editado(f.get('edicoes'), q.get('elemento')) is not None
+
+
+def sem_proposta_velha(dados):
+    """Linhas do DA (0.9.4): o desdobra nao propoe mais quebra no texto editado. Na familia que nao esta confirmada, a
+    quebra proposta de antes num texto editado (aprovada ou nao) sai na leitura, e as linhas voltam a ser as do DA: o
+    rascunho velho nunca trava a confirmacao (por_aprovar) nem a previa. A familia confirmada fica como o DA a
+    confirmou (a proposta aprovada e decisao dele). Devolve os dados, no lugar."""
+    for f in (dados.get('familias') or {}).values():
+        if not isinstance(f, dict) or f.get('confirmada') or not f.get('quebras'):
+            continue
+        f['quebras'] = [q for q in f['quebras'] if not _proposta_no_editado(f, q)]
+    return dados
 
 
 def origem_gravada(pasta):
@@ -165,8 +185,10 @@ def _escolhas_da_familia(f):
 
 
 def por_aprovar(f):
-    """As quebras de linha da familia f (do rascunho) que o desdobra propos e o DA ainda nao aprovou (M7b, C4)."""
-    return [q for q in (f or {}).get('quebras') or [] if q.get('origem') == 'proposta' and not q.get('aprovada')]
+    """As quebras de linha da familia f (do rascunho) que o desdobra propos e o DA ainda nao aprovou (M7b, C4). A
+    proposta num texto editado nunca espera (Linhas do DA, 0.9.4: sem_proposta_velha)."""
+    return [q for q in (f or {}).get('quebras') or [] if q.get('origem') == 'proposta' and not q.get('aprovada')
+            and not _proposta_no_editado(f, q)]
 
 
 def _conferir_quebras(familias, laudo, elementos=None):

@@ -23,6 +23,9 @@ caiu ou passou do teto), o pedido sai pelo caminho frio, o de sempre: o Chromium
 mede e fecha. Fora da tela (a CLI e a derivacao), nada fica ligado e toda medida e a do caminho frio.
 
 Devolve {chave: {'largura_texto', 'largura_texto_mestre', 'linhas'}} ou, quando nao mede, {chave: {'erro': motivo}}.
+
+O texto editado pelo DA (Linhas do DA, 0.9.4) passa pela mesma pagina e pelo mesmo cache em medir_editados: a tinta
+das linhas do DA, com o mesmo corpo, da a caixa do texto editado (derivacao.quebras.caixa_do_editado).
 """
 import copy
 import hashlib
@@ -59,11 +62,15 @@ def limpar_cache():
         _cache.clear()
 
 
-def chave_da_medida(camada, manter, inseridas, faces):
+def chave_da_medida(camada, manter, inseridas, faces, espaco=None):
     """A chave do cache: o sha256 do texto canonico da camada do laudo, das quebras que ficam, das inseridas e das
-    faces servidas [(id, sha256)]. Mudar qualquer um muda a chave."""
+    faces servidas [(id, sha256)]. Mudar qualquer um muda a chave. espaco separa as medidas de outra forma: o texto
+    editado (medir_editados) guarda a caixa da tinta, e a camada sintetica dele pode ser igual a camada do laudo com
+    todas as quebras juntas; sem o espaco, a medida de uma serviria a outra (revisao 0.9.4)."""
     dados = {'camada': camada, 'manter': sorted(int(x) for x in manter),
              'inseridas': sorted(int(x) for x in inseridas), 'faces': sorted([str(i), str(s)] for i, s in faces)}
+    if espaco is not None:
+        dados['espaco'] = str(espaco)
     texto = json.dumps(dados, sort_keys=True, ensure_ascii=False, separators=(',', ':'), default=str)
     return hashlib.sha256(texto.encode('utf-8')).hexdigest()
 
@@ -121,17 +128,7 @@ def medir(pasta, laudo, briefing, estado):
         return {}
     camadas = mb.camadas_do_laudo(laudo)
     saida = {}
-    faces, por_sha = _faces(pasta, estado)
-    servidos = {}
-    for f in faces:
-        rel = por_sha.get(f['sha256'])
-        dados = (Path(pasta) / rel).read_bytes() if rel else None
-        if dados is None or arquivos.sha256_bytes(dados) != f['sha256']:
-            continue
-        servir = conferencia.bytes_para_servir(dados, f)
-        if servir is not None:
-            servidos[f['id']] = (servir, servidor.MIME_POR_FORMATO[f['formato']])
-    servidas = [(f['id'], f['sha256']) for f in faces if f['id'] in servidos]
+    faces, servidos, servidas = _servidos(pasta, estado)
     textos, ordem = [], []
     for lid, manter, inseridas in pedidos:
         c = camadas.get(lid)
@@ -150,29 +147,7 @@ def medir(pasta, laudo, briefing, estado):
         ordem.append((lid, manter, inseridas, no_cache))
     if not ordem:
         return saida
-    pares = {}
-    for c in textos:
-        for r in c['texto'].get('runs') or []:
-            ps = r.get('fonte_ps')
-            if ps and ps not in pares:
-                pares[ps] = casamento.casar(ps, faces)[0]
-    prefixo = 'dsd-%s' % estado['job_id'][:8]  # numero-neutro: prefixo curto do job no nome da familia
-    pagina, plano = medicao.montar(textos, pares, faces, prefixo)
-    larguras, tintas, motivo = {}, {}, None
-    if not servidos:
-        motivo = 'sem_face_servivel'
-    else:
-        # com o aberto ligado, o servidor da pagina para sem a espera de meio segundo do serve_forever, que era quase
-        # toda a remedicao no aberto; o caminho frio fica com o servidor de antes
-        kw = {'intervalo_s': INTERVALO_SERVIDOR_ABERTO_S} if _aberto is not None else {}
-        try:
-            with servidor.ServidorFontes(pagina, servidos, **kw) as srv:
-                resposta = _conferir(srv.url_entrada, [medicao.familia_css(prefixo, i) for i in servidos],
-                                     [d for d, _mime in servidos.values()])
-            larguras = resposta.get('larguras') or {}
-            tintas = resposta.get('tintas') or {}
-        except navegador.ErroNavegador:
-            motivo = 'chromium_nao_mediu'
+    pares, plano, larguras, tintas, motivo = _na_pagina(textos, faces, servidos, estado)
     for k, (lid, manter, inseridas, no_cache) in enumerate(ordem):
         ch = mq.chave(lid, manter, inseridas)
         if motivo:
@@ -196,5 +171,99 @@ def medir(pasta, laudo, briefing, estado):
             # a tinta de cada linha, para a caixa seguir a do render (derivacao.quebras.caixa_medida)
             saida[ch]['tinta_mestre'] = {k: round(v, 4) for k, v in tm.items()}
             saida[ch]['tinta'] = {k: round(v, 4) for k, v in tj.items()}
+        _guardar(no_cache, saida[ch])
+    return saida
+
+
+def _servidos(pasta, estado):
+    """(faces, servidos, servidas): as faces do job, os bytes de cada face que o motor serve ao Chromium e os pares
+    (id, sha256) delas (a parte das faces na chave do cache)."""
+    faces, por_sha = _faces(pasta, estado)
+    servidos = {}
+    for f in faces:
+        rel = por_sha.get(f['sha256'])
+        dados = (Path(pasta) / rel).read_bytes() if rel else None
+        if dados is None or arquivos.sha256_bytes(dados) != f['sha256']:
+            continue
+        servir = conferencia.bytes_para_servir(dados, f)
+        if servir is not None:
+            servidos[f['id']] = (servir, servidor.MIME_POR_FORMATO[f['formato']])
+    return faces, servidos, [(f['id'], f['sha256']) for f in faces if f['id'] in servidos]
+
+
+def _na_pagina(textos, faces, servidos, estado):
+    """(pares, plano, larguras, tintas, motivo) da pagina de medida com as camadas textos, no Chromium."""
+    pares = {}
+    for c in textos:
+        for r in c['texto'].get('runs') or []:
+            ps = r.get('fonte_ps')
+            if ps and ps not in pares:
+                pares[ps] = casamento.casar(ps, faces)[0]
+    prefixo = 'dsd-%s' % estado['job_id'][:8]  # numero-neutro: prefixo curto do job no nome da familia
+    pagina, plano = medicao.montar(textos, pares, faces, prefixo)
+    larguras, tintas, motivo = {}, {}, None
+    if not servidos:
+        motivo = 'sem_face_servivel'
+    else:
+        # com o aberto ligado, o servidor da pagina para sem a espera de meio segundo do serve_forever, que era quase
+        # toda a remedicao no aberto; o caminho frio fica com o servidor de antes
+        kw = {'intervalo_s': INTERVALO_SERVIDOR_ABERTO_S} if _aberto is not None else {}
+        try:
+            with servidor.ServidorFontes(pagina, servidos, **kw) as srv:
+                resposta = _conferir(srv.url_entrada, [medicao.familia_css(prefixo, i) for i in servidos],
+                                     [d for d, _mime in servidos.values()])
+            larguras = resposta.get('larguras') or {}
+            tintas = resposta.get('tintas') or {}
+        except navegador.ErroNavegador:
+            motivo = 'chromium_nao_mediu'
+    return pares, plano, larguras, tintas, motivo
+
+
+def medir_editados(pasta, laudo, estado, pedidos):
+    """A caixa da tinta do texto editado pelo DA com as linhas dele (Linhas do DA, 0.9.4). pedidos: [(layer_id,
+    linhas)], as linhas como o render as desenha (derivacao.quebras.linhas_editadas). Cada texto vai a pagina de medida
+    num trecho so, com o estilo do primeiro trecho com tinta (derivacao.quebras.camada_do_editado), e a caixa sai da
+    tinta medida pela ancora do render (derivacao.quebras.caixa_do_editado), no espaco do documento. O mesmo cache da
+    medida das quebras: o mesmo texto nao abre o Chromium de novo.
+    Devolve {chave_editado: {'caixa_doc': [x0, y0, x1, y1], 'linhas': n}} ou {chave_editado: {'erro': motivo}}."""
+    camadas = mb.camadas_do_laudo(laudo)
+    saida, ordem, textos = {}, [], []
+    faces, servidos, servidas = _servidos(pasta, estado)
+    for lid, linhas in pedidos:
+        ch = mq.chave_editado(lid, linhas)
+        if ch in saida or any(o[0] == ch for o in ordem):
+            continue
+        c = camadas.get(lid)
+        sint = mq.camada_do_editado(c, linhas) if c is not None and c.get('tipo') == 'texto' else None
+        if sint is None:
+            saida[ch] = {'erro': 'camada_sem_texto'}
+            continue
+        no_cache = chave_da_medida(sint, (), (), servidas, espaco='editado')
+        guardada = _guardada(no_cache)
+        if guardada is not None:
+            saida[ch] = guardada
+            continue
+        textos.append(sint)
+        ordem.append((ch, sint, no_cache))
+    if not ordem:
+        return saida
+    pares, plano, larguras, tintas, motivo = _na_pagina(textos, faces, servidos, estado)
+    por_ps = {ps: f for ps, f in pares.items() if f is not None}
+    for k, (ch, sint, no_cache) in enumerate(ordem):
+        if motivo:
+            saida[ch] = {'erro': motivo}
+            continue
+        r0 = sint['texto']['runs'][0]
+        if pares.get(r0.get('fonte_ps')) is None:
+            saida[ch] = {'erro': 'face_ausente'}
+            continue
+        par = (sint['texto'].get('paragrafos') or [{}])[0]
+        tinta = medicao.tinta_do_bloco(plano['camadas'][k], larguras, tintas, par.get('justificacao'))
+        caixa = mq.caixa_do_editado(sint, tinta, por_ps)
+        if caixa is None:
+            saida[ch] = {'erro': 'sem_medida_do_chromium'}
+            continue
+        saida[ch] = {'caixa_doc': [round(v, 4) for v in caixa],  # numero-neutro: casas do px
+                     'linhas': len(plano['camadas'][k]['linhas'])}
         _guardar(no_cache, saida[ch])
     return saida
