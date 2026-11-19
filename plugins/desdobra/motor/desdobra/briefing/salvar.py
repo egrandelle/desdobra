@@ -140,11 +140,17 @@ def montar(pasta, conteudo, dados, *, origem, meio, por, quando, modo):
     for gid, fam in conteudo['familias'].items():
         f = dados['familias'].get(gid) or {}
         conf = f.get('confirmacao')
-        novo['composicoes'].append({'familia': gid, 'formatos': list(fam['formatos']), 'versao': f.get('versao'),
-                                    'edicoes': copy.deepcopy(f.get('edicoes') or []),
-                                    'confirmada': bool(f.get('confirmada')),
-                                    'confirmacao': None if conf is None else
-                                    {k: v for k, v in conf.items() if k not in ('formatos', 'pecas')}})
+        comp = {'familia': gid, 'formatos': list(fam['formatos']), 'versao': f.get('versao'),
+                'edicoes': copy.deepcopy(f.get('edicoes') or []), 'confirmada': bool(f.get('confirmada')),
+                'confirmacao': None if conf is None else
+                {k: v for k, v in conf.items() if k not in ('formatos', 'pecas', 'arquivo_de_edicao', 'layouts')}}
+        # decisao 199 (0.10.0): o arquivo de edicao como a tela mostra (a derivacao copia o layout dele para os
+        # outros) e, na familia separada pelo DA, a familia de onde ela saiu
+        if fam.get('arquivo_de_edicao'):
+            comp['arquivo_de_edicao'] = fam['arquivo_de_edicao']
+        if fam.get('separado_de'):
+            comp['separado_de'] = fam['separado_de']
+        novo['composicoes'].append(comp)
     _quebras_das_familias(novo, conteudo, dados, tipo)
     novo['cabecalho'] = dict(mb.hashes_atuais(pasta), origem=origem, meio=meio, por=dict(por), quando=quando)
     return novo
@@ -212,11 +218,20 @@ def pendencias(pasta, conteudo, origem=None, detalhes=None):
         if callable(editar):
             # as edicoes sao as do rascunho gravado: o tamanho que ele ja tinha fora dos limites (a tela de antes do D3)
             # passa, como na previa, e o job nunca trava; o teto de cada passo continua valendo (revisao 2 da fase D)
-            r = editar({'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']}, antes=f['edicoes'])
+            # decisao 199 (5; 0.10.0): a previa vai com as quebras de linha gravadas, como a janela a pediu, e o layout
+            # de cada arquivo tem de ser o que o DA confirmou (o hash da confirmacao, a impressao da 175)
+            from desdobra.tela import edicao
+            r = edicao.previa_gravada(editar, gid, f)
+            layouts = (f.get('confirmacao') or {}).get('layouts')
             if r is None:
                 saida.append({'codigo': 'edicao_invalida', 'familia': gid})
             elif r['recusas']:
                 saida.append({'codigo': 'texto_sem_caractere', 'familia': gid})
+            elif layouts is not None and edicao.hash_dos_layouts(r) != layouts:
+                # os arquivos que mudaram vao junto: a tela diz quais foram (revisao da 0.10.0)
+                agora = edicao.hash_dos_layouts(r)
+                saida.append({'codigo': 'layout_diferente_do_confirmado', 'familia': gid,
+                              'formatos': sorted(f for f in set(agora) | set(layouts) if agora.get(f) != layouts.get(f))})
     modo = _modo(pasta, origem)
     if modo is None:
         saida.append({'codigo': 'modo_dados_sem_escolha'})
@@ -459,8 +474,8 @@ def situacao_na_tela(pasta, familias, biblioteca=None):
             return nao
     origem = b['cabecalho']['origem']
     try:
-        novo = montar(pasta, {'familias': {gid: {'formatos': list(fids)} for gid, fids in familias.items()},
-                              'pasta_biblioteca': biblioteca}, dados,
+        novo = montar(pasta, {'familias': _com_a_estrutura(b, dados, familias), 'pasta_biblioteca': biblioteca},
+                      dados,
                       origem=origem, meio=b['cabecalho'].get('meio'), por={}, quando=None, modo=_modo(pasta, origem))
     except (contratos.ErroContrato, KeyError, TypeError, ValueError):
         return nao
@@ -474,6 +489,33 @@ def situacao_na_tela(pasta, familias, biblioteca=None):
         return {'salvo': False, 'em': b['cabecalho']['quando'], 'refazer_layout': refazer}
     salvo = {'salvo': True, 'em': b['cabecalho']['quando']}
     return dict(salvo, sem_layout=sem_layout) if sem_layout else salvo
+
+
+def _com_a_estrutura(b, dados, familias):
+    """{id: {'formatos', 'arquivo_de_edicao', 'separado_de'}} das familias da tela (decisao 199; 0.10.0), pela mesma
+    regra da tela (desdobra.tela.estado.abas): o arquivo de edicao gravado no rascunho enquanto estiver na familia,
+    senao a regra; a familia de um arquivo so que o DA separou leva a familia de onde ele saiu."""
+    from desdobra.derivacao import proposta
+    por_id = {f['id']: f for f in b.get('formatos') or []}
+    gravadas = dados.get('familias') or {}
+    saida = {}
+    for gid, fids in familias.items():
+        fs = [por_id[f] for f in fids if f in por_id]
+        fam = {'formatos': list(fids)}
+        # revisao da 0.10.0 (a migracao): sem escolha gravada, a regra vale entre os formatos que a familia ja tinha,
+        # como na tela (desdobra.tela.estado.abas, com familias_conhecidas)
+        conhecidos = (gravadas.get(gid) or {}).get('formatos') or \
+            next((c['formatos'] for c in b.get('composicoes') or [] if c['familia'] == gid), None)
+        ref = proposta.arquivo_de_edicao(fs, (gravadas.get(gid) or {}).get('arquivo_de_edicao'), conhecidos) \
+            if fs else None
+        if ref:
+            fam['arquivo_de_edicao'] = ref
+        mae = next((m for m, f in sorted(gravadas.items()) if len(fids) == 1 and m != gid and
+                    fids[0] in (f.get('separados') or ())), None)
+        if mae:
+            fam['separado_de'] = mae
+        saida[gid] = fam
+    return saida
 
 
 def layouts_a_refazer(pasta, b, fids):

@@ -93,8 +93,9 @@ def test_familia_dividida_fica_com_a_parte_maior():
     abas = _abas([A, A2, B], conhecidas={'horizontal-1': ['a', 'a2', 'b']})
     assert _ids(abas) == {'horizontal-1': ['a', 'a2'], 'horizontal-2': ['b']}
     av = _avisos(abas)
-    assert 'saiu o formato b' in av['horizontal-1'] and 'confirme' in av['horizontal-1']
-    assert 'b' in av['horizontal-2'] and 'outra família' in av['horizontal-2']
+    # revisao da 0.10.0: a frase diz o arquivo pela medida (b e o 900x300), e nunca pelo id interno
+    assert 'saiu o formato 900x300' in av['horizontal-1'] and 'confirme' in av['horizontal-1']
+    assert '900x300' in av['horizontal-2'] and 'outra família' in av['horizontal-2']
     assert 'proposta do desdobra' in av['horizontal-2']
 
 
@@ -103,7 +104,7 @@ def test_familias_juntadas_ficam_com_o_id_que_divide_mais():
                                              'horizontal-2': ['b']}, editadas={'horizontal-3'})
     assert _ids(abas) == {'horizontal-1': ['a', 'a2', 'a3'], 'horizontal-2': ['b']}
     av = _avisos(abas)
-    assert 'entrou o formato a3' in av['horizontal-1'] and 'outra família' in av['horizontal-1']
+    assert 'entrou o formato 640x300' in av['horizontal-1'] and 'outra família' in av['horizontal-1']
     assert av['horizontal-2'] == ''
     # o id que sumiu continua reservado: o formato novo nunca herda as edicoes dele
     abas = _abas([A, A2, A3, D, B, C], conhecidas={'horizontal-1': ['a', 'a2'], 'horizontal-3': ['a3'],
@@ -121,6 +122,7 @@ def test_formato_que_saiu_do_job():
     abas = _abas([A, B], conhecidas={'horizontal-1': ['a', 'a2'], 'horizontal-2': ['b']})
     assert _ids(abas) == {'horizontal-1': ['a'], 'horizontal-2': ['b']}
     av = _avisos(abas)
+    # a2 saiu do job: sem a medida dele, a frase fica com o id
     assert 'saiu o formato a2' in av['horizontal-1']
     assert av['horizontal-2'] == ''
 
@@ -147,7 +149,8 @@ def test_job_velho_com_ids_de_posicao_sem_formatos():
 def test_aviso_sem_travessao_e_com_artigo():
     abas = _abas([A, A2, A3], conhecidas={'horizontal-1': ['a', 'a2', 'b', 'c'], 'horizontal-2': ['a3']})
     texto = _avisos(abas)['horizontal-1']
-    assert 'entrou o formato a3' in texto and 'saíram os formatos b e c' in texto
+    # a3 pela medida; b e c sairam do job e ficam com o id
+    assert 'entrou o formato 640x300' in texto and 'saíram os formatos b e c' in texto
     assert not any(t in texto for t in TRAVESSOES)
 
 
@@ -158,19 +161,19 @@ def test_formato_que_volta_de_outra_familia_avisa_mesmo_na_lista_velha():
     abas = _abas([A, A2], conhecidas=conhecidas, editadas={'horizontal-2'}, cedidos={'horizontal-1': ['a2']})
     assert _ids(abas) == {'horizontal-1': ['a', 'a2']}
     texto = _avisos(abas)['horizontal-1']
-    assert 'entrou o formato a2' in texto and 'confirme' in texto, texto
-    assert 'O que você editou para o formato a2 em outra família' in texto, texto
+    assert 'entrou o formato 620x300' in texto and 'confirme' in texto, texto
+    assert 'O que você editou para o formato 620x300 em outra família' in texto, texto
     # enquanto a2 esta na outra familia, horizontal-1 diz que ele saiu, e horizontal-2 nao muda de frase
     abas = _abas([A, ('a2', 900, 300)], conhecidas=conhecidas, editadas={'horizontal-2'},
                  cedidos={'horizontal-1': ['a2']})
     assert _ids(abas) == {'horizontal-1': ['a'], 'horizontal-2': ['a2']}
-    assert 'saiu o formato a2' in _avisos(abas)['horizontal-1'] and _avisos(abas)['horizontal-2'] == ''
+    assert 'saiu o formato 900x300' in _avisos(abas)['horizontal-1'] and _avisos(abas)['horizontal-2'] == ''
 
 
 def test_frase_so_fala_de_edicao_que_existe():
     # as duas familias se juntam, e a outra nunca teve edicao (so a versao escolhida, ou so o briefing gravado)
     texto = _avisos(_abas([A, A2], conhecidas={'horizontal-1': ['a'], 'horizontal-2': ['a2']}))['horizontal-1']
-    assert 'entrou o formato a2' in texto and 'confirme' in texto, texto
+    assert 'entrou o formato 620x300' in texto and 'confirme' in texto, texto
     assert 'editou' not in texto and 'edições' not in texto, texto
     # a parte que sai de uma familia sem edicao: nova, da proposta, sem falar das edicoes de la
     texto = _avisos(_abas([A, B], conhecidas={'horizontal-1': ['a', 'b']}))['horizontal-2']
@@ -329,7 +332,7 @@ def test_formato_que_entra_na_familia_tira_a_confirmacao_e_a_tela_avisa(job, mod
     assert bs.pendencias(job, novo) == [{'codigo': 'familia_sem_confirmacao', 'familia': gv}]
     # a frase da tela, no grupo e na familia do conteudo
     aviso = _grupo(novo['estado'], gv)['aviso']
-    assert 'entrou o formato v4' in aviso and 'confirme' in aviso, aviso
+    assert 'entrou o formato 182x320' in aviso and 'confirme' in aviso, aviso
     assert not any(t in aviso for t in TRAVESSOES)
     assert novo['familias'][gv]['aviso'] == aviso
     assert {g['aviso'] for o in novo['estado']['orientacoes'] for g in o['grupos'] if g['id'] != gv} == {''}
@@ -430,8 +433,8 @@ def test_formato_que_volta_para_a_familia_velha_tira_a_confirmacao_e_avisa(job, 
     novo = te.montar(job)
     assert _por_formato(novo)['v3'] == gv and gn not in novo['familias']
     aviso = _grupo(novo['estado'], gv)['aviso']
-    assert 'entrou o formato v3' in aviso and 'confirme' in aviso, aviso
-    assert 'O que você editou para o formato v3 em outra família' in aviso, aviso
+    assert 'entrou o formato 172x320' in aviso and 'confirme' in aviso, aviso
+    assert 'O que você editou para o formato 172x320 em outra família' in aviso, aviso
     # a confirmacao velha de gv (feita com v3, antes das edicoes de gn) nao vale, e as edicoes de gn ficam guardadas
     assert {'codigo': 'familia_sem_confirmacao', 'familia': gv} in bs.pendencias(job, novo)
     assert tr.ler(job, tr.laudo_sha256(job))[0]['familias'][gn]['edicoes'] == edicoes
@@ -456,7 +459,7 @@ def test_dividir_e_juntar_sem_edicao_na_outra_familia(job, modelo):
     novo = te.montar(job)
     assert _por_formato(novo)['v3'] == gv
     aviso = _grupo(novo['estado'], gv)['aviso']
-    assert 'entrou o formato v3' in aviso and 'confirme' in aviso, aviso
+    assert 'entrou o formato 172x320' in aviso and 'confirme' in aviso, aviso
     assert 'editou' not in aviso and 'edições' not in aviso, aviso
     assert {'codigo': 'familia_sem_confirmacao', 'familia': gv} in bs.pendencias(job, novo)
 

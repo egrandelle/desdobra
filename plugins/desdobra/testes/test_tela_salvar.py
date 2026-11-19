@@ -40,6 +40,8 @@ from desdobra.tela import rascunho as tr
 from desdobra.tela import servidor as ts
 
 VERTICAIS = [('v1', 160, 320), ('v2', 166, 320), ('v3', 172, 320)]
+# decisao 199 (etapa E4): o arquivo de edicao da familia vertical, o de maior area; o v1 e o v2 copiam o layout dele
+REF_VERTICAL = 'v3'
 FORMATOS = [('mesma', 640, 320)] + VERTICAIS + [('quadrado', 320, 320)]
 USADAS = {'fundo': ('cover', 'centro', 'meio'), 'titulo': ('raiz_area', 'esquerda', 'topo'),
           'logo_principal': ('raiz_area', 'direita', 'base'), 'texto_de_apoio': ('raiz_area', 'esquerda', 'meio')}
@@ -334,15 +336,21 @@ def test_salvar_e_seguir_grava_deriva_e_rele_igual(job, modelo):
     pv = {m['formato']: {e['id']: e['caixa'] for e in m['palco']['elementos']} for m in previa['membros']}
     for fid, _w, _h in VERTICAIS:
         d = _deriv(job, fid)
-        assert d['situacao'] == 'derivado' and d['caminho'] == 'galeria', (fid, d['devolucao'])
+        # decisao 199: o arquivo de edicao (o v3, o maior) sai da versao da galeria com as edicoes; os outros copiam o
+        # layout aprovado nele, com o caminho e a origem 'familia'
+        caminho = 'galeria' if fid == REF_VERTICAL else 'familia'
+        assert d['situacao'] == 'derivado' and d['caminho'] == caminho, (fid, d['devolucao'])
         assert d['proposta']['versao'] == escolhas[gv]['versao'] and d['proposta']['confirmada'] is True
         ids = {e['id'] for e in d['elementos']}
         assert logo not in ids
         assert [(a['elemento'], a['origem']) for a in d['apagados_pelo_da']] == [(logo, mb.ORIGEM_FIXTURE)]
         origem = {e['id']: e['origem_geometria'] for e in d['elementos']}
-        assert origem[titulo] == 'da'
-        assert set(origem.values()) <= {'da', 'galeria'} and 'galeria' in origem.values()
-        assert all(e['regra_aplicada']['caminho'] == 'galeria' for e in d['elementos'])
+        if fid == REF_VERTICAL:
+            assert origem[titulo] == 'da'
+            assert set(origem.values()) <= {'da', 'galeria'} and 'galeria' in origem.values()
+        else:
+            assert set(origem.values()) == {'familia'}
+        assert all(e['regra_aplicada']['caminho'] == caminho for e in d['elementos'])
         # a previa da tela e a derivacao gravada dao as mesmas caixas
         for e in d['elementos']:
             assert e['caixa'] == pytest.approx(pv[fid][e['id']], abs=0.01), (fid, e['id'])
@@ -818,7 +826,7 @@ def test_briefing_confirmar_do_terminal_usa_o_mesmo_gravador(job, modelo, pessoa
     b = mb.ler(job)
     assert (b['cabecalho']['origem'], b['cabecalho']['meio']) == (mb.ORIGEM_DA, humano.MEIO_TERMINAL)
     assert {c['confirmacao']['meio'] for c in b['composicoes']} == {humano.MEIO_TELA}
-    assert _deriv(job, 'v1')['caminho'] == 'galeria'
+    assert _deriv(job, REF_VERTICAL)['caminho'] == 'galeria' and _deriv(job, 'v1')['caminho'] == 'familia'  # decisao 199
     assert mb.conferir_para_entrega(job) == (True, None)
 
 
@@ -899,7 +907,7 @@ def test_entregar_recusa_familia_e_proposta_sem_confirmacao(job):
         if c['confirmada']:
             c['confirmacao'] = {'origem': 'da', 'meio': 'tela', 'em': '2026-11-05T10:00:00'}
     _briefing_do_da(job, composicoes=comps)
-    assert _deriv(job, 'v1')['caminho'] == 'galeria' and _deriv(job, 'v1')['proposta']['confirmada'] is False
+    assert _deriv(job, 'v1')['caminho'] == 'familia' and _deriv(job, 'v1')['proposta']['confirmada'] is False  # decisao 199: o v1 copia o v3
     conf = portao.conferir(job, aprovacao=False, final=False)
     for fid in ('v1', 'v2', 'v3', 'quadrado'):
         codigos = [x['codigo'] for x in conf['formatos'][fid]['falhas']]
@@ -1029,7 +1037,10 @@ def test_render_desenha_o_texto_editado(job):
     _briefing_do_da(job, composicoes=comps)
     d = _deriv(job, 'v1')
     el = next(e for e in d['elementos'] if e['id'] == apoio)
-    assert el['texto_editado'] == 'HAH' and el['origem_geometria'] == 'da'
+    # decisao 199: o texto editado vai a copia (o v1 copia o v3, o arquivo de edicao, onde a origem e a do DA)
+    assert el['texto_editado'] == 'HAH' and el['origem_geometria'] == 'familia'
+    ref = next(e for e in _deriv(job, REF_VERTICAL)['elementos'] if e['id'] == apoio)
+    assert ref['texto_editado'] == 'HAH' and ref['origem_geometria'] == 'da'
     # o texto vale so na familia editada (171)
     assert not any(e.get('texto_editado') for e in _deriv(job, 'quadrado')['elementos'])
     # o render desenha o texto novo (M7b, A7): nunca o texto velho calado
@@ -1062,7 +1073,9 @@ def test_salvar_e_seguir_no_chromium(job, modelo):
                 tr.confirmar_familia(job, gid, f['versao'], disparo=d, job_id=srv.job_id,
                                      laudo_atual=srv.laudo_sha256, edicoes=f['edicoes'],
                                      formatos=conteudo['familias'][gid]['formatos'],
-                                     pecas=conteudo['familias'][gid]['pecas'])
+                                     pecas=conteudo['familias'][gid]['pecas'],
+                                     # 0.10.0 (decisao 199): a confirmacao leva o arquivo de edicao, como o ato da janela
+                                     arquivo_de_edicao=conteudo['familias'][gid]['arquivo_de_edicao'])
         from desdobra.job import modo_dados
         modo_dados.gravar(job, 'c', disparo=humano.exigir_tela(modo_dados.ESCOLHER, srv._sessao_humana,
                                                                confirmado=True))
@@ -1102,7 +1115,7 @@ def test_salvar_e_seguir_no_chromium(job, modelo):
         finally:
             nav.close()
     assert mb.ler(job)['cabecalho']['origem'] == mb.ORIGEM_FIXTURE
-    assert _deriv(job, 'v1')['caminho'] == 'galeria'
+    assert _deriv(job, REF_VERTICAL)['caminho'] == 'galeria' and _deriv(job, 'v1')['caminho'] == 'familia'  # decisao 199
 
 
 # ------------------------------------------------------------------ M7c, M3: a marca do job no passo 1

@@ -112,13 +112,15 @@ def _quebra_igual(q):
         and e.get('quebras_origem') == q['origem']
 
 
-def _conferir(derivacoes, campos):
-    """(refletidos, com origem da, total, o que falhou) dos campos editados na derivacao de cada membro."""
+def _conferir(derivacoes, campos, ref):
+    """(refletidos, com a origem certa, total, o que falhou) dos campos editados na derivacao de cada membro. Decisao
+    199 (0.10.0): a origem e "da" no arquivo de edicao (ref) e "familia" nos arquivos que copiam o layout dele."""
     refletidos = origem_da = 0
     falhas = []
     for fid, eid, campo, conferir in campos:
         e = {x['id']: x for x in derivacoes[fid]['elementos']}.get(eid)
-        ok, da = e is not None and conferir(e), e is not None and e['origem_geometria'] == 'da'
+        origem = 'da' if fid == ref else 'familia'
+        ok, da = e is not None and conferir(e), e is not None and e['origem_geometria'] == origem
         refletidos += ok
         origem_da += da
         falhas += [(fid, eid, campo, 'valor')] * (not ok) + [(fid, eid, campo, 'origem')] * (not da)
@@ -182,7 +184,9 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
                 tr.confirmar_familia(job, gid, f['versao'], disparo=d, job_id=srv.job_id,
                                      laudo_atual=srv.laudo_sha256, edicoes=f['edicoes'],
                                      formatos=conteudo['familias'][gid]['formatos'],
-                                     pecas=conteudo['familias'][gid]['pecas'])
+                                     pecas=conteudo['familias'][gid]['pecas'],
+                                     # 0.10.0 (decisao 199): a confirmacao leva o arquivo de edicao, como o ato da janela
+                                     arquivo_de_edicao=conteudo['familias'][gid]['arquivo_de_edicao'])
         modo_dados.gravar(job, 'c', disparo=humano.exigir_tela(modo_dados.ESCOLHER, srv._sessao_humana,
                                                                confirmado=True))
         srv.estado = conteudo['recarregar']()
@@ -247,12 +251,20 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
     assert sorted((q['layer_id'], q['origem'], q['aprovada'], tuple(q['inseridas'])) for q in b['quebras_por_familia']
                   if q.get('familia') == gv) == [(lid, 'da', True, (3,))]
     derivacoes = _derivacoes(job)
+    # decisao 199 (0.10.0; revisao): so o arquivo de edicao parte da galeria, com as edicoes do DA; os outros membros
+    # copiam o layout aprovado nele (caminho familia, com o registro transferencia)
+    ref = comp['arquivo_de_edicao']
+    assert ref in MEMBROS
     for fid, d in derivacoes.items():
-        assert d['situacao'] == 'derivado' and d['caminho'] == 'galeria', (fid, d.get('devolucao'))
+        assert d['situacao'] == 'derivado' and d['caminho'] == ('galeria' if fid == ref else 'familia'), \
+            (fid, d.get('caminho'), d.get('devolucao'))
         assert d['proposta']['versao'] == f['versao'] and d['proposta']['confirmada'] is True
-    # campo a campo: cada edicao em cada membro, com o valor esperado e a origem da
+        transf = [r for r in d['registros'] if r['codigo'] == 'transferencia']
+        assert (transf == []) if fid == ref else (len(transf) == 1 and transf[0]['medidas']['arquivo_de_edicao'] == ref)
+    # campo a campo: cada edicao em cada membro, com o valor esperado (a previa que a tela mostrou, a mesma conta do
+    # Salvar) e a origem: "da" no arquivo de edicao, "familia" na copia
     campos = _esperados(te.montar(job), gv, f, titulo, apoio)
-    refletidos, origem_da, total, falhas = _conferir(derivacoes, campos)
+    refletidos, origem_da, total, falhas = _conferir(derivacoes, campos, ref)
     assert refletidos == total and origem_da == total, falhas
     shas = _shas(job)
     medicao_antes = tc.ler(job)
@@ -278,7 +290,7 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
     iguais = {}
     iguais['arquivos'] = [k for k, v in _shas(job).items() if shas[k] == v]
     relidas = _derivacoes(job)
-    iguais['campos'] = _conferir(relidas, campos)
+    iguais['campos'] = _conferir(relidas, campos, ref)
     iguais['derivacoes'] = [fid for fid in MEMBROS if relidas[fid] == derivacoes[fid]]
     ctx = nd.preparar(job)
     specs, arq = mf.specs_do_job(job)

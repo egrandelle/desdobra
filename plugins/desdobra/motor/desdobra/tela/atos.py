@@ -185,6 +185,8 @@ def atos_do_job(pasta, teto=None, conteudo=None):
         # monta o passo 3 de novo no mesmo dicionario (desdobra.tela.servidor, _atualizar)
         atos['familia'] = _ato_da_familia(pasta, conteudo)
         atos['salvar'] = _ato_de_salvar(pasta, conteudo)
+        # decisao 199 (0.10.0): trocar o arquivo de edicao, separar um arquivo em familia propria e junta-lo de volta
+        atos.update(_atos_da_estrutura(pasta, conteudo))
     return dict(atos, **{
         'modo_dados': Ato(comando=modo_dados.ESCOLHER, titulo='Escolher o modo de dados', texto=modo_texto, sim=SIM,
                           nao=NAO, executar=modo_executar, validar=modo_valido),
@@ -395,25 +397,142 @@ def _ato_da_familia(pasta, conteudo):
         return None
 
     def texto(d):
-        n = len(conteudo['familias'][d['familia']]['formatos'])
-        quantas = 'O arquivo desta família fica confirmado' if n == 1 else \
-            'Os %d arquivos desta família ficam confirmados' % n
+        fam = conteudo['familias'][d['familia']]
+        n = len(fam['formatos'])
         ordem = ordem_da_versao(d) if d['versao'] is not None else None
         na = ' na versão %s' % ordem if ordem is not None else ''
-        return ('%s%s, como a tela mostra agora, com as suas edições. Se você mexer de novo nesta família, ela volta '
-                'a pedir a sua confirmação.' % (quantas, na))
+        if n == 1:
+            return ('O arquivo desta família fica confirmado%s, como a tela mostra agora, com as suas edições. Se você '
+                    'mexer de novo nesta família, ela volta a pedir a sua confirmação.' % na)
+        # decisao 199 (5): a janela "Conferir os N arquivos" lista os arquivos, os que pedem ajuste primeiro. O
+        # arquivo vai pelo nome para o DA, a medida e o giro (revisao da 0.10.0)
+        ref = fam.get('arquivo_de_edicao')
+        ref = _nomes(conteudo).get(ref, ref)
+        com = ' com as suas edições' if d['edicoes'] or d.get('quebras') else ''
+        return ('Os %d arquivos desta família ficam confirmados%s: o %s%s e os outros seguindo o layout dele, como a '
+                'lista mostra. Se você mexer de novo nesta família, ela volta a pedir a sua confirmação.'
+                % (n, na, ref, com))
 
     def executar(disparo, d):
+        from desdobra.tela import edicao
+        fam = conteudo['familias'][d['familia']]
+        # decisao 199 (5; 0.10.0): a impressao da confirmacao leva o arquivo de edicao e o hash do layout de cada
+        # arquivo como a janela mostra (a mesma previa da pagina)
+        layouts = None
+        if callable(conteudo.get('editar')):
+            r = edicao.previa_gravada(conteudo['editar'], d['familia'],
+                                      {'versao': d['versao'], 'edicoes': d['edicoes'], 'quebras': d.get('quebras', [])})
+            layouts = edicao.hash_dos_layouts(r) if r is not None else None
         f = rascunho.confirmar_familia(pasta, d['familia'], d['versao'], disparo=disparo,
                                        job_id=conteudo['estado'].get('job_id'),
                                        laudo_atual=rascunho.laudo_sha256(pasta), edicoes=d['edicoes'],
                                        quebras=d.get('quebras', []),
-                                       formatos=conteudo['familias'][d['familia']]['formatos'],
-                                       pecas=conteudo['familias'][d['familia']].get('pecas'),
-                                       versoes=conteudo['familias'][d['familia']]['versoes'])
+                                       formatos=fam['formatos'], pecas=fam.get('pecas'), versoes=fam['versoes'],
+                                       arquivo_de_edicao=fam.get('arquivo_de_edicao'), layouts=layouts)
         return {'familia': d['familia'], 'confirmada': f['confirmada']}
-    return Ato(comando=rascunho.COMANDO_FAMILIA, titulo='Confirmar a família', texto=texto, sim=SIM, nao=NAO,
+    def titulo(d):
+        n = len(conteudo['familias'][d['familia']]['formatos'])
+        return 'Confirmar a família' if n == 1 else 'Conferir os %d arquivos' % n
+    return Ato(comando=rascunho.COMANDO_FAMILIA, titulo=titulo, texto=texto, sim=SIM, nao=NAO,
                executar=executar, validar=valido)
+
+
+def _nomes(conteudo):
+    """{id: nome do arquivo para o DA} (revisao da 0.10.0): a medida e o giro, como o passo 5; nunca o id interno."""
+    from desdobra.tela import estado
+    return estado.nomes_da_tela(conteudo)
+
+
+def _atos_da_estrutura(pasta, conteudo):
+    """Os atos da janela que mudam a estrutura da familia (decisao 199; 0.10.0), cada um com a confirmacao do DA:
+      - familia_arquivo: "Trocar arquivo de edicao", so na familia sem edicao nem quebra de linha gravada;
+      - familia_separar: "Separar em familia propria", um arquivo que nao e o de edicao, na familia de dois ou mais;
+      - familia_juntar: "Juntar de volta", a familia de um arquivo separado volta para a de onde saiu.
+    As familias sao as do conteudo da tela agora; depois do ato, a tela monta as familias de novo
+    (desdobra.tela.estado.montar, estrutura)."""
+    from desdobra.tela import rascunho
+    from desdobra.tela.servidor import Ato
+
+    def familia(d, *extra):
+        familias = conteudo.get('familias') or {}
+        if not (_chaves(d, 'familia', *extra) and isinstance(d['familia'], str) and d['familia'] in familias):
+            return None
+        if any(not isinstance(d[k], str) for k in extra):
+            return None
+        return familias[d['familia']]
+
+    def comum(disparo):
+        return {'disparo': disparo, 'job_id': conteudo['estado'].get('job_id'),
+                'laudo_atual': rascunho.laudo_sha256(pasta)}
+
+    def trocar_valido(d):
+        fam = familia(d, 'arquivo')
+        if fam is None or d['arquivo'] not in fam['formatos'] or d['arquivo'] == fam.get('arquivo_de_edicao'):
+            return False
+        # so sem edicao: as edicoes sao fracoes do arquivo de edicao, e nunca mudam de base (resposta 2 do Duda)
+        return not rascunho.edicoes_gravadas(pasta, d['familia']) and not rascunho.quebras_gravadas(pasta, d['familia'])
+
+    def trocar_texto(d):
+        nomes = _nomes(conteudo)
+        fam = conteudo['familias'][d['familia']]
+        # a versao escolhida na galeria e do arquivo de edicao de agora, e sai com a troca: a janela diz isso (revisao
+        # da 0.10.0; nada calado)
+        versao = rascunho.versao_gravada(pasta, d['familia'])
+        if versao is not None:
+            atual = fam.get('arquivo_de_edicao')
+            sobre = ('A família ainda não tem edição sua. A versão que você escolheu na galeria do %s deixa de valer, '
+                     'porque a galeria é do arquivo de edição: no %s, a família parte da primeira versão de novo.'
+                     % (nomes.get(atual, atual), nomes.get(d['arquivo'], d['arquivo'])))
+        else:
+            sobre = 'A família ainda não tem edição sua, então nada se perde.'
+        return ('Você passa a editar esta família no %s, e os outros arquivos seguem o layout dele. %s Ela pede a sua '
+                'confirmação de novo.' % (nomes.get(d['arquivo'], d['arquivo']), sobre))
+
+    def trocar_executar(disparo, d):
+        fam = conteudo['familias'][d['familia']]
+        rascunho.trocar_arquivo(pasta, d['familia'], d['arquivo'], formatos=fam['formatos'], **comum(disparo))
+        return {'familia': d['familia'], 'arquivo_de_edicao': d['arquivo']}
+
+    def separar_valido(d):
+        fam = familia(d, 'arquivo')
+        return fam is not None and len(fam['formatos']) > 1 and d['arquivo'] in fam['formatos'] and \
+            d['arquivo'] != fam.get('arquivo_de_edicao')
+
+    def separar_texto(d):
+        return ('O %s sai desta família e vira uma família própria, editada nele mesmo. Esta família pede a sua '
+                'confirmação de novo. Você pode juntar o arquivo de volta depois, com um clique.'
+                % _nomes(conteudo).get(d['arquivo'], d['arquivo']))
+
+    def separar_executar(disparo, d):
+        fam = conteudo['familias'][d['familia']]
+        rascunho.separar(pasta, d['familia'], d['arquivo'], formatos=fam['formatos'],
+                         arquivo_de_edicao=fam.get('arquivo_de_edicao'), **comum(disparo))
+        return {'familia': d['familia'], 'separado': d['arquivo']}
+
+    def juntar_valido(d):
+        fam = familia(d)
+        return fam is not None and bool(fam.get('separado_de')) and len(fam['formatos']) == 1
+
+    def juntar_texto(d):
+        fam = conteudo['familias'][d['familia']]
+        return ('O %s volta para a família de onde saiu e passa a seguir o layout do arquivo de edição dela. O que '
+                'você editou aqui fica guardado e não vale lá. A família de onde ele saiu pede a sua confirmação de '
+                'novo.' % _nomes(conteudo).get(fam['formatos'][0], fam['formatos'][0]))
+
+    def juntar_executar(disparo, d):
+        fam = conteudo['familias'][d['familia']]
+        rascunho.juntar(pasta, fam['separado_de'], fam['formatos'][0], **comum(disparo))
+        return {'familia': fam['separado_de'], 'juntado': fam['formatos'][0]}
+    return {
+        'familia_arquivo': Ato(comando=rascunho.COMANDO_TROCAR_ARQUIVO, titulo='Trocar o arquivo de edição',
+                               texto=trocar_texto, sim='Trocar', nao=NAO, executar=trocar_executar,
+                               validar=trocar_valido),
+        'familia_separar': Ato(comando=rascunho.COMANDO_SEPARAR, titulo='Separar em família própria',
+                               texto=separar_texto, sim='Separar', nao=NAO, executar=separar_executar,
+                               validar=separar_valido),
+        'familia_juntar': Ato(comando=rascunho.COMANDO_JUNTAR, titulo='Juntar de volta', texto=juntar_texto,
+                              sim='Juntar', nao=NAO, executar=juntar_executar, validar=juntar_valido),
+    }
 
 
 # revisao 0.9.3: o motivo da recusa do "Salvar e seguir", em portugues para o DA, na ordem do que ele resolve primeiro
@@ -436,13 +555,16 @@ MOTIVOS_DO_SALVAR = {
                         'edições e confirme a família de novo.'),
     'texto_sem_caractere': ('Um texto editado numa família usa uma letra que a fonte do job não tem. Nas Famílias, '
                             'troque a letra e confirme a família de novo.'),
+    # decisao 199 (5): o layout de um arquivo saiu diferente do que o DA viu na confirmacao
+    'layout_diferente_do_confirmado': ('O layout de um arquivo de uma família mudou depois da sua confirmação. Nas '
+                                       'Famílias, confira os arquivos e confirme a família de novo.'),
     'briefing_invalido': ('As suas escolhas não formam um briefing que o desdobra consiga gravar. Peça ajuda ao Claude '
                           'e diga qual foi o seu último clique.'),
 }
 ORDEM_DO_SALVAR = ('rascunho_de_outro_laudo', 'sem_rascunho', 'modo_dados_sem_escolha', 'sem_formatos',
                    'formato_sem_medida', 'rotacao_sem_escolha', 'briefing_com_problema', 'padrao_marca_desatualizado',
                    'formato_com_spec_por_confirmar', 'familia_sem_confirmacao', 'versao_que_a_familia_nao_tem',
-                   'edicao_invalida', 'texto_sem_caractere', 'briefing_invalido')
+                   'edicao_invalida', 'texto_sem_caractere', 'layout_diferente_do_confirmado', 'briefing_invalido')
 
 
 def motivo_sem_familias(conteudo):
@@ -479,6 +601,16 @@ def motivo_do_salvar(pend, detalhes=None):
                     resolvidas = {}
                 m = estado.motivo_da_conferencia(detalhes['erros'], detalhes['laudo'], resolvidas)
             return m['texto'] if m else estado.AGUARDA_CONFERENCIA
+        if codigo == 'layout_diferente_do_confirmado':
+            p = next(x for x in pend if x['codigo'] == codigo)
+            if p.get('nomes'):
+                # revisao da 0.10.0: a frase diz o arquivo e a familia, pelo nome para o DA
+                ns = p['nomes']
+                quais = ('O layout do %s' % ns[0]) if len(ns) == 1 else \
+                    ('O layout dos arquivos %s e %s' % (', '.join(ns[:-1]), ns[-1]))
+                fam = ', na família do %s,' % p['nome_da_familia'] if p.get('nome_da_familia') else ''
+                return ('%s%s ficou diferente do que você confirmou. A família voltou a pedir a sua confirmação: abra '
+                        'a família, confira os arquivos e confirme de novo.' % (quais, fam))
         if codigo in MOTIVOS_DO_SALVAR:
             return MOTIVOS_DO_SALVAR[codigo]
     return MOTIVOS_DO_SALVAR['briefing_invalido']
@@ -505,6 +637,18 @@ def _ato_de_salvar(pasta, conteudo):
             return Recusa(MOTIVO_RASCUNHO_GRAVANDO)
         detalhes = {}
         pend = salvar.pendencias(pasta, conteudo, detalhes=detalhes)
+        quedas = {p['familia']: p.get('formatos') or [] for p in pend if p['codigo'] == 'layout_diferente_do_confirmado'}
+        if quedas:
+            # decisao 199 (5; revisao da 0.10.0): a familia cujo layout saiu diferente do confirmado perde a
+            # confirmacao, e a tela volta a mostrar "Confirmar familia", com a frase de quais arquivos mudaram. Sem
+            # isto, o DA ficava com a familia confirmada e o "Salvar e seguir" recusando, sem saida
+            rascunho.derrubar_por_layout(pasta, rascunho.laudo_sha256(pasta), quedas)
+            nomes = _nomes(conteudo)
+            for p in pend:
+                if p['codigo'] == 'layout_diferente_do_confirmado':
+                    ref = (conteudo['familias'].get(p['familia']) or {}).get('arquivo_de_edicao')
+                    p['nomes'] = [nomes.get(f, f) for f in p.get('formatos') or []]
+                    p['nome_da_familia'] = nomes.get(ref, ref) if ref else None
         return Recusa(motivo_do_salvar(pend, detalhes)) if pend else True
 
     def texto(_d):

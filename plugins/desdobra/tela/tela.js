@@ -117,7 +117,20 @@
   const MARGEM = 40;
   const MINI = { largura: 216, altura: 104, baixa: 84 };
   const MINI_VARIANTE = { largura: 88, altura: 64 };
-  const MINI_MEMBRO = { largura: 84, altura: 46 };
+  /* decisao 199 (0.10.0): a faixa "Como fica em cada arquivo" mostra cada arquivo legivel, com cerca de 200 px de
+     altura, pela mesma conta do "Salvar e seguir"; o "Ver grande" usa o espaco da janela */
+  // baixa e baixa_coluna: a altura na tela de ate 800 px de altura, com a faixa embaixo do palco ou na coluna; coluna:
+  // a largura de cada arquivo na coluna a direita do palco, na janela de 1500 px ou mais (tela.css)
+  // revisao da 0.10.0: abaixo de 1500 px, a coluna vale na janela deitada com o arquivo de edicao em pe ou quadrado (ate
+  // 1,2 de largura sobre altura), mais fina (coluna_estreita, com a coluna de 220 px do tela.css)
+  const MINI_MEMBRO = { largura: 280, altura: 200, baixa: 100, baixa_coluna: 132, coluna: 226, coluna_estreita: 182,
+    janela_coluna: 1500, coluna_ate_proporcao: 1.2 };
+  const SELO_IGUAL = 'Igual ao seu';
+  const SELO_AJUSTADO = 'Ajustado pelo desdobra';
+  const SELO_PEDE = 'Pede ajuste';
+  const SELO_SEU = 'Arquivo de edição';
+  const SELO_SEM_LAYOUT = 'Sem layout ainda';
+  const NAO_EDITA_AQUI = 'Este arquivo segue o layout do arquivo de edição. Edite no palco, e ele acompanha.';
   let estado = null;
   const familiaCss = new Map();
   const previas = new Map();
@@ -489,7 +502,7 @@
   }
   /* as familias do estado sem a frase de cada uma: a frase que muda sozinha nao redesenha o passo 3 */
   function semAvisos(orientacoes) {
-    return JSON.stringify(orientacoes, function (k, v) { return k === 'aviso' ? undefined : v; });
+    return JSON.stringify(orientacoes, function (k, v) { return k === 'aviso' || k === 'reconfirmar' ? undefined : v; });
   }
   /* a faixa de avisos do servidor: a tela que nao se atualizou, o render que a janela anterior deixou pela metade e o
      briefing salvo de outra versao dos arquivos */
@@ -757,11 +770,13 @@
       trabalhando(origem, false);
       // M7c, M5: a janela do registro do padrao da marca mostra o que vai ao perfil
       // 0.9.1: a janela do texto como imagem lista as camadas atingidas
+      // decisao 199 (5): o "Confirmar familia" abre "Conferir os N arquivos", com a lista dos arquivos
       const extra = nome === 'marca_registrar' ? extraDoRegistro() :
         (nome === 'texto_como_imagem' ? extraDoTextoComoImagem(dados) :
-          (nome === 'spec_valores' ? extraDoLoteDeSpecs(dados) : null));
+          (nome === 'spec_valores' ? extraDoLoteDeSpecs(dados) : (nome === 'familia' ? extraDaFamilia() : null)));
       const perigo = !!(dados && dados.acao === 'remover');
-      return confirmarNaJanela(Object.assign({}, p, extra ? { extra: extra, larga: nome === 'marca_registrar' } : {},
+      return confirmarNaJanela(Object.assign({}, p, extra ? { extra: extra,
+        larga: nome === 'marca_registrar' || nome === 'familia' } : {},
         { perigo: perigo })).then(function (sim) {
         if (!sim) return enviar('/api/ato/cancelar', { pedido: p.pedido }).then(function () { raiz.dataset.estadoAto = 'cancelado'; });
         const chave = JSON.stringify(dados || {});
@@ -791,6 +806,16 @@
       }
       const texto = motivo || motivoDoErro(erroDoPedido || e);
       avisarNoRodape(texto);
+      /* revisao da 0.10.0: o "Salvar e seguir" recusado pode ter tirado a confirmacao de uma familia (o layout de um
+         arquivo saiu diferente do confirmado). A tela le o rascunho de novo: o botao "Confirmar familia" volta, o
+         rodape deixa de dizer "Tudo confirmado", e a familia diz quais arquivos mudaram */
+      if (nome === 'salvar' && motivo) {
+        lerRascunho().then(function () {
+          atualizarBotaoFamilia(); atualizarSalvar();
+          if (vista.grupo) { atualizarSelo(); mostrarAvisoDaFamilia(vista.grupo); }
+          if (ed.previa && vista.grupo) { montarMembros(ed.previa); montarResumo(ed.previa); }
+        });
+      }
       // revisao adversarial 0.9.3 (UX 3): o motivo e anunciado uma vez, pelo aviso do rodape (role=alert); o selo
       // (role=status) diz so que o clique nao foi registrado, com o motivo no title
       selo.textContent = SELO_CLIQUE_RECUSADO;
@@ -3021,7 +3046,7 @@
     if (!estado.orientacoes.length) {
       document.getElementById('palco').dataset.pronto = '1';
       // sem familia (o passo 3 espera o passo 2): nada de familia antiga no palco
-      ['palco', 'fichas'].forEach(function (id) { limpar(document.getElementById(id)); });
+      ['palco', 'cabecalho-familia'].forEach(function (id) { limpar(document.getElementById(id)); });
       ['galeria', 'membros', 'variante-palco', 'barra-edicao', 'editor-texto', 'editor-quebra', 'texto-borda'].forEach(function (id) {
         document.getElementById(id).hidden = true;
       });
@@ -3182,7 +3207,7 @@
       marcarMudou(b, g);
       b.addEventListener('click', function () { selecionar(no, b); grupo(g, null); });
       no.appendChild(b);
-      previa(fs[0].id).then(function (m) {
+      previa(g.arquivo_de_edicao || fs[0].id).then(function (m) {
         mini.classList.remove('carregando');
         return desenharPalco(mini, vistaInicial(m), { miniatura: true });
       }).catch(function () { mini.classList.remove('carregando'); });
@@ -3204,50 +3229,146 @@
     if (velha) velha.remove();
     if (g.aviso) b.appendChild(el('span', MINI_MUDOU, 'mini-mudou'));
   }
+  /* a frase da familia acima do palco: a que mudou de formatos e, desde a 0.10.0 (decisao 199, 5), a confirmada antes
+     dela, que pede a confirmacao de novo uma vez (reconfirmar, do servidor) */
   function mostrarAvisoDaFamilia(g) {
     const aviso = document.getElementById('aviso-familia');
-    aviso.textContent = g.aviso || '';
-    aviso.hidden = !g.aviso;
+    const texto = [g.aviso || '', g.reconfirmar || '', avisoDoLayoutMudado(g.id)].filter(Boolean).join(' ');
+    aviso.textContent = texto;
+    aviso.hidden = !texto;
+  }
+  /* revisao da 0.10.0: a familia que perdeu a confirmacao no "Salvar e seguir" porque o layout de um arquivo saiu
+     diferente do confirmado (layout_mudou, gravado pelo servidor) diz quais arquivos foram, ate o DA confirmar de novo */
+  function avisoDoLayoutMudado(gid) {
+    const f = (rascunho.familias || {})[gid];
+    const fs = (f && !f.confirmada && f.layout_mudou) || [];
+    if (!fs.length) return '';
+    const nomes_ = fs.map(nomeDoArquivo);
+    return (nomes_.length === 1 ? 'O layout do ' + nomes_[0] : 'O layout dos arquivos ' + listaDeNomes(nomes_)) +
+      ' ficou diferente do que você confirmou. Confira os arquivos e confirme a família de novo.';
   }
   /* o estado novo com as mesmas familias e so outra frase em alguma: a frase muda no lugar, sem redesenhar o passo 3
      nem tirar o DA da familia em que ele esta */
   function trocarAvisos(orientacoes) {
     const novos = {};
-    orientacoes.forEach(function (o) { o.grupos.forEach(function (g) { novos[g.id] = g.aviso || ''; }); });
+    const reconfirmar = {};
+    orientacoes.forEach(function (o) {
+      o.grupos.forEach(function (g) { novos[g.id] = g.aviso || ''; reconfirmar[g.id] = g.reconfirmar || ''; });
+    });
     const lista = document.getElementById('composicoes');
     (estado.orientacoes || []).forEach(function (o) {
       o.grupos.forEach(function (g) {
         g.aviso = novos[g.id] || '';
+        g.reconfirmar = reconfirmar[g.id] || '';
         const b = lista.querySelector('[data-grupo="' + g.id + '"]');
         if (b) marcarMudou(b, g);
         if (vista.familia === g.id) mostrarAvisoDaFamilia(g);
       });
     });
   }
-  function fichaDeFormato(x, c) {
-    const b = botao(null, 'ficha');
-    b.setAttribute('aria-pressed', 'false');
-    b.dataset.formato = x.id;
-    b.appendChild(el('span', x.id, 'ficha-nome'));
-    b.appendChild(el('span', dimensao(x.largura, x.altura) + (x.rotacao_graus ? ', girado ' + x.rotacao_graus + ' graus' : ''),
-      'ficha-medida'));
-    let situacao = c.escala_pura ? 'escala pura' : (SITUACOES[x.situacao] || 'sem situação');
-    if (x.situacao === 'devolvido' && x.variantes > 0) situacao = plural(x.variantes, 'versão', 'versões') + ' para escolher';
-    b.appendChild(el('span', situacao, 'situacao'));
-    b.addEventListener('click', function () { mostrarFormato(x.id); });
-    return b;
+  /* ------------------------------------------------ o arquivo de edicao da familia (decisao 199; 0.10.0)
+     Cada familia tem um arquivo de edicao, o unico que vai ao palco e aceita edicao; os outros aparecem na faixa "Como
+     fica em cada arquivo", so para ver, e seguem o layout aprovado nele. A escolha e do servidor (o gravado no
+     rascunho, senao o maior em pe), e so os atos da janela a trocam */
+  function arquivoDeEdicao(g) {
+    const grupo_ = g || vista.grupo;
+    if (!grupo_) return null;
+    return grupo_.arquivo_de_edicao || formatosDoGrupo(grupo_)[0].id;
+  }
+  function noArquivoDeEdicao() { return !!vista.grupo && vista.formato === arquivoDeEdicao(); }
+  function formatoDaFamilia(fid) {
+    return vista.grupo ? formatosDoGrupo(vista.grupo).find(function (x) { return x.id === fid; }) || null : null;
+  }
+  /* o arquivo girado aparece em pe, como o publico ve, com a etiqueta do giro (nº139 e nº180: o giro e da entrega).
+     Revisao da 0.10.0: a etiqueta usa a mesma frase do passo 5, com o sentido do giro ("girado 270 graus") */
+  function grausDoGiro(x) { return x ? ((x.rotacao_graus || 0) % 360 + 360) % 360 : 0; }
+  function etiquetaDoGiro(x) {
+    const g = grausDoGiro(x);
+    return g ? 'girado ' + g + ' graus na entrega' : '';
+  }
+  /* revisao da 0.10.0: o nome do arquivo para o DA, como o passo 5 e o cartao da familia o dizem: a medida da entrega
+     (o servidor manda em x.nome, com o id so quando duas medidas sao iguais) e o giro. O id interno fica so nos
+     data-atributos */
+  function medidaDoArquivo(x, fid) { return x ? (x.nome || dimensao(x.largura, x.altura)) : fid; }
+  function nomeDoArquivo(fid) {
+    const x = formatoDaFamilia(fid) || formatoDoJob(fid);
+    // x.nome (estado.nomes_dos_arquivos) ja traz o giro; so a medida montada aqui ganha o giro
+    if (x && x.nome) return x.nome;
+    const g = grausDoGiro(x);
+    return medidaDoArquivo(x, fid) + (g ? ' girado ' + g + ' graus' : '');
+  }
+  function formatoDoJob(fid) {
+    let achado = null;
+    ((estado && estado.orientacoes) || []).forEach(function (o) {
+      o.grupos.forEach(function (g) {
+        formatosDoGrupo(g).forEach(function (x) { if (x.id === fid) achado = x; });
+      });
+    });
+    return achado;
+  }
+  function plural0100(n) { return n === 1 ? 'O outro arquivo segue este layout.' : 'Os outros ' + n + ' arquivos seguem este layout.'; }
+  function familiaSemEdicao(gid) {
+    const f = rascunho.familias[gid];
+    return !(f && ((f.edicoes && f.edicoes.length) || (f.quebras && f.quebras.length)));
+  }
+  function montarCabecalho(g) {
+    const no = document.getElementById('cabecalho-familia');
+    limpar(no);
+    const fs = formatosDoGrupo(g);
+    const ref = arquivoDeEdicao(g);
+    const x = fs.find(function (f) { return f.id === ref; });
+    const texto = el('p', null, 'cabecalho-texto');
+    texto.appendChild(document.createTextNode('Você edita o '));
+    const nome = el('strong', medidaDoArquivo(x, ref), 'cabecalho-arquivo');
+    nome.dataset.formato = ref;
+    texto.appendChild(nome);
+    texto.appendChild(document.createTextNode('.' + (fs.length > 1 ? ' ' + plural0100(fs.length - 1) : '')));
+    no.appendChild(texto);
+    const giro = etiquetaDoGiro(x);
+    if (giro) no.appendChild(el('span', giro, 'etiqueta-giro'));
+    if (g.separado_de) {
+      no.appendChild(el('span', 'Este arquivo saiu de outra família e tem o layout próprio.', 'cabecalho-nota'));
+      no.appendChild(botaoAto('Juntar de volta', 'familia_juntar', { familia: g.id }, 'botao botao-vista'));
+    }
+    montarTrocar(g, no);
+  }
+  /* "Trocar arquivo de edicao" (decisao 199, 1; resposta 2 do Duda): so na familia sem edicao, com um clique por
+     arquivo; a janela do servidor confirma. Com edicao, o botao some e o title diz por que */
+  function montarTrocar(g, no) {
+    const fs = formatosDoGrupo(g);
+    const ref = arquivoDeEdicao(g);
+    if (fs.length < 2 || !escrita) return;
+    const d = el('details', null, 'trocar-arquivo');
+    const s = el('summary', 'Trocar arquivo de edição', 'botao botao-vista');
+    d.appendChild(s);
+    const caixa = el('div', null, 'trocar-lista');
+    if (!familiaSemEdicao(g.id)) {
+      s.setAttribute('aria-disabled', 'true');
+      s.title = 'Só dá para trocar o arquivo de edição antes de editar a família. Desfaça as edições para trocar.';
+      caixa.appendChild(el('p', s.title, 'nota'));
+    } else {
+      caixa.appendChild(el('p', 'Escolha o arquivo em que você quer editar esta família.', 'nota'));
+      fs.forEach(function (x) {
+        if (x.id === ref) return;
+        const b = botaoAto(null, 'familia_arquivo', { familia: g.id, arquivo: x.id }, 'botao botao-vista trocar-opcao');
+        b.dataset.formato = x.id;
+        b.appendChild(el('span', medidaDoArquivo(x, x.id), 'trocar-nome'));
+        const giro = etiquetaDoGiro(x);
+        if (giro) b.appendChild(el('span', giro, 'etiqueta-giro'));
+        caixa.appendChild(b);
+      });
+    }
+    d.appendChild(caixa);
+    no.appendChild(d);
   }
   function grupo(g, alvo) {
-    const f = document.getElementById('fichas');
-    limpar(f);
-    const fs = formatosDoGrupo(g);
-    f.appendChild(el('span', fs.length === 1 ? 'Arquivo desta família' : 'Arquivos desta família', 'legenda'));
-    g.composicoes.forEach(function (c) { c.formatos.forEach(function (x) { f.appendChild(fichaDeFormato(x, c)); }); });
-    const fid = alvo && alvo.formato && fs.some(function (x) { return x.id === alvo.formato; }) ? alvo.formato : fs[0].id;
-    // cada familia abre na versao do rascunho ou, sem ela, na primeira versao limpa; entre os arquivos da familia a
-    // escolha fica
+    montarCabecalho(g);
+    // decisao 199: a familia abre sempre no arquivo de edicao; os outros arquivos ficam na faixa, so para ver
+    const fid = arquivoDeEdicao(g);
+    // cada familia abre na versao do rascunho ou, sem ela, na primeira versao limpa
     vista.familia = g.id;
     vista.grupo = g;
+    marcarFaixa();
     vista.variante = (rascunho.familias[g.id] || {}).versao || null;
     // o id da familia segue os formatos dela; quando eles mudaram, a frase do servidor diz o que entrou ou saiu
     mostrarAvisoDaFamilia(g);
@@ -3271,13 +3392,13 @@
     vista.formato = fid;
     vista.k = null;
     ed.kDaEdicao = null;
-    document.querySelectorAll('.ficha').forEach(function (b) {
-      b.setAttribute('aria-pressed', b.dataset.formato === fid ? 'true' : 'false');
-    });
     return previa(fid).then(function (m) {
       if (vista.formato !== fid) return null;
       vista.modelo = m;
-      document.getElementById('nome-palco').textContent = fid;
+      // revisao da 0.10.0: o nome do arquivo para o DA (a medida e o giro); o id fica so no data-atributo
+      const nomePalco = document.getElementById('nome-palco');
+      nomePalco.textContent = nomeDoArquivo(fid);
+      nomePalco.dataset.formato = fid;
       const dv = document.getElementById('devolucao');
       dv.hidden = !m.devolucao;
       dv.textContent = m.devolucao ? (m.devolucao.texto || 'O desdobra ainda não chegou a uma proposta para este formato.') : '';
@@ -3369,7 +3490,17 @@
     const no = document.getElementById('variante-palco');
     limpar(no);
     no.hidden = !v;
-    if (!v) return;
+    if (!v) {
+      /* revisao da 0.10.0: na familia de dois arquivos ou mais, a linha acima do palco ja fica a vista desde a
+         abertura, com a frase de quem edita. Assim a linha "Com as suas edicoes" da primeira edicao toma o lugar dela,
+         e o palco, que guarda a exibicao de antes da primeira edicao (0.9.5), nunca perde a base da peca */
+      if (vista.grupo && formatosDoGrupo(vista.grupo).length > 1 && noArquivoDeEdicao()) {
+        no.hidden = false;
+        no.appendChild(el('span', 'Você edita este arquivo, e os outros arquivos da família seguem este layout.',
+          'var-palco-descricao'));
+      }
+      return;
+    }
     no.appendChild(el('span', 'Versão ' + v.ordem, 'var-numero'));
     no.appendChild(el('span', v.descricao, 'var-palco-descricao'));
     marcasDa(v).forEach(function (x) { no.appendChild(el('span', x[1], 'var-palco-aviso' + (x[2] ? ' ' + x[2] : ''))); });
@@ -3787,8 +3918,9 @@
     ed.esperaQuebra = null;
     const n = ++ed.pedido;
     const fam = rascunho.familias[vista.familia];
+    // decisao 199: o pedido diz o arquivo do palco, e o servidor recusa o que nao e o arquivo de edicao
     const dados = { familia: vista.familia, versao: versaoDaFamilia(), edicoes: edicoesDa(),
-      quebras: (fam && fam.quebras) || [] };
+      quebras: (fam && fam.quebras) || [], arquivo: vista.formato };
     raiz.dataset.previa = 'pedindo';
     atualizarBotaoFamilia();
     return enviar('/api/familia/previa', dados).then(function (r) {
@@ -3857,6 +3989,9 @@
     if (!r) return null;
     montarMembros(r);
     montarResumo(r);
+    // "Trocar arquivo de edicao" segue o rascunho: com a primeira edicao, ele diz por que nao troca mais
+    const trocar = document.querySelector('#cabecalho-familia .trocar-arquivo');
+    if (vista.grupo && trocar && !trocar.open) montarCabecalho(vista.grupo);
     const m = r.membros.find(function (x) { return x.formato === vista.formato; });
     if (!m) return null;
     const area = document.getElementById('palco');
@@ -3920,7 +4055,9 @@
     limpar(no);
     no.hidden = false;
     no.appendChild(el('span', 'Com as suas edições', 'var-numero'));
-    no.appendChild(el('span', 'Cada edição vale para todos os arquivos desta família.', 'var-palco-descricao'));
+    no.appendChild(el('span', vista.grupo && formatosDoGrupo(vista.grupo).length > 1 ?
+      'Você edita este arquivo, e os outros arquivos da família seguem este layout.' :
+      'As suas edições valem para este arquivo.', 'var-palco-descricao'));
     /* 0.9.6 (aprovacao soberana): na familia confirmada, a falha que o DA aceitou fica em tom de aviso aceito, sem o
        vermelho de erro, e a frase diz que ele confirmou assim. O membro sem layout continua em vermelho */
     const aceito = familiaConfirmada() && !membroSemLayout(m);
@@ -3934,40 +4071,134 @@
     if (familiaConfirmada()) mostrarSelo(SELO_CONFIRMADA, 'confirmada');
     else if (comEdicoes()) mostrarSelo('Com as suas edições: ' + SELO_VARIANTE, 'proposta');
   }
+  /* ------------------------------------------------ como fica em cada arquivo (decisao 199, 6; 0.10.0)
+     Cada arquivo da familia diz em palavras como ficou: "Igual ao seu", "Ajustado pelo desdobra" com a frase de cada
+     ajuste, ou "Pede ajuste" com o valor. O arquivo de edicao vem primeiro, com o selo dele. Nada calado: o aviso que
+     o desdobra deu no arquivo (a forma que passa da borda, por exemplo) fica embaixo do selo */
+  /* revisao da 0.10.0: a faixa embaixo do palco comia a altura dele abaixo de 1500 px (no 1366 x 768, a peca com 173
+     px contra miniaturas de 100). A faixa vira coluna a direita do palco tambem na janela deitada quando o arquivo de
+     edicao e em pe ou quadrado: o palco guarda a altura. O arquivo deitado na janela estreita continua com a faixa
+     embaixo, que ali tira pouca altura de uma peca baixa */
+  function faixaEmColuna() {
+    if (window.innerWidth >= MINI_MEMBRO.janela_coluna) return true;
+    if (window.innerWidth <= window.innerHeight || !vista.grupo) return false;
+    const x = formatoDaFamilia(arquivoDeEdicao());
+    if (!x) return false;
+    const g = grausDoGiro(x);
+    const W = g === 90 || g === 270 ? x.altura : x.largura;
+    const H = g === 90 || g === 270 ? x.largura : x.altura;
+    return W <= H * MINI_MEMBRO.coluna_ate_proporcao;
+  }
+  function marcarFaixa() {
+    const mesa = document.querySelector('.mesa-palco');
+    if (mesa) mesa.classList.toggle('faixa-coluna', faixaEmColuna());
+  }
+  function alturaDaFaixa() {
+    if (window.innerHeight > 800) return MINI_MEMBRO.altura;
+    return faixaEmColuna() ? MINI_MEMBRO.baixa_coluna : MINI_MEMBRO.baixa;
+  }
+  function larguraDaFaixa() {
+    if (!faixaEmColuna()) return MINI_MEMBRO.largura;
+    return window.innerWidth >= MINI_MEMBRO.janela_coluna ? MINI_MEMBRO.coluna : MINI_MEMBRO.coluna_estreita;
+  }
+  function situacaoDaCopia(m) {
+    if (membroSemLayout(m)) return 'pede';
+    if (m.arquivo_de_edicao) return m.falhas.length ? 'pede' : 'seu';
+    if (m.situacao === 'pede_ajuste' || m.falhas.length) return 'pede';
+    if (m.situacao === 'ajustado' || (m.ajustes && m.ajustes.length)) return 'ajustado';
+    return 'igual';
+  }
+  /* a frase do motor depois dos dois pontos comeca em minuscula, menos a sigla */
+  function depoisDoDoisPontos(t) {
+    t = String(t || '').trim();
+    return t.length > 1 && t.charAt(1) === t.charAt(1).toLowerCase() ? t.charAt(0).toLowerCase() + t.slice(1) : t;
+  }
+  function seloDaCopia(m) {
+    const tipo = situacaoDaCopia(m);
+    const aceito = familiaConfirmada() && !membroSemLayout(m);
+    if (tipo === 'pede') {
+      return { tipo: tipo, rotulo: aceito ? MARCA_ACEITA : SELO_PEDE, aceito: aceito, frase: frasesUnicas(m.falhas) };
+    }
+    if (tipo === 'ajustado') {
+      return { tipo: tipo, rotulo: SELO_AJUSTADO, frase: (m.ajustes || []).map(function (a) { return a.frase; }).join(' ') };
+    }
+    if (tipo === 'seu') return { tipo: tipo, rotulo: SELO_SEU, frase: comEdicoes() ? 'Com as suas edições.' : '' };
+    return { tipo: tipo, rotulo: SELO_IGUAL, frase: '' };
+  }
+  /* o selo em palavras: o rotulo (a marca de aviso, quando pede ajuste) e a frase depois dos dois pontos */
+  function linhaDoSelo(s, classe) {
+    const p = el('p', null, 'selo-copia selo-' + s.tipo + (classe ? ' ' + classe : ''));
+    if (s.tipo === 'pede') {
+      const marca = el('span', s.rotulo, 'marca-aviso ' + (s.aceito ? 'aceito' : 'forte'));
+      marca.title = (s.aceito ? AVISO_ACEITO + ' ' : '') + s.frase;
+      p.appendChild(marca);
+    } else {
+      p.appendChild(el('span', s.rotulo, 'selo-rotulo'));
+    }
+    if (s.frase) p.appendChild(el('span', ': ' + depoisDoDoisPontos(s.frase), 'selo-frase'));
+    p.title = s.rotulo + (s.frase ? ': ' + depoisDoDoisPontos(s.frase) : '');
+    return p;
+  }
+  /* o que o desdobra avisou neste arquivo, alem do selo (a forma que passa da borda, a forma conferida pela caixa) */
+  function avisosDaCopia(m) {
+    const ja = (m.ajustes || []).map(function (a) { return a.frase; });
+    return frasesUnicas((m.avisos || []).filter(function (a) { return ja.indexOf(a.texto) < 0; }));
+  }
+  function ordenarMembros(membros) {
+    const ordem = { pede: 0, ajustado: 1, seu: 2, igual: 3 };
+    return membros.map(function (m, i) { return [m, i]; }).sort(function (a, b) {
+      // o arquivo de edicao abre a faixa; na janela Conferir, a ordem e a do que precisa do olhar do DA
+      return (ordem[situacaoDaCopia(a[0])] - ordem[situacaoDaCopia(b[0])]) || (a[1] - b[1]);
+    }).map(function (x) { return x[0]; });
+  }
+  function rotuloDoArquivo(m, s) {
+    return nomeDoArquivo(m.formato) + ', ' + s.rotulo + (s.frase ? ': ' + depoisDoDoisPontos(s.frase) : '');
+  }
+  function textosDoArquivo(no, m) {
+    const x = formatoDaFamilia(m.formato);
+    const linha = el('span', null, 'membro-linha');
+    // revisao da 0.10.0: o nome do arquivo e a medida, como no passo 5; o giro vem na etiqueta ao lado
+    linha.appendChild(el('span', x ? medidaDoArquivo(x, m.formato) : dimensao(m.palco.largura, m.palco.altura), 'membro-nome'));
+    const giro = etiquetaDoGiro(x);
+    if (giro) linha.appendChild(el('span', giro, 'etiqueta-giro'));
+    no.appendChild(linha);
+  }
   function montarMembros(r) {
     const sec = document.getElementById('membros');
     const lista = document.getElementById('membros-lista');
     limpar(lista);
     ed.bordas = { previa: r, formatos: {} };
-    sec.hidden = !r.membros.length;
-    r.membros.forEach(function (m, i) {
-      const b = botao(null, 'membro');
+    // a familia de um arquivo so nao tem o que mostrar na faixa: o palco ja e o arquivo
+    sec.hidden = r.membros.length < 2;
+    const ref = r.membros.filter(function (m) { return m.arquivo_de_edicao; });
+    const outros = r.membros.filter(function (m) { return !m.arquivo_de_edicao; });
+    ref.concat(outros).forEach(function (m, i) {
+      const seu = !!m.arquivo_de_edicao;
+      const s = seloDaCopia(m);
+      const b = seu ? el('div', null, 'membro membro-seu') : botao(null, 'membro');
       b.dataset.formato = m.formato;
+      b.dataset.situacao = s.tipo;
       b.style.animationDelay = (i * 35) + 'ms';
-      b.setAttribute('aria-pressed', m.formato === vista.formato ? 'true' : 'false');
-      b.setAttribute('aria-label', m.formato + ', ' + dimensao(m.palco.largura, m.palco.altura) +
-        (m.falhas.length ? ', pede ajuste' : '') + (decisoes(m).length ? ', decisão do DA' : ''));
+      if (seu) b.setAttribute('aria-current', 'true');
+      b.setAttribute('aria-label', rotuloDoArquivo(m, s) + (decisoes(m).length ? ', decisão do DA' : '') +
+        (seu ? '' : '. Clique para ver grande.'));
       const quadro = el('div', null, 'membro-quadro');
       const mini = el('div', null, 'mini-palco');
-      caixaMini(mini, m.palco.largura, m.palco.altura, MINI_MEMBRO.largura, MINI_MEMBRO.altura);
+      caixaMini(mini, m.palco.largura, m.palco.altura, larguraDaFaixa(), alturaDaFaixa());
+      quadro.style.height = alturaDaFaixa() + 'px';
       quadro.appendChild(mini);
       b.appendChild(quadro);
-      b.appendChild(el('span', m.formato, 'membro-nome'));
-      b.appendChild(el('span', dimensao(m.palco.largura, m.palco.altura), 'membro-medida'));
-      if (m.falhas.length) {
-        /* 0.9.6 (aprovacao soberana): na familia confirmada, o aviso que o DA aceitou fica discreto, sem cor de erro.
-           O membro devolvido (sem layout do desdobra) continua "Pede ajuste": confirmar nao monta o layout dele */
-        const aceito = familiaConfirmada() && !membroSemLayout(m);
-        const s = el('span', aceito ? MARCA_ACEITA : MARCA_FALHA, 'marca-aviso ' + (aceito ? 'aceito' : 'forte'));
-        s.title = (aceito ? AVISO_ACEITO + ' ' : '') + frasesUnicas(m.falhas);
-        b.appendChild(s);
-      }
+      textosDoArquivo(b, m);
+      b.appendChild(linhaDoSelo(s));
+      const av = avisosDaCopia(m);
+      if (av) { const nota = el('p', av, 'selo-nota'); nota.title = av; b.appendChild(nota); }
       if (decisoes(m).length) {
-        const s = el('span', MARCA_DO_DA, 'marca-aviso do-da');
-        s.title = frasesUnicas(decisoes(m));
-        b.appendChild(s);
+        const d = el('span', MARCA_DO_DA, 'marca-aviso do-da');
+        d.title = frasesUnicas(decisoes(m));
+        b.appendChild(d);
       }
-      b.addEventListener('click', function () { mostrarFormato(m.formato); });
+      // so para ver: o clique abre o "Ver grande" do arquivo, que nunca edita (decisao 199, 1)
+      if (!seu) b.addEventListener('click', function () { abrirVerGrande(m.formato); });
       lista.appendChild(b);
       desenharPalco(mini, m.palco, { miniatura: true }).then(function () {
         // Linhas do DA (0.9.4): a tinta medida do texto editado neste membro passa da borda dele?
@@ -3984,6 +4215,198 @@
         marcarBordaNoPalco();
       });
     });
+  }
+  /* ------------------------------------------------ Ver grande (decisao 199, 6): so leitura
+     O arquivo da faixa em tamanho grande, pela mesma previa do "Salvar e seguir". "Mostrar o seu por cima" desenha o
+     arquivo de edicao transparente por cima, na escala deste arquivo (a do lado que aperta, centrada), e o contorno tracejado
+     marca o que o desdobra ajustou ou o que pede ajuste. Daqui saem "Separar em familia propria" e, na familia sem
+     edicao, "Trocar o arquivo de edicao para este", cada um com a janela do servidor */
+  const VER_GRANDE = { largura: 620, altura: 0.62 };
+  function membroDaPrevia(fid) {
+    return ed.previa ? ed.previa.membros.find(function (x) { return x.formato === fid; }) || null : null;
+  }
+  function contornos(area, m, ids, k) {
+    const camada = el('div', null, 'contornos');
+    (m.palco.elementos || []).forEach(function (e) {
+      if (ids.indexOf(e.id) < 0 || !e.caixa) return;
+      const c = e.caixa;
+      const d = el('div', null, 'contorno-ajuste');
+      d.style.left = (c[0] * k) + 'px';
+      d.style.top = (c[1] * k) + 'px';
+      d.style.width = Math.max(2, (c[2] - c[0]) * k) + 'px';
+      d.style.height = Math.max(2, (c[3] - c[1]) * k) + 'px';
+      camada.appendChild(d);
+    });
+    area.appendChild(camada);
+  }
+  /* revisao da 0.10.0: o arquivo de edicao inteiro centrado por cima mostrava o titulo em dobro e a assinatura sobre o
+     azul num arquivo "Igual ao seu", porque a copia nao e uma escala do quadro todo. Agora o "seu por cima" e o
+     contorno de cada elemento do seu arquivo levado a este pela mesma conta da copia (seu_levado, do motor): no
+     arquivo igual, o contorno cai em cima do elemento; no ajustado, mostra de onde o desdobra o tirou */
+  function porCima(area, m, ligado, k) {
+    const velho = area.querySelector('.por-cima');
+    if (velho) velho.remove();
+    if (!ligado || m.arquivo_de_edicao || !(m.seu_levado || []).length) return Promise.resolve(null);
+    const camada = el('div', null, 'por-cima');
+    m.seu_levado.forEach(function (e) {
+      const c = e.caixa;
+      const d = el('div', null, 'contorno-seu');
+      d.dataset.elemento = e.id;
+      d.style.left = (c[0] * k) + 'px';
+      d.style.top = (c[1] * k) + 'px';
+      d.style.width = Math.max(2, (c[2] - c[0]) * k) + 'px';
+      d.style.height = Math.max(2, (c[3] - c[1]) * k) + 'px';
+      camada.appendChild(d);
+    });
+    area.appendChild(camada);
+    return Promise.resolve(camada);
+  }
+  function abrirVerGrande(fid) {
+    const m = membroDaPrevia(fid);
+    if (!m) return;
+    const d = document.getElementById('ver-grande');
+    const s = seloDaCopia(m);
+    const x = formatoDaFamilia(fid);
+    // revisao da 0.10.0: o nome do arquivo para o DA; o girado aparece em pe, com a medida em pe dita
+    document.getElementById('ver-grande-titulo').textContent = nomeDoArquivo(fid) + (grausDoGiro(x) ?
+      '. Aqui ele aparece em pé, ' + dimensao(m.palco.largura, m.palco.altura) + ', como o público vê.' : '');
+    const novoSelo = linhaDoSelo(s);
+    novoSelo.id = 'ver-grande-selo';
+    document.getElementById('ver-grande-selo').replaceWith(novoSelo);
+    const frases = document.getElementById('ver-grande-frases');
+    limpar(frases);
+    (m.ajustes || []).forEach(function (a) { item(frases, a.frase, 'frase-ajuste'); });
+    (m.falhas || []).forEach(function (f) { item(frases, f.texto, 'frase-falha'); });
+    const av = avisosDaCopia(m);
+    if (av) item(frases, av, 'frase-aviso');
+    if (!frases.children.length) item(frases, 'O desdobra copiou o seu layout sem mudar nada neste arquivo.', 'frase-igual');
+    const atos = document.getElementById('ver-grande-atos');
+    limpar(atos);
+    const g = vista.grupo;
+    if (g && escrita && formatosDoGrupo(g).length > 1) {
+      atos.appendChild(botaoAto('Separar em família própria', 'familia_separar', { familia: g.id, arquivo: fid },
+        'botao' + (s.tipo === 'pede' ? ' botao-acento' : '')));
+      atos.appendChild(el('p', 'O arquivo separado ganha o layout próprio, editado nele mesmo.', 'nota'));
+      if (familiaSemEdicao(g.id)) {
+        atos.appendChild(botaoAto('Trocar o arquivo de edição para este', 'familia_arquivo',
+          { familia: g.id, arquivo: fid }, 'botao'));
+      }
+    }
+    const area = document.getElementById('ver-grande-palco');
+    limpar(area);
+    const mini = el('div', null, 'mini-palco');
+    const alto = Math.max(240, Math.round(window.innerHeight * VER_GRANDE.altura));
+    caixaMini(mini, m.palco.largura, m.palco.altura, Math.min(VER_GRANDE.largura, window.innerWidth - 120), alto);
+    area.style.width = mini.style.width;
+    area.style.height = mini.style.height;
+    area.appendChild(mini);
+    const b = document.getElementById('ver-grande-por-cima');
+    b.setAttribute('aria-pressed', 'false');
+    b.hidden = !!m.arquivo_de_edicao;
+    const ids = [];
+    (m.ajustes || []).concat(m.falhas || []).forEach(function (a) { (a.elementos || []).forEach(function (k) { ids.push(k); }); });
+    d.dataset.formato = fid;
+    d.dataset.pronto = '';
+    const fechar = d.querySelector('[data-resposta=fechar]');
+    const antes = document.activeElement;
+    function aoPorCima() {
+      const ligado = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', ligado ? 'true' : 'false');
+      porCima(area, m, ligado, parseFloat(mini.style.width) / m.palco.largura);
+    }
+    function fim() {
+      b.removeEventListener('click', aoPorCima);
+      fechar.removeEventListener('click', fim);
+      d.removeEventListener('close', aoFechar);
+      if (d.open) d.close();
+      if (antes && antes.focus && antes.isConnected) antes.focus();
+    }
+    // o evento close chega depois, numa tarefa propria: o de um fechamento anterior nao fecha a janela que ja reabriu
+    function aoFechar() { if (!d.open) fim(); }
+    b.addEventListener('click', aoPorCima);
+    fechar.addEventListener('click', fim);
+    d.addEventListener('close', aoFechar);
+    // os botoes de ato fecham a janela antes de abrir a do servidor
+    atos.querySelectorAll('button[data-ato]').forEach(function (x) { x.addEventListener('click', fim); });
+    d.showModal();
+    document.getElementById('ver-grande-titulo').focus();
+    desenharPalco(mini, m.palco, { miniatura: true }).then(function () {
+      const k = parseFloat(mini.style.width) / m.palco.largura;
+      if (ids.length) contornos(area, m, ids, k);
+      d.dataset.pronto = '1';
+    });
+  }
+
+  /* ------------------------------------------------ Conferir os N arquivos (decisao 199, 5)
+     O "Confirmar familia" abre a janela do servidor com a lista: primeiro os que pedem ajuste, depois os ajustados e o
+     arquivo de edicao, e os iguais recolhidos. O contador e o filtro ajudam na familia grande */
+  const FILTROS = [['todos', 'Todos'], ['pede', 'Pedem ajuste'], ['ajustado', 'Ajustados'], ['igual', 'Iguais']];
+  function contagemDaFamilia(membros) {
+    const n = { pede: 0, ajustado: 0, igual: 0, seu: 0 };
+    membros.forEach(function (m) { n[situacaoDaCopia(m)] += 1; });
+    const partes = [];
+    if (n.pede) partes.push(n.pede === 1 ? '1 pede ajuste' : n.pede + ' pedem ajuste');
+    if (n.ajustado) partes.push(n.ajustado === 1 ? '1 ajustado pelo desdobra' : n.ajustado + ' ajustados pelo desdobra');
+    if (n.igual) partes.push(n.igual === 1 ? '1 igual ao seu' : n.igual + ' iguais ao seu');
+    return { n: n, texto: partes.length ? listaDeNomes(partes) + '.' : '' };
+  }
+  function linhaDaConferencia(m) {
+    const s = seloDaCopia(m);
+    const li = el('li', null, 'conferir-item');
+    li.dataset.situacao = s.tipo;
+    li.dataset.formato = m.formato;
+    const q = el('div', null, 'conferir-quadro');
+    const mini = el('div', null, 'mini-palco');
+    caixaMini(mini, m.palco.largura, m.palco.altura, 72, 72);
+    q.appendChild(mini);
+    li.appendChild(q);
+    const t = el('div', null, 'conferir-textos');
+    textosDoArquivo(t, m);
+    t.appendChild(linhaDoSelo(s));
+    const av = avisosDaCopia(m);
+    if (av) t.appendChild(el('p', av, 'selo-nota'));
+    li.appendChild(t);
+    desenharPalco(mini, m.palco, { miniatura: true });
+    return li;
+  }
+  function extraDaFamilia() {
+    const r = ed.previa;
+    if (!r || r.membros.length < 2) return null;
+    const caixa = el('div', null, 'conferir');
+    const c = contagemDaFamilia(r.membros);
+    const topo = el('div', null, 'conferir-topo');
+    topo.appendChild(el('p', c.texto, 'conferir-contagem'));
+    const filtro = el('div', null, 'segmentado conferir-filtro');
+    filtro.setAttribute('role', 'group');
+    filtro.setAttribute('aria-label', 'Mostrar');
+    topo.appendChild(filtro);
+    caixa.appendChild(topo);
+    const lista = el('ol', null, 'conferir-lista');
+    const iguais = el('details', null, 'conferir-iguais');
+    const listaIguais = el('ol', null, 'conferir-lista');
+    iguais.appendChild(el('summary', c.n.igual === 1 ? '1 arquivo igual ao seu' : c.n.igual + ' arquivos iguais ao seu'));
+    iguais.appendChild(listaIguais);
+    ordenarMembros(r.membros).forEach(function (m) {
+      (situacaoDaCopia(m) === 'igual' ? listaIguais : lista).appendChild(linhaDaConferencia(m));
+    });
+    caixa.appendChild(lista);
+    if (c.n.igual) caixa.appendChild(iguais);
+    FILTROS.forEach(function (f) {
+      if (f[0] !== 'todos' && !c.n[f[0]]) return;
+      const b = botao(f[1], 'botao-vista');
+      b.dataset.filtro = f[0];
+      b.setAttribute('aria-pressed', f[0] === 'todos' ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        filtro.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        caixa.querySelectorAll('.conferir-item').forEach(function (li) {
+          li.hidden = f[0] !== 'todos' && li.dataset.situacao !== f[0];
+        });
+        if (f[0] === 'igual') iguais.open = true;
+        iguais.hidden = f[0] !== 'todos' && f[0] !== 'igual';
+      });
+      filtro.appendChild(b);
+    });
+    return caixa;
   }
   function nomes(lista) { return lista.map(function (x) { return x.nome || 'sem nome'; }).join(', '); }
   /* o piso que o DA furou no membro (M7b, D5); a previa sem o campo nao tem decisao */
@@ -4002,8 +4425,8 @@
     /* o membro devolvido fica sem layout mesmo com a familia confirmada: a tela diz qual e o que fazer */
     const semLayout = r.membros.filter(membroSemLayout);
     if (semLayout.length) {
-      partes.push((semLayout.length === 1 ? 'O arquivo ' + semLayout[0].formato + ' fica' : 'Os arquivos ' +
-        listaDeNomes(semLayout.map(function (m) { return m.formato; })) + ' ficam') +
+      partes.push((semLayout.length === 1 ? 'O arquivo ' + nomeDoArquivo(semLayout[0].formato) + ' fica' : 'Os arquivos ' +
+        listaDeNomes(semLayout.map(function (m) { return nomeDoArquivo(m.formato); })) + ' ficam') +
         ' sem layout, mesmo com a família confirmada. ' + frasesUnicas(semLayout.map(function (m) {
           return m.falhas[0];
         })));
@@ -4051,6 +4474,8 @@
   /* a lista do grupo de uma edicao (M7b, D1), em texto, para comparar duas edicoes */
   function grupoDe(e) { return JSON.stringify(e.elementos || [e.elemento]); }
   function novaEdicao(e, juntar) {
+    // decisao 199 (1): so o arquivo de edicao aceita edicao; as edicoes sao fracoes dele e nunca mudam de base
+    if (!noArquivoDeEdicao()) { mensagem(NAO_EDITA_AQUI, true); return null; }
     const f = familiaAtual();
     const ult = f.edicoes[f.edicoes.length - 1];
     if (juntar && ult && ult.acao === 'mover' && e.acao === 'mover' && grupoDe(ult) === grupoDe(e)) {
@@ -5377,8 +5802,19 @@
     // Linhas do DA (0.9.4): a faixa do texto que passa da borda leva ao membro dela
     document.getElementById('ver-borda').addEventListener('click', function (ev) {
       const fid = ev.currentTarget.dataset.formato;
-      if (fid) mostrarFormato(fid);
+      // decisao 199: o palco e so do arquivo de edicao; o outro arquivo abre no "Ver grande", so para ver
+      if (fid && fid !== arquivoDeEdicao()) abrirVerGrande(fid);
     });
+    /* decisao 199 (0.10.0): depois de trocar o arquivo de edicao, separar ou juntar, o rascunho e as familias vem de
+       novo do servidor, e a tela volta a familia do ato */
+    function depoisDaEstrutura(_dados, resposta) {
+      return lerRascunho().then(function () { return refazerPasso3(); }).then(function () {
+        if (resposta && resposta.familia) irParaFamilia(resposta.familia);
+      });
+    }
+    depoisDoAto.familia_arquivo = depoisDaEstrutura;
+    depoisDoAto.familia_separar = depoisDaEstrutura;
+    depoisDoAto.familia_juntar = depoisDaEstrutura;
     depoisDoAto.familia = function () {
       return lerRascunho().then(function () {
         atualizarSelo(); atualizarBotaoFamilia(); atualizarSalvar(); mostrarBorda(); marcarBordaNoPalco();
@@ -6090,6 +6526,12 @@
       clearTimeout(espera);
       espera = setTimeout(function () {
         ed.kDaEdicao = null; // a janela mudou: o palco se ajusta de novo (revisao da 0.9.5)
+        const coluna = faixaEmColuna();
+        const mesa = document.querySelector('.mesa-palco');
+        if (mesa && mesa.classList.contains('faixa-coluna') !== coluna) {
+          marcarFaixa();
+          if (ed.previa) montarMembros(ed.previa);
+        }
         reajustar(document.getElementById('palco'));
         reajustar(document.getElementById('palco-kv'));
         reajustar(document.getElementById('palco-ds'));

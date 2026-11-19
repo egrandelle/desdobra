@@ -452,7 +452,7 @@ def _edicoes(ted, job, gid):
     return ((r or {}).get('familias', {}).get(gid) or {}).get('edicoes', [])
 
 
-def _na_tela_do_relato(relato, tmp_path, corpo, formato='f1080x1080'):
+def _na_tela_do_relato(relato, tmp_path, corpo, formato='f1080x1080', janela=(1600, 900)):  # numero-neutro: px
     """Abre a familia do formato (o 1080x1080) do job do relato no Chromium e chama corpo(pg, job, gid, titulo, logo)."""
     from playwright.sync_api import sync_playwright
 
@@ -470,7 +470,9 @@ def _na_tela_do_relato(relato, tmp_path, corpo, formato='f1080x1080'):
     navegador.apontar_playwright()
     with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
                          atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
-        nav, pg = tp._pagina_da_tela(pw, srv, 1600, 900)  # numero-neutro: janela do teste
+        # 0.10.0 (decisao 199): o DA edita so o arquivo de edicao; o formato do relato passa a ser o da familia
+        tg._trocar_para(srv, job, conteudo, gid, formato)
+        nav, pg = tp._pagina_da_tela(pw, srv, *janela)
         try:
             tg._abrir(pg, conteudo['estado'], formato)
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
@@ -828,4 +830,7 @@ def test_no_970_o_campo_fica_legivel_e_a_etiqueta_do_logo_nao_tapa_o_titulo(rela
         assert v['corpo'] == pytest.approx(v['corpoTexto'] * v['k'], rel=0.02), v
         pg.keyboard.press('Escape')
 
-    _na_tela_do_relato(relato, tmp_path, corpo, formato='f970x250')
+    # 0.10.0 (decisao 199): a familia de um arquivo so (o 970x250) nao mostra mais a faixa "Como fica em cada arquivo",
+    # e o palco ganhou a altura dela. A janela perde essa altura, para o palco ter a exibicao do relato, com a etiqueta
+    # do logo sobre o titulo
+    _na_tela_do_relato(relato, tmp_path, corpo, formato='f970x250', janela=(1600, 790))  # numero-neutro: px

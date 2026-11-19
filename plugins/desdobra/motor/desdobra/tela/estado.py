@@ -64,7 +64,14 @@ POR = {'camada': 'camada', 'grupo': 'grupo', 'decisao_10': 'decisao_10'}
 # falhas da conferencia do motor e a edicao que so move o que o DA acabou de mexer
 # 0.9.6 (decisao 196, proposta da 198): o texto editado vale nas linhas do DA (caixa_visivel) para alinhar, para o
 # Tamanho e para a conferencia. A previa da familia com texto editado muda, e a confirmacao feita antes dela cai
-REGRA_DA_PREVIA = 'linhas_do_da'
+# 0.10.0 (decisao 199): os outros arquivos da familia copiam o layout aprovado no arquivo de edicao, e a impressao
+# leva o arquivo de edicao. A confirmacao feita antes cai uma vez, tambem na familia sem edicao (resposta 3 do Duda em
+# 18/11), com a frase RECONFIRMAR_0100
+REGRA_DA_PREVIA = 'arquivo_de_edicao'
+# a frase da familia confirmada antes da 0.10.0, no lugar do aviso da familia, ate o DA confirmar de novo
+RECONFIRMAR_0100 = ('Esta família foi confirmada antes da versão 0.10.0 do desdobra. Agora os outros arquivos seguem o '
+                    'layout do arquivo de edição, e por isso ela pede a sua confirmação de novo. Confira os arquivos e '
+                    'confirme outra vez.')
 # a regra de antes da 0.9.6: a familia sem texto editado mostra a mesma previa pelas duas, e a confirmacao dela
 # continua valendo (rascunho.confirmada_para, sem_texto)
 REGRA_SEM_TEXTO_EDITADO = 'alinha_so_o_mexido'
@@ -239,42 +246,44 @@ def _serve_para(gid, ori):
     return not (outra in ORIENTACOES and n.isdigit() and outra != ori)
 
 
-def _lista(fids):
-    fids = sorted(fids)
+def _lista(fids, nomes=None):
+    # revisao da 0.10.0: a frase diz o nome do arquivo para o DA (nomes_dos_arquivos), e nunca o id interno
+    nomes = nomes or {}
+    fids = [nomes.get(f, f) for f in sorted(fids)]
     return fids[0] if len(fids) == 1 else '%s e %s' % (', '.join(fids[:-1]), fids[-1])
 
 
-def _frase_dos_formatos(fids, um, varios):
-    return (um if len(fids) == 1 else varios) % _lista(fids)
+def _frase_dos_formatos(fids, um, varios, nomes=None):
+    return (um if len(fids) == 1 else varios) % _lista(fids, nomes)
 
 
-def aviso_da_familia(entraram, sairam, de_outra):
+def aviso_da_familia(entraram, sairam, de_outra, nomes=None):
     """A frase da tela para a familia que mudou de formatos desde que o DA mexeu nela (revisao do M7b, fase A).
     entraram e sairam: os formatos que entraram e sairam da familia de mesmo id; de_outra: os que entraram vindos de
     outra familia conhecida com edicao (as edicoes de la ficam guardadas no rascunho e nao valem aqui)."""
     partes = []
     if entraram:
-        partes.append(_frase_dos_formatos(entraram, 'entrou o formato %s', 'entraram os formatos %s'))
+        partes.append(_frase_dos_formatos(entraram, 'entrou o formato %s', 'entraram os formatos %s', nomes))
     if sairam:
-        partes.append(_frase_dos_formatos(sairam, 'saiu o formato %s', 'saíram os formatos %s'))
+        partes.append(_frase_dos_formatos(sairam, 'saiu o formato %s', 'saíram os formatos %s', nomes))
     texto = 'Esta família mudou desde a última vez: %s.' % ' e '.join(partes)
     if de_outra:
         texto += ' ' + _frase_dos_formatos(
             de_outra, 'O que você editou para o formato %s em outra família fica guardado e não vale aqui.',
-            'O que você editou para os formatos %s em outra família fica guardado e não vale aqui.')
+            'O que você editou para os formatos %s em outra família fica guardado e não vale aqui.', nomes)
     return texto + ' Olhe a família de novo e confirme outra vez.'
 
 
-def aviso_de_familia_nova(de_outra, com_edicoes=False):
+def aviso_de_familia_nova(de_outra, com_edicoes=False, nomes=None):
     """A frase da tela para a familia nova com formatos que estavam em outra familia conhecida (a parte que saiu de
     uma familia dividida): ela parte da proposta, e, quando a familia de la tinha edicao (com_edicoes), sem elas."""
     return (_frase_dos_formatos(de_outra, 'Esta família é nova: o formato %s estava em outra família.',
-                                'Esta família é nova: os formatos %s estavam em outra família.') +
+                                'Esta família é nova: os formatos %s estavam em outra família.', nomes) +
             (' Ela parte da proposta do desdobra, sem as edições de lá.' if com_edicoes else
              ' Ela parte da proposta do desdobra.') + ' Olhe a família e confirme.')
 
 
-def _aviso(gid, fids, conhecidas, editadas, cedidos):
+def _aviso(gid, fids, conhecidas, editadas, cedidos, nomes=None):
     """A frase da familia gid, hoje com os formatos fids (um conjunto), contra o que o job conhece dela: conhecidas
     {id: conjunto de formatos}, editadas (ids com edicao) e cedidos {id: formatos que outra familia levou depois}. O
     formato cedido que esta de novo na familia entrou de novo: o DA mexeu nele em outra familia no meio tempo."""
@@ -282,21 +291,21 @@ def _aviso(gid, fids, conhecidas, editadas, cedidos):
     if gid in conhecidas:
         entraram = (fids - conhecidas[gid]) | (fids & set(cedidos.get(gid) or ()))
         sairam = conhecidas[gid] - fids
-        return aviso_da_familia(entraram, sairam, de_editada & entraram) if entraram or sairam else ''
+        return aviso_da_familia(entraram, sairam, de_editada & entraram, nomes) if entraram or sairam else ''
     de_outra = {f for g, fk in conhecidas.items() if g != gid for f in fk & fids}
-    return aviso_de_familia_nova(de_outra, bool(de_editada)) if de_outra else ''
+    return aviso_de_familia_nova(de_outra, bool(de_editada), nomes) if de_outra else ''
 
 
-def avisos_das_familias(pasta, familias):
+def avisos_das_familias(pasta, familias, nomes=None):
     """{id: frase} das familias que a tela mostra (familias: {id: [formatos]}, os ids ja dados por abas), contra o
     que o job conhece agora: depois de um ato (a familia confirmada) a frase muda sem os ids mudarem. O id conhecido
     sem formatos (o rascunho velho) vale com os formatos do grupo de mesmo id."""
     conhecidas = {g: set(familias.get(g, ()) if f is None else f) for g, f in familias_conhecidas(pasta).items()}
     editadas, cedidos = marcas_das_familias(pasta)
-    return {gid: _aviso(gid, set(fids), conhecidas, editadas, cedidos) for gid, fids in familias.items()}
+    return {gid: _aviso(gid, set(fids), conhecidas, editadas, cedidos, nomes) for gid, fids in familias.items()}
 
 
-def _ids_das_familias(grupos, conhecidas, editadas=(), cedidos=None):
+def _ids_das_familias(grupos, conhecidas, editadas=(), cedidos=None, nomes=None):
     """Os ids dos grupos da tela, na ordem de grupos ([(orientacao, {formatos})], na ordem das abas), e o aviso de
     cada um (revisao do M7b, fase A). Cada grupo fica com o id conhecido (conhecidas: {id: [formatos] ou None}) com
     que divide mais formatos; no empate, o de menos diferenca, depois o grupo que vem antes nas abas e o id menor.
@@ -332,12 +341,37 @@ def _ids_das_familias(grupos, conhecidas, editadas=(), cedidos=None):
                 n += 1
             ids[i] = '%s-%d' % (ori, n)
             reservados.add(ids[i])
-    avisos = [_aviso(ids[i], fids, conhecidas, set(editadas or ()), cedidos or {})
+    avisos = [_aviso(ids[i], fids, conhecidas, set(editadas or ()), cedidos or {}, nomes)
               for i, (_ori, fids) in enumerate(grupos)]
     return ids, avisos
 
 
-def abas(laudo, briefing, formatos, variantes=None, conhecidas=None, editadas=(), cedidos=None):
+def _separar_grupos(grupos, separados):
+    """Os grupos da orientacao com cada arquivo separado pelo DA (decisao 199, 3) num grupo dele, logo depois do grupo
+    de onde saiu: a composicao que tinha mais arquivos fica com os outros. separados: o conjunto dos ids."""
+    saida = []
+    for g in grupos:
+        fora = []
+        comps = []
+        for c in g['composicoes']:
+            ficam = [x for x in c['formatos'] if x['id'] not in separados]
+            for x in c['formatos']:
+                if x['id'] in separados:
+                    fora.append(dict(c, formatos=[x]))
+            if ficam:
+                comps.append(dict(c, formatos=ficam))
+        if comps:
+            ps = [c['proporcao'] for c in comps]
+            saida.append(dict(g, proporcao=[min(ps), max(ps)], escala_pura=all(c['escala_pura'] for c in comps),
+                              composicoes=comps))
+        for c in fora:
+            saida.append({'proporcao': [c['proporcao'], c['proporcao']], 'escala_pura': c['escala_pura'],
+                          'composicoes': [c]})
+    return saida
+
+
+def abas(laudo, briefing, formatos, variantes=None, conhecidas=None, editadas=(), cedidos=None, arquivos=None,
+         separados=None):
     """[{'id', 'rotulo', 'grupos': [{'id', 'proporcao': [menor, maior], 'escala_pura', 'aviso', 'composicoes': [{'id',
     'largura', 'altura', 'proporcao', 'escala_pura', 'familia', 'rotulo_familia', 'formatos': [...]}]}]}] na ordem
     horizontal, quadrado, vertical. Dentro da orientacao, as composicoes de proporcao parecida formam um grupo (uma aba
@@ -347,8 +381,15 @@ def abas(laudo, briefing, formatos, variantes=None, conhecidas=None, editadas=()
     ele fica preso aos formatos, e nao a posicao do grupo na aba. conhecidas: {id: [formatos] ou None} das familias
     que o job ja conhece (familias_conhecidas); a ordem das abas continua pela proporcao (_ids_das_familias). aviso: a
     frase da tela quando a familia mudou de formatos desde que o DA mexeu nela, ou ''. editadas e cedidos:
-    marcas_das_familias (a frase so fala das edicoes que existem, e o formato que volta de outra familia entra)."""
+    marcas_das_familias (a frase so fala das edicoes que existem, e o formato que volta de outra familia entra).
+    arquivos e separados (decisao 199; 0.10.0; desdobra.tela.rascunho.estrutura): {id: arquivo de edicao gravado} e
+    {id: [arquivos separados dela]}. Cada grupo leva 'arquivo_de_edicao' (o gravado, enquanto estiver no grupo, senao
+    a regra), 'separados' (os que o DA separou dele) e, no grupo de um arquivo separado, 'separado_de' (o id de onde
+    ele saiu)."""
     variantes = variantes or {}
+    arquivos = arquivos or {}
+    separados = {g: list(v) for g, v in (separados or {}).items()}
+    todos_separados = {f for v in separados.values() for f in v}
     ordem_briefing = [f['id'] for f in briefing['formatos']]
     por_ori = {}
     for fid in ordem_briefing:
@@ -384,12 +425,33 @@ def abas(laudo, briefing, formatos, variantes=None, conhecidas=None, editadas=()
                            'composicoes': membros})
         grupos.sort(key=lambda g: (-g['composicoes'][0]['largura'] / g['composicoes'][0]['altura'],
                                    g['composicoes'][0]['id']))
+        if todos_separados:
+            grupos = _separar_grupos(grupos, todos_separados)
         saida.append({'id': ori, 'rotulo': ROTULOS[ori], 'grupos': grupos})
     todos = [(o['id'], g) for o in saida for g in o['grupos']]
+    nomes = nomes_dos_formatos_da_derivacao(formatos, ordem_briefing)
+    for _ori, g in todos:
+        for c in g['composicoes']:
+            for x in c['formatos']:
+                # o nome do arquivo para o DA (revisao da 0.10.0): a medida e o giro, como no passo 5
+                x['nome'] = nomes.get(x['id'], x['id'])
     ids, avisos = _ids_das_familias([(ori, {x['id'] for c in g['composicoes'] for x in c['formatos']})
-                                     for ori, g in todos], conhecidas, editadas, cedidos)
+                                     for ori, g in todos], conhecidas, editadas, cedidos, nomes)
+    from desdobra.derivacao import proposta
     for (_ori, g), gid, aviso in zip(todos, ids, avisos):
         g['id'], g['aviso'] = gid, aviso
+        # decisao 199 (1): o arquivo de edicao da familia, o gravado no rascunho enquanto estiver nela, senao pela
+        # mesma regra da previa e da derivacao (o de maior area na composicao; no empate, o sem giro, depois o
+        # primeiro da lista). separados: os arquivos que o DA separou em familia propria (decisao 199, 3)
+        fids = [x['id'] for c in g['composicoes'] for x in c['formatos']]
+        # revisao da 0.10.0 (a migracao): sem escolha gravada, a regra vale entre os formatos que a familia ja tinha
+        # (conhecidas); o irmao maior que entrou depois nunca toma o lugar do arquivo ja aprovado
+        g['arquivo_de_edicao'] = proposta.arquivo_de_edicao([dict(formatos[f]['formato'], id=f) for f in fids],
+                                                            arquivos.get(gid), (conhecidas or {}).get(gid))
+        g['separados'] = [f for f in separados.get(gid) or () if f not in fids]
+        mae = next((m for m, v in sorted(separados.items()) if len(fids) == 1 and fids[0] in v and m != gid), None)
+        if mae is not None:
+            g['separado_de'] = mae
     for o in saida:
         o['grupos'] = [dict({'id': g.pop('id')}, **g) for g in o['grupos']]
     return saida
@@ -615,7 +677,8 @@ def _variante_da_tela(v, ordem, palco_):
 def galerias(ctx, kv, laudo, base, derivados, orientacoes, *, specs, arquivo_specs, params, brutos=None):
     """{id do formato devolvido: {'grupo': [ids], 'variantes': [...]}} para cada grupo de proporcao da tela
     (orientacoes, de abas) com formato devolvido que parte da galeria (desdobra.derivacao.proposta.
-    galeria_dos_devolvidos, a mesma regra da derivacao da familia confirmada: previa igual ao Salvar, M7b). As
+    galeria_dos_devolvidos, a mesma regra da derivacao da familia confirmada: previa igual ao Salvar, M7b). Desde a
+    decisao 199, so o arquivo de edicao do grupo tem galeria: os outros arquivos copiam o layout aprovado nele. As
     variantes vem da galeria do motor no primeiro devolvido do grupo (derivacao.galeria.variantes); com mais de um devolvido no grupo, cada variante vai a todos pela estrutura que
     deixa o pior membro melhor (variante_para_grupo). Quando nenhuma estrutura serve ao grupo, cada membro fica com a
     variante em todo o grupo. O membro sem nenhuma variante ganha a galeria dele sozinho. So previa, em memoria.
@@ -632,7 +695,9 @@ def galerias(ctx, kv, laudo, base, derivados, orientacoes, *, specs, arquivo_spe
             # por uma guarda do motor e a familia com a quebra de linha sem medida ficam fora, na tela e no "Salvar e
             # seguir"
             todos = [por_id[x['id']] for c in g['composicoes'] for x in c['formatos'] if x['id'] in por_id]
-            por_formato = proposta.galeria_dos_devolvidos(ctx, kv, derivados, todos, **kw)[0]
+            # decisao 199: a galeria e do arquivo de edicao do grupo (o gravado no rascunho, senao a regra)
+            por_formato = proposta.galeria_dos_devolvidos(ctx, kv, derivados, todos,
+                                                          arquivo=g.get('arquivo_de_edicao'), **kw)[0]
             fids = [f['id'] for f in todos if f['id'] in por_formato]
             for fid in fids:
                 pares = por_formato[fid]
@@ -1099,14 +1164,15 @@ def familias_confirmadas(pasta, familias, pendentes=(), pecas=None, sem_edicao=N
             and not set(familias.get(g, ())) & set(pendentes)}
 
 
-def impressao_das_pecas(fids, formatos, versoes, regra=None):
+def impressao_das_pecas(fids, formatos, versoes, regra=None, arquivo=None):
     """A impressao do que a tela mostra da familia (revisao 3 da regra spec_por_confirmar): de cada formato, a
     composicao, a situacao, o motivo da devolucao e as areas que vem da spec (a area util, as faixas e a area segura),
     e as versoes da galeria. A folha trocada (outra area segura) ou a galeria que aparece depois da confirmacao mudam
     a impressao, e a confirmacao de antes deixa de valer (desdobra.tela.rascunho.confirmada_para). A impressao leva
     tambem a regra da previa (REGRA_DA_PREVIA): a confirmacao feita numa tela que mostrava a familia por outra regra
     (sem as falhas que o "Salvar e seguir" acha, por exemplo) cai, e o DA confirma de novo o que a tela mostra agora.
-    formatos: {id: derivacao}. regra: outra regra da previa (REGRA_SEM_EDICAO); None, a de agora."""
+    formatos: {id: derivacao}. regra: outra regra da previa (REGRA_SEM_EDICAO); None, a de agora. arquivo: o arquivo
+    de edicao da familia (decisao 199, 5; 0.10.0): trocar o arquivo de edicao muda a impressao."""
     import hashlib
     import json
     itens = []
@@ -1118,15 +1184,18 @@ def impressao_das_pecas(fids, formatos, versoes, regra=None):
                       (d.get('devolucao') or {}).get('motivo'), au and au.get('caixa'),
                       [[x.get('lado'), x.get('px'), x.get('caixa')] for x in a.get('faixas') or []],
                       seg and [seg.get('caixa'), seg.get('lados')]])
-    texto = json.dumps({'formatos': itens, 'versoes': sorted(versoes), 'regra_da_previa': regra or REGRA_DA_PREVIA},
-                       sort_keys=True, ensure_ascii=True)
+    corpo = {'formatos': itens, 'versoes': sorted(versoes), 'regra_da_previa': regra or REGRA_DA_PREVIA}
+    if arquivo is not None:
+        corpo['arquivo_de_edicao'] = arquivo
+    texto = json.dumps(corpo, sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(texto.encode('utf-8')).hexdigest()
 
 
-def faltam(lido_, formatos, variantes=None, familias=None, confirmadas=()):
+def faltam(lido_, formatos, variantes=None, familias=None, confirmadas=(), arquivos=None):
     """A lista unica do que falta, cada item com o lugar da tela que leva a ele. variantes: {id do formato: quantas
     variantes a galeria montou}; o formato devolvido com versoes pede a escolha de uma. familias: {id: [formatos]}; a
-    familia sem confirmacao no rascunho pede a confirmacao, e a confirmada deixa de pedir a escolha da versao."""
+    familia sem confirmacao no rascunho pede a confirmacao, e a confirmada deixa de pedir a escolha da versao.
+    arquivos: {id: arquivo de edicao} das familias como a tela mostra (decisao 199; sem ele, a regra)."""
     variantes = variantes or {}
     familias = familias or {}
     resolvidos = {f for g in confirmadas for f in familias.get(g, ())}
@@ -1171,12 +1240,25 @@ def faltam(lido_, formatos, variantes=None, familias=None, confirmadas=()):
         itens.append({'texto': 'Uma fonte do PSD falta ou não confere com o arquivo enviado.', 'detalhe': f['fonte_ps'],
                       'ir': {'passo': 'lido'}})
     pendentes = por_confirmar(formatos)
+    # decisao 199: o arquivo devolvido que copia o layout do arquivo de edicao da familia (o de edicao com proposta ou
+    # com versoes) nao pede escolha propria: segue o arquivo de edicao, e a confirmacao da familia o cobre
+    from desdobra.derivacao import proposta
+    copiam = set()
+    for gid, fids in familias.items():
+        fs = [f for f in fids if f in formatos]
+        if not fs:
+            continue
+        ref = proposta.arquivo_de_edicao([dict(formatos[f]['formato'], id=f) for f in fs], (arquivos or {}).get(gid))
+        if formatos[ref]['situacao'] == 'derivado' or (proposta.usa_galeria(formatos[ref]) and variantes.get(ref)):
+            copiam |= {f for f in fs if f != ref and proposta.usa_galeria(formatos[f])}
     for gid, fids in familias.items():
         # a familia com formato por confirmar espera o passo 1: o item do formato, logo abaixo, leva a ele
         if gid not in confirmadas and fids and not set(fids) & pendentes:
             itens.append({'texto': FAMILIA_SEM_CONFIRMACAO, 'detalhe': ', '.join(fids),
                           'ir': {'passo': 'pecas', 'formato': fids[0]}})
     for fid, d in formatos.items():
+        if fid in copiam:
+            continue
         if d['situacao'] == 'devolvido' and not (fid in resolvidos and variantes.get(fid)):
             motivo = (d.get('devolucao') or {}).get('motivo')
             if fid in pendentes and motivo == 'mestre_por_confirmar':
@@ -1316,7 +1398,7 @@ def com_o_passo_2_do_rascunho(pasta, ctx):
     novo = conferido[0]
     return nd.contexto(ctx['laudo'], novo, ds=ctx['ds'], job_id=ctx['estado']['job_id'], pasta=ctx['pasta'],
                        briefing_sha256=ctx['briefing_sha256'], portao_fontes=ctx['portao_fontes'],
-                       medidas_quebras=ctx['medidas_quebras'], da_tela=True)
+                       medidas_quebras=ctx['medidas_quebras'], da_tela=True, silhuetas=ctx.get('silhuetas'))
 
 
 def conferencia_do_passo_2(pasta, ctx):
@@ -1555,7 +1637,7 @@ def com_o_passo_1_do_rascunho(pasta, ctx):
         return ctx
     return nd.contexto(ctx['laudo'], novo, ds=ctx['ds'], job_id=ctx['estado']['job_id'], pasta=ctx['pasta'],
                        briefing_sha256=ctx['briefing_sha256'], portao_fontes=ctx['portao_fontes'],
-                       medidas_quebras=ctx['medidas_quebras'], da_tela=True)
+                       medidas_quebras=ctx['medidas_quebras'], da_tela=True, silhuetas=ctx.get('silhuetas'))
 
 
 def _sem_passo_2(pasta):
@@ -1800,6 +1882,56 @@ def _nomes_dos_formatos(fs):
     return {f['id']: m if medidas.count(m) == 1 else '%s (%s)' % (m, f['id']) for f, m in zip(fs, medidas)}
 
 
+def nomes_dos_arquivos(fs):
+    """{id: nome do arquivo para o DA} nas frases da familia (revisao da 0.10.0): a medida, como o passo 5 a mostra
+    (_nomes_dos_formatos), e o giro do formato que vai girado ("1920x1080 girado 270 graus"). O id interno (a chave
+    da folha) nunca aparece numa frase, so quando duas medidas sao iguais. fs: os formatos do briefing ou da derivacao
+    ({'id', 'largura', 'altura', 'rotacao'})."""
+    nomes = _nomes_dos_formatos(fs)
+    saida = {}
+    for f in fs:
+        g = int(((f.get('rotacao') or {}).get('graus')) or 0) % 360  # numero-neutro: graus de uma volta
+        saida[f['id']] = nomes[f['id']] + (' girado %d graus' % g if g else '')
+    return saida
+
+
+def nomes_dos_formatos_da_derivacao(formatos, ordem=None):
+    """nomes_dos_arquivos dos formatos derivados ({id: derivacao/1}), na ordem do briefing (ordem), quando dada."""
+    ids = [f for f in (ordem or sorted(formatos)) if formatos.get(f) is not None]
+    return nomes_dos_arquivos([dict(formatos[f]['formato'], id=f) for f in ids])
+
+
+def arquivo_trocado(familia, grupo):
+    """{'de', 'para'} quando o arquivo de edicao gravado da familia editada saiu dela (revisao da 0.10.0): o gravado
+    pelo servidor (rascunho._com_a_estrutura) ou, antes da proxima gravacao, o que a tela vai gravar. None no resto.
+    familia: a do rascunho gravado; grupo: o da tela (abas)."""
+    f = familia or {}
+    if f.get('arquivo_trocado'):
+        return dict(f['arquivo_trocado'])
+    fids = [x['id'] for c in grupo['composicoes'] for x in c['formatos']]
+    gravado = f.get('arquivo_de_edicao')
+    if gravado and gravado not in fids and (f.get('edicoes') or f.get('quebras')):
+        return {'de': gravado, 'para': grupo['arquivo_de_edicao']}
+    return None
+
+
+def frase_do_arquivo_trocado(de, para, nomes=None):
+    nomes = nomes or {}
+    return ('O arquivo em que você editava esta família, o %s, saiu dela. As suas edições passam a valer no %s, o '
+            'maior arquivo que ficou. Confira a família e confirme de novo.' % (nomes.get(de, de), nomes.get(para, para)))
+
+
+def nomes_da_tela(conteudo):
+    """{id: nome do arquivo para o DA} dos formatos que a tela mostra nas familias (abas, o campo 'nome')."""
+    saida = {}
+    for o in (conteudo.get('estado') or {}).get('orientacoes') or []:
+        for g in o.get('grupos') or []:
+            for c in g.get('composicoes') or []:
+                for x in c.get('formatos') or []:
+                    saida[x['id']] = x.get('nome') or x['id']
+    return saida
+
+
 def _entradas_do_historico(pasta):
     from desdobra import contratos
     from desdobra.briefing import historico
@@ -1903,6 +2035,9 @@ def motivo_sem_layout(d, confirmada):
         # o "Salvar e seguir" volta ligado (briefing.salvar.situacao_na_tela) e monta o layout de novo
         return SEM_LAYOUT_GRAVADO
     codigos = {r.get('codigo') for r in d.get('registros') or []}
+    # decisao 199: o arquivo que nao copiou o layout porque o arquivo de edicao ficou sem ele diz o motivo de la
+    codigos |= {(r.get('medidas') or {}).get('motivo') for r in d.get('registros') or []
+                if r.get('codigo') == 'familia_sem_arquivo_de_edicao'}
     if codigos & {'erro_na_proposta', 'erro_na_galeria'}:
         return SEM_LAYOUT_ERRO
     if 'quebra_sem_medida' in codigos:
@@ -2205,9 +2340,13 @@ def montar(pasta, teto=None, biblioteca=None):
     # os ids das familias que o job ja conhece: cada id fica com os formatos dele, e nao com a posicao do grupo
     conhecidas = familias_conhecidas(pasta)
     editadas, cedidos = marcas_das_familias(pasta)
+    # decisao 199 (0.10.0): o arquivo de edicao gravado de cada familia e os arquivos separados em familia propria
+    from desdobra.tela import rascunho as mod_rascunho
+    arquivos_gravados, separados = mod_rascunho.estrutura(pasta)
     if espera is None:
         gals = galerias(ctx, r['kv'], laudo, base, r['formatos'],
-                        abas(laudo, b, r['formatos'], conhecidas=conhecidas, editadas=editadas, cedidos=cedidos),
+                        abas(laudo, b, r['formatos'], conhecidas=conhecidas, editadas=editadas, cedidos=cedidos,
+                             arquivos=arquivos_gravados, separados=separados),
                         specs=specs, arquivo_specs=arquivo_specs, params=params, brutos=brutos)
     for fid, gal in gals.items():
         previas[fid]['galeria'] = gal
@@ -2220,7 +2359,8 @@ def montar(pasta, teto=None, biblioteca=None):
     estado = {'esquema': ESQUEMA, 'job_id': estado_job['job_id'], 'somente_leitura': True,
               'briefing_origem': b['cabecalho']['origem'],
               'mestre': {'largura': laudo['documento']['largura'], 'altura': laudo['documento']['altura']},
-              'orientacoes': abas(laudo, b, r['formatos'], n_variantes, conhecidas, editadas, cedidos),
+              'orientacoes': abas(laudo, b, r['formatos'], n_variantes, conhecidas, editadas, cedidos,
+                                  arquivos_gravados, separados),
               'fontes': lista_fontes,
               'assets': [{'id': i} for i in sorted(assets)], 'devolucoes': len(r['devolucoes']),
               'lido': lido_,
@@ -2235,7 +2375,12 @@ def montar(pasta, teto=None, biblioteca=None):
                          'escala_max': limites.valor('tela.escala_max')}}
     familias = {g['id']: [x['id'] for co in g['composicoes'] for x in co['formatos']]
                 for o in estado['orientacoes'] for g in o['grupos']}
+    # o nome de cada arquivo para o DA nas frases (revisao da 0.10.0)
+    nomes_dos_formatos_do_job = nomes_dos_formatos_da_derivacao(r['formatos'], [f['id'] for f in b['formatos']])
     avisos = {g['id']: g['aviso'] for o in estado['orientacoes'] for g in o['grupos']}
+    grupos_da_tela = {g['id']: g for o in estado['orientacoes'] for g in o['grupos']}
+    # decisao 199: o arquivo de edicao de cada familia como a tela mostra (o gravado ou a regra)
+    arquivos = {gid: g['arquivo_de_edicao'] for gid, g in grupos_da_tela.items()}
     from desdobra.briefing import salvar
     estado['briefing'] = dict(salvar.situacao_na_tela(pasta, familias, pasta_da_biblioteca), avisos=_avisos_do_job(pasta))
     # a aprovacao de cada formato do briefing (M7b, B4): aprovado, caiu (com o campo e o motivo para o DA) ou sem
@@ -2258,9 +2403,10 @@ def montar(pasta, teto=None, biblioteca=None):
     else:
         editor = edicao.Editor(ctx, r['kv'], laudo, base, r['formatos'], brutos, familias,
                                [f for f in faces if f['id'] in fontes], specs=specs, arquivo_specs=arquivo_specs,
-                               params=params)
+                               params=params, arquivos=arquivos)
     versoes = {gid: sorted(editor.versoes(gid)) if editor else [] for gid in familias}
-    pecas = {gid: impressao_das_pecas(fids, r['formatos'], versoes[gid]) for gid, fids in familias.items()}
+    pecas = {gid: impressao_das_pecas(fids, r['formatos'], versoes[gid], arquivo=arquivos.get(gid))
+             for gid, fids in familias.items()}
     # a familia sem edicao vista pela regra de antes da 185 continua valendo: a previa dela e a mesma. A familia sem
     # texto editado vista pela regra de antes da 0.9.6 tambem (rascunho.confirmada_para, 'sem_texto')
     sem_edicao = {gid: {'sem_edicao': impressao_das_pecas(fids, r['formatos'], versoes[gid], regra=REGRA_SEM_EDICAO),
@@ -2268,15 +2414,34 @@ def montar(pasta, teto=None, biblioteca=None):
                                                          regra=REGRA_SEM_TEXTO_EDITADO)}
                   for gid, fids in familias.items()}
     estado['faltam'] = faltam(lido_, r['formatos'], n_variantes, familias,
-                              familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao))
+                              familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao),
+                              arquivos)
+
+    def com_a_reconfirmacao(orientacoes):
+        # decisao 199 (5): a familia confirmada antes da 0.10.0 cai uma vez, e a tela diz por que (reconfirmar), ate
+        # o DA confirmar de novo. Revisao da 0.10.0: o arquivo de edicao que saiu da familia editada tambem, com os
+        # nomes dos dois arquivos
+        dados_r, _de_outro = mod_rascunho.ler(pasta, mod_rascunho.laudo_sha256(pasta))
+        fams_r = (dados_r or {}).get('familias') or {}
+        velhas = {g for g, f in fams_r.items() if mod_rascunho.confirmada_de_antes(f)}
+
+        def frase(g):
+            partes = [RECONFIRMAR_0100] if g['id'] in velhas else []
+            t = arquivo_trocado(fams_r.get(g['id']), g)
+            if t:
+                partes.append(frase_do_arquivo_trocado(t['de'], t['para'], nomes_dos_formatos_do_job))
+            return ' '.join(partes)
+        return [dict(o, grupos=[dict(g, reconfirmar=frase(g)) for g in o['grupos']]) for o in orientacoes]
+    estado['orientacoes'] = com_a_reconfirmacao(estado['orientacoes'])
 
     def com_os_avisos_de_agora():
         # a familia confirmada (ou mexida) depois da montagem: os ids e os formatos ficam, e so a frase de cada uma
         # segue o rascunho de agora, no estado e no que os atos leem (conteudo['familias'])
-        agora = avisos_das_familias(pasta, familias)
+        agora = avisos_das_familias(pasta, familias, nomes_dos_formatos_do_job)
         for gid, aviso in agora.items():
             conteudo['familias'][gid]['aviso'] = aviso
-        return [dict(o, grupos=[dict(g, aviso=agora[g['id']]) for g in o['grupos']]) for o in estado['orientacoes']]
+        return com_a_reconfirmacao([dict(o, grupos=[dict(g, aviso=agora[g['id']]) for g in o['grupos']])
+                                    for o in estado['orientacoes']])
 
     def recarregar():
         novo_job = nucleo.ler_estado(pasta)
@@ -2286,7 +2451,8 @@ def montar(pasta, teto=None, biblioteca=None):
         com_os_layouts_salvos(lidas_agora)
         return dict(estado, lido=novo_lido, orientacoes=com_os_avisos_de_agora(),
                     faltam=faltam(novo_lido, r['formatos'], n_variantes, familias,
-                                  familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao)),
+                                  familias_confirmadas(pasta, familias, por_confirmar(r['formatos']), pecas, sem_edicao),
+                                  arquivos),
                     briefing=dict(salvar.situacao_na_tela(pasta, familias, pasta_da_biblioteca), avisos=_avisos_do_job(pasta)),
                     aprovacoes=aprovacoes, painel=painel)
 
@@ -2297,7 +2463,12 @@ def montar(pasta, teto=None, biblioteca=None):
                               if editor is not None else None),
                 'familias': {gid: {'formatos': fids, 'versoes': versoes[gid], 'pecas': pecas[gid], 'pecas_sem_edicao': sem_edicao[gid],
                                    'por_confirmar': sorted(set(fids) & por_confirmar(r['formatos'])),
-                                   'aviso': avisos[gid]}
+                                   'aviso': avisos[gid],
+                                   # decisao 199: o arquivo de edicao (o gravado ou a regra), os separados dela e a
+                                   # familia de onde ela saiu, quando o DA a separou
+                                   'arquivo_de_edicao': arquivos.get(gid),
+                                   'separados': list(grupos_da_tela[gid].get('separados') or []),
+                                   'separado_de': grupos_da_tela[gid].get('separado_de')}
                              for gid, fids in familias.items()},
                 # a situacao da biblioteca (sem caminho) e a pasta, so no processo de fundo (M7c, M1 e M3)
                 'biblioteca': mod_biblioteca.para_tela(conferencia),
@@ -2315,6 +2486,10 @@ def montar(pasta, teto=None, biblioteca=None):
                 # o laudo, as specs, o design system ou as fontes mudaram com a tela aberta (o ato de spec do passo
                 # 1): os formatos e o briefing de onde a tela parte sao outros
                 return montar(pasta, teto, biblioteca)
+            if estrutura_de_agora() != estrutura_feita:
+                # decisao 199 (0.10.0): o ato da janela trocou o arquivo de edicao ou separou (ou juntou) um arquivo:
+                # as familias da tela sao outras
+                return montar(pasta, teto, biblioteca)
             nova = assinatura_do_passo_2(pasta)
             if nova == feita:
                 return None
@@ -2329,5 +2504,13 @@ def montar(pasta, teto=None, biblioteca=None):
                 return novo
             return montar(pasta, teto, biblioteca)
         return atualizar
+    def estrutura_de_agora():
+        # o arquivo de edicao efetivo de cada familia mostrada (o gravado que ainda esta nela, senao o de agora) e os
+        # separados: a primeira gravacao da familia, que grava o arquivo da regra, nao monta a tela de novo
+        gravados, seps = mod_rascunho.estrutura(pasta)
+        efetivos = {gid: (gravados[gid] if gravados.get(gid) in fids else arquivos.get(gid))
+                    for gid, fids in familias.items()}
+        return efetivos, {g: sorted(v) for g, v in seps.items()}
+    estrutura_feita = estrutura_de_agora()
     conteudo['atualizar'] = atualizador(assinatura, conteudo)
     return conteudo

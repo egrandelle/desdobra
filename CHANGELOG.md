@@ -2,6 +2,23 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.10.0 (18/11/2026): você edita um arquivo, e a família segue
+
+Correção do job real com a família vertical de 1080x1920 e 300x600. Você editou só o 1080x1920, e o 300x600 saiu com a assinatura sobre o azul. Agora cada família tem um arquivo de edição, e os outros arquivos seguem o layout que você aprovou nele. Tudo foi conferido em arquivos sintéticos.
+
+- Cada família tem um arquivo de edição: o maior dela, em pé, como o público vê. No palco, você edita só ele. O topo diz, por exemplo, "Você edita o 1080x1920. Os outros 3 arquivos seguem este layout."
+- As fichas "Arquivo desta família" saíram. Os outros arquivos aparecem em "Como fica em cada arquivo", ao lado do palco, grandes o bastante para ler, cada um com um selo em palavras: "Igual ao seu", "Ajustado pelo desdobra", com o que mudou, ou "Pede ajuste", com o valor.
+- O clique num arquivo da faixa abre "Ver grande", só para ver. Lá, "Mostrar o seu por cima" desenha o arquivo de edição por cima, e o contorno marca o que o desdobra ajustou.
+- Os outros arquivos copiam o seu layout com uma escala só. Cada bloco fica preso à borda ou ao centro em que você o deixou, e o que estava no branco continua no branco. No caso do job real, a assinatura do 300x600 fica no branco, sem ajuste.
+- Quando o layout não cabe igual num arquivo, o desdobra faz o menor ajuste que aparece menos e diz qual foi. O que ele ajusta nunca fica calado.
+- A forma que sangra cresce nos outros arquivos só o necessário para continuar chegando à borda, até 1,5 vez o tamanho copiado. Quando precisa crescer mais, o arquivo fica com "Pede ajuste" e diz quanto ela cresceu e a que bordas ela chega. Isso vale também para a forma que você juntou a um texto num grupo. O fundo cresce o quanto precisar.
+- "Confirmar família" abre "Conferir os N arquivos". Primeiro vêm os que pedem ajuste, depois os ajustados, e os iguais ficam recolhidos. Há um contador e um filtro.
+- O arquivo girado aparece em pé, com a etiqueta "gira 90° na entrega". O giro acontece só na entrega.
+- Na família sem edição, "Trocar arquivo de edição" escolhe outro arquivo para editar, com um clique e a confirmação na janela.
+- Quando um arquivo pede ajuste e você prefere cuidar dele à parte, "Separar em família própria" o tira da família. Ele passa a ser editado nele mesmo. "Juntar de volta" o devolve.
+- As famílias que você confirmou antes desta versão pedem a confirmação de novo, uma vez, também as sem edição. A tela diz por quê, acima do palco.
+- A confirmação guarda o layout de cada arquivo como a janela mostrou. Se algum layout mudar antes do "Salvar e seguir", a tela pede que você confira e confirme de novo.
+
 ## 0.9.6 (17/11/2026): a sua aprovação vale
 
 Correção do teste da 0.9.5 num job real. A família confirmada com "Pede ajuste" deixava os formatos "Sem layout" no passo 5, a caixa do texto editado continuava com a altura antiga, e cada valor de spec pedia dois cliques. Tudo foi conferido em arquivos sintéticos.

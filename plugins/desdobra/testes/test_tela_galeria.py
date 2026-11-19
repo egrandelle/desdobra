@@ -12,6 +12,8 @@ de proporcao com mais de um formato devolvido, cada variante leva a mesma estrut
     clicar (ou as setas) troca o palco; a nota de que nada e gravado;
   - o aviso "apoio de desenho, nao gravado" aparece uma vez por palco, nunca em cada elemento;
   - nenhum identificador do motor no texto da moldura, nenhum pedido fora de 127.0.0.1.
+Desde a decisao 199 (etapa E4), a galeria e montada so no arquivo de edicao de cada grupo (o de maior area, em pe):
+o outro devolvido do grupo copia o layout aprovado nele e nao tem galeria propria.
 Tudo sintetico: o PSD de test_tela_palco e a fonte de autoteste do motor."""
 import copy
 import json
@@ -33,6 +35,9 @@ SELO_PROPOSTA = 'proposta, não aprovada'
 FORMATOS = [('mesma', 640, 320), ('vertical', 160, 320), ('vertical2', 176, 320), ('quadrado', 320, 320),
             ('faixa', 1920, 192)]
 DEVOLVIDOS = ('vertical', 'vertical2', 'quadrado', 'faixa')
+# decisao 199: a galeria so no arquivo de edicao de cada familia (o vertical2, o maior do grupo vertical); o vertical
+# copia o layout aprovado nele e nao tem galeria propria
+COM_GALERIA = ('vertical2', 'quadrado', 'faixa')
 IDS_DO_MOTOR = re.compile(r'[a-z]+_[a-z]+|\bel\d+\b|derivacao\.')
 AVISO_INJETADO = {'codigo': 'texto_abaixo_de_8px', 'texto': 'O texto fica com corpo de 6 px, abaixo de 8 px.'}
 FALHA_INJETADA = {'codigo': 'distancia_menor_que_na_mestre', 'texto': 'O título e o texto ficam mais perto do que o KV permite.'}
@@ -83,7 +88,8 @@ def test_formato_devolvido_chega_com_a_galeria_no_modelo(conteudo):
     fs = _formatos_do_estado(estado)
     assert {f for f, x in fs.items() if x['situacao'] == 'devolvido'} == set(DEVOLVIDOS)
     assert 'galeria' not in previas['mesma'] and fs['mesma'].get('variantes', 0) == 0
-    for fid in DEVOLVIDOS:
+    assert 'galeria' not in previas['vertical'] and fs['vertical'].get('variantes', 0) == 0
+    for fid in COM_GALERIA:
         gal = previas[fid]['galeria']
         vs = gal['variantes']
         assert 3 <= len(vs) <= 4, (fid, len(vs))  # de 3 a derivacao.galeria_variantes_max
@@ -109,10 +115,11 @@ def test_formato_devolvido_chega_com_a_galeria_no_modelo(conteudo):
         assert 'escolha' not in dv.lower()  # quem pede a escolha e a nota da galeria, uma vez so
         assert not IDS_DO_MOTOR.search(dv)
     # faltam N: o formato devolvido continua na lista, pedindo a escolha de uma versao
-    # (a familia sem confirmacao tem o item dela, que leva ao primeiro formato: fatia 5)
+    # (a familia sem confirmacao tem o item dela, que leva ao primeiro formato: fatia 5). Decisao 199: o vertical
+    # segue o arquivo de edicao e nao pede escolha propria
     itens = [f for f in estado['faltam']
              if f['ir'].get('formato') in DEVOLVIDOS and f['texto'] != te.FAMILIA_SEM_CONFIRMACAO]
-    assert len(itens) == len(DEVOLVIDOS)
+    assert len(itens) == len(COM_GALERIA) and {f['ir']['formato'] for f in itens} == set(COM_GALERIA)
     familias = [g['id'] for o in estado['orientacoes'] for g in o['grupos']]
     assert len([f for f in estado['faltam'] if f['texto'] == te.FAMILIA_SEM_CONFIRMACAO]) == len(familias)
     assert all('versões' in f['texto'] and 'Sem proposta' not in f['texto'] for f in itens)
@@ -120,14 +127,24 @@ def test_formato_devolvido_chega_com_a_galeria_no_modelo(conteudo):
     json.dumps(previas)
 
 
-def test_grupo_de_devolvidos_leva_a_mesma_estrutura_a_todos(conteudo):
+def test_grupo_de_devolvidos_tem_a_galeria_so_no_arquivo_de_edicao(conteudo):
+    """Decisao 199 (5): a galeria e montada so no arquivo de edicao do grupo (o maior, em pe). Antes, cada variante ia
+    a todos os devolvidos do grupo pela estrutura comum (variante_para_grupo); agora o outro arquivo copia o layout
+    aprovado no de edicao, com a versao escolhida e as edicoes do DA."""
     previas = conteudo['previas']
-    a, b = previas['vertical']['galeria'], previas['vertical2']['galeria']
-    assert a['grupo'] == b['grupo'] and sorted(a['grupo']) == ['vertical', 'vertical2']
-    assert [v['id'] for v in a['variantes']] == [v['id'] for v in b['variantes']]
-    for va, vb in zip(a['variantes'], b['variantes']):
-        assert va['estrutura'] == vb['estrutura'], (va['id'], va['estrutura'], vb['estrutura'])
+    gid = next(g['id'] for o in conteudo['estado']['orientacoes'] for g in o['grupos']
+               if 'vertical' in [x['id'] for c in g['composicoes'] for x in c['formatos']])
+    grupo = next(g for o in conteudo['estado']['orientacoes'] for g in o['grupos'] if g['id'] == gid)
+    assert grupo['arquivo_de_edicao'] == 'vertical2'
+    assert previas['vertical2']['galeria']['grupo'] == ['vertical2'] and 'galeria' not in previas['vertical']
     assert previas['quadrado']['galeria']['grupo'] == ['quadrado']
+    # a versao escolhida no arquivo de edicao vale para a familia: o vertical sai da copia dela
+    versao = previas['vertical2']['galeria']['variantes'][1]['id']
+    r = conteudo['editar']({'familia': gid, 'versao': versao, 'edicoes': []}, 'fixture_de_teste')
+    membros = {m['formato']: m for m in r['membros']}
+    assert r['arquivo_de_edicao'] == 'vertical2' and membros['vertical2']['arquivo_de_edicao']
+    assert membros['vertical']['situacao'] in ('igual', 'ajustado', 'pede_ajuste')
+    assert not membros['vertical']['arquivo_de_edicao']
 
 
 def test_rotulo_do_elemento_fantasma_sem_o_aviso_repetido():
@@ -143,9 +160,26 @@ def _abrir(pg, estado, fid):
     o, g, _co = tp._onde(estado, fid)
     tp._clicar_aba(pg, 'orientacoes', o['rotulo'])
     tp._clicar_grupo(pg, g['id'])
-    pg.evaluate('f => document.querySelector(\'.ficha[data-formato="\' + f + \'"]\').click()', fid)
+    # 0.10.0 (decisao 199): a familia abre sempre no arquivo de edicao, e as fichas sairam. O formato pedido que nao e
+    # o arquivo de edicao fica na faixa "Como fica em cada arquivo"; o palco e o do arquivo de edicao da familia
     tp._esperar(pg, '() => document.getElementById("palco").dataset.pronto || ""')
-    assert tp._no_palco(pg) == fid
+    # revisao da 0.10.0: o cabecalho diz a medida para o DA; o id do arquivo fica no data-atributo
+    ref = pg.evaluate('() => document.querySelector("#cabecalho-familia .cabecalho-arquivo").dataset.formato')
+    assert tp._no_palco(pg) == ref and fid in [x['id'] for c in g['composicoes'] for x in c['formatos']]
+    return ref
+
+
+def _trocar_para(srv, job, conteudo, gid, fid):
+    """0.10.0 (decisao 199): o teste que edita um formato que nao e o arquivo de edicao da familia troca o arquivo de
+    edicao para ele antes de abrir a pagina, como o ato "Trocar arquivo de edicao" da janela (so sem edicao)."""
+    from desdobra import humano
+    from desdobra.tela import rascunho as tr_
+    fam = conteudo['familias'][gid]
+    if fam.get('arquivo_de_edicao') == fid:
+        return
+    d = humano.exigir_tela(tr_.COMANDO_TROCAR_ARQUIVO, srv._sessao_humana, confirmado=True)
+    tr_.trocar_arquivo(job, gid, fid, disparo=d, job_id=srv.job_id, laudo_atual=srv.laudo_sha256,
+                       formatos=fam['formatos'])
 
 
 def _variante_no_palco(pg):
@@ -158,7 +192,8 @@ def test_galeria_no_palco_do_chromium(job_galeria, conteudo):
     from desdobra.chromium import navegador
     antes = tp._fotografia(job_galeria)
     c = copy.deepcopy(conteudo)
-    vs = c['previas']['vertical']['galeria']['variantes']
+    # decisao 199: a galeria do grupo vertical fica no arquivo de edicao (o vertical2)
+    vs = c['previas']['vertical2']['galeria']['variantes']
     vs[1]['avisos'] = [dict(AVISO_INJETADO)]  # uma variante marcada, para a marca discreta
     for v in vs[:1] + vs[2:]:
         v['avisos'], v['falhas'] = [], []
@@ -178,7 +213,7 @@ def test_galeria_no_palco_do_chromium(job_galeria, conteudo):
         nav, pg = tp._pagina_da_tela(pw, srv, 2048, 720)  # numero-neutro: a tela do Duda (decisao 157)
         pg.on('request', lambda r: pedidos.append(r.url))
         try:
-            _abrir(pg, c['estado'], 'vertical')
+            _abrir(pg, c['estado'], 'vertical2')
             # o grupo devolvido no trilho: o selo das versoes, nunca "sem proposta ainda"
             selos = tp._textos(pg, '#composicoes [role=tab][aria-selected=true] .mini-selo')
             assert selos == ['Versões para escolher'], selos
@@ -216,10 +251,8 @@ def test_galeria_no_palco_do_chromium(job_galeria, conteudo):
             tp._esperar(pg, '() => document.getElementById("palco").dataset.pronto || ""')
             assert _variante_no_palco(pg) == vs[2]['id']
             assert pg.evaluate('() => document.activeElement.dataset.variante') == vs[2]['id']
-            # o outro membro do grupo abre na mesma versao escolhida
-            pg.evaluate('() => document.querySelector(\'.ficha[data-formato="vertical2"]\').click()')
-            tp._esperar(pg, '() => document.getElementById("palco").dataset.pronto || ""')
-            assert tp._no_palco(pg) == 'vertical2' and _variante_no_palco(pg) == vs[2]['id']
+            # decisao 199: o outro arquivo do grupo nao abre mais no palco pela ficha (ele copia o arquivo de edicao e
+            # aparece em "Como fica em cada arquivo", na etapa da tela); o clique na ficha saiu deste teste
             texto = pg.evaluate(tp.JS_TEXTO_DA_MOLDURA)
             assert not tp.IDENTIFICADOR.findall(texto), tp.IDENTIFICADOR.findall(texto)
             # a faixa abre na primeira versao sem falha, nunca numa que pede ajuste quando ha outra limpa
@@ -246,27 +279,16 @@ def test_galeria_no_palco_do_chromium(job_galeria, conteudo):
     assert tp._fotografia(job_galeria) == antes
 
 
-def test_versao_n_e_a_mesma_variante_em_todo_o_grupo_quando_o_grupo_nao_fecha(job_galeria, monkeypatch):
-    """Quando nenhuma estrutura de uma variante serve a todo o grupo (variante_para_grupo levanta ValueError), cada
-    membro fica com a variante de mesmo id da galeria dele, e o numero da versao e o do primeiro membro: Versao N aponta
-    a mesma variante em todos os arquivos do grupo."""
+def test_versao_n_e_uma_so_porque_so_o_arquivo_de_edicao_tem_galeria(job_galeria, monkeypatch):
+    """Antes da decisao 199, quando nenhuma estrutura de uma variante servia a todo o grupo (variante_para_grupo
+    levantava ValueError), cada membro ficava com a variante de mesmo id da galeria dele. Agora a galeria e montada so
+    no arquivo de edicao: a estrutura comum do grupo nunca e procurada, e a Versao N e uma so, a do arquivo de edicao."""
     from desdobra.derivacao import galeria as mg
-    original = mg.variante_para_grupo
-    alvo = {}
 
-    def falha_na_segunda(ctx, kv, formatos, escolha, **kw):
-        alvo.setdefault('id', None)
-        if escolha == mg.variantes(ctx, kv, formatos[0], **kw)[1]['id']:
-            alvo['id'] = escolha
-            raise ValueError('nenhuma estrutura serve ao grupo')
-        return original(ctx, kv, formatos, escolha, **kw)
-    monkeypatch.setattr(mg, 'variante_para_grupo', falha_na_segunda)
+    def proibido(*_a, **_k):
+        raise AssertionError('a galeria do grupo nao procura mais a estrutura comum')
+    monkeypatch.setattr(mg, 'variante_para_grupo', proibido)
     previas = te.montar(job_galeria)['previas']
-    assert alvo['id']
-    a, b = previas['vertical']['galeria']['variantes'], previas['vertical2']['galeria']['variantes']
-    por_ordem_a = {v['ordem']: v['id'] for v in a}
-    por_ordem_b = {v['ordem']: v['id'] for v in b}
-    assert alvo['id'] in por_ordem_a.values() and alvo['id'] in por_ordem_b.values()
-    for n in set(por_ordem_a) & set(por_ordem_b):
-        assert por_ordem_a[n] == por_ordem_b[n], (n, por_ordem_a, por_ordem_b)
-    assert set(por_ordem_b.items()) <= set(por_ordem_a.items())
+    assert 'galeria' not in previas['vertical']
+    vs = previas['vertical2']['galeria']['variantes']
+    assert [v['ordem'] for v in vs] == list(range(1, len(vs) + 1))

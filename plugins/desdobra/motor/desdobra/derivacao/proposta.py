@@ -2,7 +2,14 @@
 """A proposta confirmada pelo DA na tela, por familia (M7a, fatia 5; decisoes-v1.md, 164, 166, 167, 168, 169 e 171).
 
 O briefing confirmado por "Salvar e seguir" (desdobra.briefing.salvar) traz em composicoes cada familia da tela: os
-formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A derivacao parte delas:
+formatos dela, a versao da galeria escolhida e as edicoes do DA no palco. A derivacao parte delas.
+Desde a decisao 199 (18/11; etapa E4), cada familia tem um arquivo de edicao (arquivo_de_edicao: o de maior area na
+composicao, em pe). So ele parte da galeria ou da proposta, com as edicoes do DA, pelas regras abaixo. Os outros
+arquivos copiam o layout aprovado nele (layout_da_familia: desdobra.derivacao.familia.transferir e ajustar_minimo),
+com ou sem edicao, nunca da galeria propria nem da proposta propria; o caminho e 'familia', e o registro
+transferencia diz o arquivo de edicao, a escala, o crescimento das bases, as ancoras, os ajustes e as relacoes
+quebradas. A previa da tela chama a mesma conta. Onde as regras abaixo falam de "cada membro", vale o arquivo de
+edicao:
   - o formato que o motor devolve por troca de orientacao, proporcao fora da faixa ou validacao obrigatoria que
     reprova (MOTIVOS_DA_GALERIA; usa_galeria, a regra unica que a tela tambem chama) sai da versao da galeria
     escolhida para a familia (sem escolha, a primeira sem falha, como a tela mostra), com as edicoes do DA; o caminho
@@ -46,8 +53,13 @@ import copy
 # que a escolha do DA nao pula
 MOTIVOS_DA_GALERIA = ('troca_forte_de_orientacao', 'troca_de_orientacao_quadrado', 'fora_da_faixa_de_familia',
                       'validacao_obrigatoria_reprovou')
-ORIGEM_POR_CAMINHO = {'galeria': 'galeria', 'transform': 'transformacao', 'solver': 'regra', 'mestre_propria': 'da'}
+ORIGEM_POR_CAMINHO = {'galeria': 'galeria', 'transform': 'transformacao', 'solver': 'regra', 'mestre_propria': 'da',
+                      'familia': 'familia'}
 ORIGEM_DA = 'da'
+# decisao 199 (etapa E4): o arquivo que sai da copia do layout aprovado no arquivo de edicao da familia
+CAMINHO_FAMILIA = 'familia'
+CODIGO_TRANSFERENCIA = 'transferencia'
+CASAS_REGISTRO = 6  # numero-neutro: casas das medidas do registro da copia (o arredondamento, nao uma regra)
 # 0.9.6: a familia confirmada pelo DA com aviso da conferencia (aprovacao soberana): o registro leva os valores
 CODIGO_APROVADO_COM_AVISO = 'aprovado_pelo_da_com_aviso'
 ORIGENS_DO_APAGADO = ('da', 'fixture_de_teste')
@@ -128,15 +140,47 @@ def galeria_da_familia(ctx, kv, formatos, *, specs, arquivo_specs, params, mestr
     return {fid: por_formato[fid] or list(enumerate(mg.variantes(ctx, kv, por_id[fid], **kw), 1)) for fid in fids}
 
 
-def galeria_dos_devolvidos(ctx, kv, derivados, formatos, *, specs, arquivo_specs, params):
+def membros_na_composicao(formatos):
+    """[{'id', 'W', 'H', 'giro'}] dos formatos (os do briefing, ou o formato de uma derivacao/1), W x H na composicao,
+    em pe como o publico ve (o giro fica na entrega, 139 e 180)."""
+    from desdobra.derivacao import formatos as mod_formatos
+    saida = []
+    for f in formatos:
+        W, H = mod_formatos.composicao(f)
+        saida.append({'id': f['id'], 'W': float(W), 'H': float(H),
+                      'giro': int(((f.get('rotacao') or {}).get('graus')) or 0)})
+    return saida
+
+
+def arquivo_de_edicao(formatos, gravado=None, conhecidos=None):
+    """O id do arquivo de edicao da familia (decisao 199, 1; desdobra.derivacao.familia.arquivo_de_edicao): o de maior
+    area na composicao; no empate, o sem giro, depois o primeiro da lista. formatos: os da familia, na ordem da tela.
+    gravado: a escolha gravada, que fica enquanto o arquivo esta na familia. A tela, a previa e a derivacao chamam
+    esta, para as tres verem o mesmo arquivo.
+    conhecidos (revisao da 0.10.0, a migracao): os formatos que a familia ja tinha antes, sem escolha gravada (o job da
+    0.9.6). A regra vale so entre eles quando algum continua na familia: o irmao maior que entra depois nunca vira o
+    arquivo de edicao da familia ja aprovada, e o formato aprovado nunca e derivado de novo como copia."""
+    from desdobra.derivacao import familia as mod_familia
+    ids = [f['id'] for f in formatos]
+    if conhecidos and gravado not in ids:
+        velhos = [f for f in formatos if f['id'] in set(conhecidos)]
+        if velhos:
+            return mod_familia.arquivo_de_edicao(membros_na_composicao(velhos))
+    return mod_familia.arquivo_de_edicao(membros_na_composicao(formatos), gravado)
+
+
+def galeria_dos_devolvidos(ctx, kv, derivados, formatos, *, specs, arquivo_specs, params, arquivo=None):
     """(galeria, mestre, sem_medida) de uma familia: a regra unica de onde parte cada formato devolvido (previa igual
     ao Salvar, M7b). A tela (desdobra.tela.estado.galerias e desdobra.tela.edicao.Editor._viva) e a derivacao da
-    familia confirmada (aplicar) chamam esta. Partem da galeria os devolvidos de usa_galeria, e a galeria parte da
-    mestre com a quebra de linha da familia (mestre_da_galeria). Sem a medida da quebra (sem_medida: as camadas sem
-    medida), a galeria nao sai, e os devolvidos ficam como o motor os deixou, na tela e no "Salvar e seguir".
+    familia confirmada (aplicar) chamam esta. A galeria e montada so no arquivo de edicao (decisao 199, 5; arquivo:
+    o gravado, senao a regra de arquivo_de_edicao): os outros arquivos copiam o layout aprovado nele e nunca partem
+    da galeria propria. Parte da galeria o arquivo de edicao devolvido por um motivo de usa_galeria, e a galeria parte
+    da mestre com a quebra de linha da familia (mestre_da_galeria). Sem a medida da quebra (sem_medida: as camadas
+    sem medida), a galeria nao sai, e o arquivo fica como o motor o deixou, na tela e no "Salvar e seguir".
     derivados: {id do formato: derivacao/1 em memoria}; formatos: os da familia no briefing, na ordem da tela.
-    galeria: {id do formato: [(ordem, variante do motor)]}, so dos formatos que tem versao."""
-    devolvidos = [f for f in formatos if usa_galeria(derivados.get(f['id']))]
+    galeria: {id do formato: [(ordem, variante do motor)]}, so do arquivo de edicao, quando ele tem versao."""
+    ref = arquivo_de_edicao(formatos, arquivo) if formatos else None
+    devolvidos = [f for f in formatos if f['id'] == ref and usa_galeria(derivados.get(f['id']))]
     mestre, sem_medida = mestre_da_galeria(ctx, kv, devolvidos)
     if not devolvidos or sem_medida:
         return {}, mestre, sem_medida
@@ -317,6 +361,280 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
             'elementos': mg.elementos_do_layout(cf, caixas, sangra, apagados)}
 
 
+# ------------------------------------------------------------------ a familia segue o arquivo de edicao (199)
+def _arredondar(v):
+    """O registro da copia em numeros arredondados (CASAS_REGISTRO): o mesmo texto em todo processo."""
+    if isinstance(v, float):
+        return round(v, CASAS_REGISTRO)
+    if isinstance(v, dict):
+        return {k: _arredondar(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_arredondar(x) for x in v]
+    return v
+
+
+def _modelo(ctx, cf, lay, edicoes, fid):
+    """O modelo da familia (desdobra.derivacao.familia.extrair_modelo) tirado do layout aprovado L* no arquivo de
+    edicao (lay, de layout_do_membro; cf: o contexto dele). Cada elemento leva a caixa que o DA ve, a de geometria do
+    texto editado (196), os lados em que sangra e a ancora da funcao no Design system. A base leva o recorte (a caixa
+    em que o render corta a pilha) e, quando o elemento tem uma camada so com a silhueta que o preparo gravou, a caixa
+    do asset levada ao arquivo pela transformacao do elemento e a grade (desdobra.derivacao.silhueta). Sem ela, a
+    forma e conferida pela caixa, com o aviso."""
+    from desdobra import limites
+    from desdobra.derivacao import familia as mod_familia
+    from desdobra.derivacao import silhueta as mod_silhueta
+    from desdobra.derivacao import solver as mod_solver
+    from desdobra.tela import edicao
+    kvm = cf['kv']
+    canvas = [float(v) for v in (kvm.get('canvas_doc') or [0.0, 0.0, kvm['largura'], kvm['altura']])]
+    por = {e['id']: e for e in lay['elementos']}
+    vis = lay.get('caixas_visiveis') or lay['caixas']
+    tol = float(limites.valor('derivacao.enquadramento_tolerancia_px'))
+    W, H = cf['W'], cf['H']
+    elementos, silhuetas = [], {}
+    for e in kvm['elementos']:
+        x = por.get(e['id'])
+        if x is None:
+            continue
+        tr = x['transformacao']
+        caixa = [float(v) for v in vis[e['id']]]
+        geo = [float(v) for v in lay['caixas'][e['id']]]
+        # o lado que sangra no aprovado: o que sangrava e ainda chega a borda (o elemento que o DA tirou da borda em
+        # que acabava no KV fica com o corte a vista e nao volta a sangrar na copia)
+        chega = {'esq': caixa[0] <= tol, 'topo': caixa[1] <= tol, 'dir': caixa[2] >= W - tol, 'base': caixa[3] >= H - tol}
+        sangra = {lado: bool(v) and chega[lado] for lado, v in tr['sangra'].items()}
+        item = {'id': e['id'], 'classe': e['classe'], 'funcao': e['funcao'], 'caixa': caixa, 'sangra': sangra,
+                'ancora': tuple(e.get('ancora') or (None, None)), 'opaco': bool(e.get('opaco'))}
+        if geo != caixa:
+            item['geometria'] = geo
+        if not mod_solver.conteudo(e) and any(sangra.values()):
+            item['recorte'] = list(caixa)
+            partes = mod_silhueta.partes_do_elemento(ctx, e, canvas)
+            if len(partes) == 1 and partes[0][1] is not None:
+                s, o, d = float(tr['s']), tr['origem_doc'], tr['destino']
+                a = partes[0][0]
+                item['caixa_asset'] = [s * (a[0] + canvas[0] - o[0]) + d[0], s * (a[1] + canvas[1] - o[1]) + d[1],
+                                       s * (a[2] + canvas[0] - o[0]) + d[0], s * (a[3] + canvas[1] - o[1]) + d[1]]
+                silhuetas[e['id']] = partes[0][1]
+        elementos.append(item)
+    referencia = {'id': fid, 'W': cf['W'], 'H': cf['H'], 'quadros': lay['quadros']}
+    return mod_familia.extrair_modelo(referencia, elementos, intencoes=edicao.intencoes(edicoes),
+                                      grupos=edicao.grupos(edicoes), silhuetas=silhuetas)
+
+
+def _pisos(cf, col):
+    """{id: fator} do piso da 133 de cada conteudo no layout copiado (col, de transferir): o fator abaixo do qual a
+    escala dele fica abaixo de derivacao.escala_conteudo_min_da_regra x a regra do arquivo. A escada (F3) nunca
+    diminui o bloco abaixo disso (199, 3)."""
+    from desdobra import limites
+    from desdobra.derivacao import solver as mod_solver
+    piso = float(limites.valor('derivacao.escala_conteudo_min_da_regra'))
+    saida = {}
+    for e in cf['kv']['elementos']:
+        k, r = e['id'], cf['regras'].get(e['id'])
+        if k not in col['caixas'] or not r or not mod_solver.conteudo(e):
+            continue
+        g, m = col['geometrias'].get(k) or col['caixas'][k], e['caixa']
+        if m[2] > m[0]:
+            esc = (g[2] - g[0]) / (m[2] - m[0])
+        else:
+            esc = (g[3] - g[1]) / (m[3] - m[1]) if m[3] > m[1] else 1.0
+        if esc > 0:
+            saida[k] = piso * r / esc
+    return saida
+
+
+def _aviso_do_modelo(modelo, a):
+    from desdobra.derivacao import familia as mod_familia
+    k = a['elemento']
+    rotulo = mod_familia._rotulo(modelo, k)
+    if a['codigo'] == 'forma_conferida_pela_caixa':
+        texto = 'O desdobra conferiu %s pela caixa, porque não tem o desenho %s.' % (rotulo, mod_familia._dela(rotulo))
+    else:
+        texto = '%s cresceu em volta do centro, porque a borda %s não deixava continuar sangrando.' % (
+            mod_familia._maiuscula(rotulo), mod_familia._dela(rotulo))
+    return {'codigo': a['codigo'], 'texto': texto, 'elementos': [k]}
+
+
+def _copia(ctx, cf, modelo, lay_ref, membro):
+    """O layout de um arquivo da familia que nao e o de edicao (199, 2 e 3): a copia do modelo (transferir), a escada
+    do menor ajuste (ajustar_minimo, com o piso da 133) e a conferencia de hoje (conferir_edicao). A relacao do KV que
+    a conferencia acha (relacao_quebrada) sai: no arquivo copiado, quem diz o que vale sao as relacoes do layout
+    aprovado, e a que se perdeu entra como falha com a frase e o valor. O piso que o elemento mexido pelo DA fura e
+    decisao dele, como no arquivo de edicao. Devolve o layout na forma de layout_do_membro, mais 'situacao' (igual,
+    ajustado ou pede_ajuste), 'frases' e 'transferencia' (o registro da copia)."""
+    from desdobra.derivacao import familia as mod_familia
+    from desdobra.derivacao import galeria as mg
+    col = mod_familia.transferir(modelo, membro)
+    est = mod_familia.ajustar_minimo(modelo, col, pisos=_pisos(cf, col))
+    caixas = {k: list(est['geometrias'].get(k) or est['caixas'][k]) for k in est['caixas']}
+    vis = {k: list(v) for k, v in est['caixas'].items()}
+    sangra = {x['id']: dict(x['transformacao']['sangra']) for x in lay_ref['elementos']}
+    # a base que cresceu em volta do ponto fixo (199, 2) pode passar da borda num lado em que nao sangrava: o render
+    # corta ali, e o lado passa a sangrar neste arquivo, com a frase (nada calado)
+    passa = _base_passa_da_borda(modelo, est, sangra)
+    apagados = list(lay_ref['apagados'])
+    falhas, avisos, reprovadas = mg.conferir_edicao(cf, vis, sangra, apagados, geometria=caixas)
+    falhas = [f for f in falhas if f['codigo'] != 'relacao_quebrada']
+    do_da = set(lay_ref['mexidos']) | {a['elementos'][0] for a in lay_ref['alinhados']} | set(lay_ref['textos'])
+    # o corte do KV que o DA deixou a vista no arquivo de edicao (revisao 1 da fase D) fica a vista na copia, com a
+    # mesma frase
+    from desdobra import limites
+    tol = float(limites.valor('derivacao.enquadramento_tolerancia_px'))
+    W, H = cf['W'], cf['H']
+    cortes = {}
+    for e in cf['kv']['elementos']:
+        k = e['id']
+        if k not in do_da or k not in vis:
+            continue
+        c = vis[k]
+        lados = [lado for lado, dentro in (('esq', c[0] > tol), ('topo', c[1] > tol), ('dir', c[2] < W - tol),
+                                           ('base', c[3] < H - tol)) if e['sangra'][lado] and dentro]
+        if lados:
+            cortes[k] = lados
+    falhas = mg.corte_a_mostra(cf, falhas, cortes)
+    falhas, decisoes = mg.decisoes_do_da(cf, falhas, do_da)
+    for q in est['relacoes_quebradas']:
+        falhas.append({'codigo': 'relacao_quebrada', 'texto': q['frase'], 'elementos': list(q['elementos']),
+                       'medidas': {'relacao': q['tipo'], 'id': q['relacao'], 'valor_px': round(q['valor_px'], 1)}})  # numero-neutro: casas do px
+    avisos += passa
+    ja = {(a['codigo'], tuple(a['elementos'])) for a in avisos}
+    for a in est['avisos']:
+        x = _aviso_do_modelo(modelo, a)
+        if (x['codigo'], tuple(x['elementos'])) not in ja:
+            avisos.append(x)
+    situacao = 'pede_ajuste' if falhas else est['situacao']
+    registro = {'arquivo_de_edicao': modelo['referencia'], 's': est['s'],
+                'crescimento': dict(sorted(dict({k: b['crescimento'] for k, b in est['bases'].items()},
+                                                **est.get('crescimento_movel', {})).items())),
+                'ancoras': {bid: {'lado': b['lado'], 'quadro': b['quadro'], 'origem': b['origem']}
+                            for eixo in mod_familia.EIXOS for bid, b in sorted(est['blocos'][eixo].items())},
+                'ajustes': [{k: v for k, v in a.items() if k != 'estado'} for a in est['ajustes']],
+                'relacoes_quebradas': [dict(q) for q in est['relacoes_quebradas']]}
+    return {'caixas': caixas, 'caixas_visiveis': vis, 'sangra': sangra, 'apagados': apagados,
+            'textos': dict(lay_ref['textos']), 'mexidos': [], 'alinhados': [], 'no_quadro': [],
+            'quadros': quadros_do_membro(cf), 'sangria_do_da': {k: list(v) for k, v in lay_ref['sangria_do_da'].items()},
+            'falhas': falhas, 'decisoes_do_da': decisoes, 'avisos': avisos, 'reprovadas': reprovadas,
+            'elementos': mg.elementos_do_layout(cf, caixas, sangra, apagados), 'situacao': situacao,
+            'frases': [a['frase'] for a in est['ajustes']] + [a['texto'] for a in passa] + [f['texto'] for f in falhas],
+            'transferencia': _arredondar(registro),
+            # a caixa de cada conteudo do arquivo de edicao levada a este pela copia, antes da escada (revisao da
+            # 0.10.0): o "Mostrar o seu por cima" da tela desenha o contorno dela; no arquivo igual, cai no elemento
+            'levado': {k: [round(float(v), 4) for v in col['caixas'][k]] for k in modelo['ordem']  # numero-neutro: casas do px
+                       if modelo['elementos'][k]['conteudo'] and k in col['caixas']}}
+
+
+BORDAS = {'esq': 'a borda esquerda', 'topo': 'a borda de cima', 'dir': 'a borda direita', 'base': 'a borda de baixo'}
+
+
+def _base_passa_da_borda(modelo, est, sangra):
+    """Os avisos das bases que a copia levou alem da borda num lado em que elas nao sangravam (o crescimento em volta
+    do ponto fixo, 199, 2), alem de derivacao.enquadramento_tolerancia_px. O lado passa a sangrar em sangra (no
+    lugar): o render corta ali, como corta o que sangra. A frase diz qual borda a forma passa a tocar e o motivo, sem o
+    valor em px (revisao da 0.10.0): o que passa da borda nunca aparece, e um valor como "2209,2 px da base" nao
+    ajuda o DA a decidir nada. O valor fica nas medidas."""
+    from desdobra import limites
+    from desdobra.derivacao import familia as mod_familia
+    tol = float(limites.valor('derivacao.enquadramento_tolerancia_px'))
+    W, H = est['W'], est['H']
+    saida = []
+    for k in modelo['ordem']:
+        if modelo['elementos'][k]['papel'] == 'movel' or k not in sangra:
+            continue
+        c = est['caixas'][k]
+        fora = [(lado, px) for lado, px in (('esq', -c[0]), ('topo', -c[1]), ('dir', c[2] - W), ('base', c[3] - H))
+                if not sangra[k][lado] and px > tol]
+        if not fora:
+            continue
+        for lado, _px in fora:
+            sangra[k][lado] = True
+        rotulo = mod_familia._rotulo(modelo, k)
+        hospede = modelo['bases'][k].get('hospede')
+        motivo = 'para o desenho ficar no mesmo lugar em relação %s' % mod_familia._contrair(
+            'a', mod_familia._rotulo(modelo, hospede)) if hospede else 'para continuar cobrindo o arquivo'
+        bordas = [BORDAS[lado] for lado, _px in fora]
+        feminino = rotulo.partition(' ')[0] == 'a'
+        saida.append({'codigo': 'base_passa_da_borda',
+                      'texto': '%s chega até %s neste arquivo e fica %s ali, %s. No seu arquivo, %s não chegava %s.' % (
+                          mod_familia._maiuscula(rotulo), ' e '.join(bordas), 'cortada' if feminino else 'cortado',
+                          motivo, 'ela' if feminino else 'ele',
+                          'a essa borda' if len(bordas) == 1 else 'a essas bordas'),
+                      'elementos': [k], 'medidas': {'lados': {lado: round(px, 1) for lado, px in fora}}})  # numero-neutro: casas do px
+    return saida
+
+
+def layout_da_familia(ctx, kv, familia, *, derivados, versoes=None, tintas=None, cache=None, specs, arquivo_specs,
+                      params):
+    """{id do formato: layout} da familia inteira (decisao 199; etapa E4): a conta unica que a previa da tela
+    (desdobra.tela.edicao.Editor.previa) e o "Salvar e seguir" (aplicar) chamam, para a previa ser o Salvar.
+      - o arquivo de edicao (arquivo_de_edicao, com o gravado em familia['arquivo_de_edicao']) sai como hoje: da
+        proposta derivada ou da versao da galeria (versoes[ref], a de galeria_dos_devolvidos), com as edicoes do DA
+        (layout_do_membro). E o layout aprovado L*;
+      - cada outro arquivo sai da copia de L* (_copia: transferir, ajustar_minimo e conferir_edicao), com a mestre do
+        arquivo de edicao (as mesmas quebras de linha e a mesma tinta do texto editado), nunca da partida propria. Vale
+        tambem sem edicao (resposta 3 do Duda em 18/11);
+      - o arquivo devolvido por uma guarda do motor (fora de usa_galeria) fica devolvido: None.
+    familia: {'familia', 'formatos' (na ordem da tela), 'versao', 'edicoes', 'arquivo_de_edicao' (opcional)};
+    derivados: {id: derivacao/1 em memoria}; versoes: {id: {id da versao: variante do motor}}; tintas: as das linhas
+    do DA, medidas no arquivo de edicao (tintas_editadas); cache: um dict para guardar a mestre e os contextos.
+    Cada layout leva 'cf', 'caminho', 'mestre', 'arquivo_de_edicao', 'situacao' ('arquivo_de_edicao' no de edicao;
+    igual, ajustado ou pede_ajuste nos outros), 'frases' e 'transferencia' (None no de edicao). O arquivo cuja copia
+    quebra fica {'erro': nome do erro}. Sem layout no arquivo de edicao (devolvido sem versao), todos ficam None."""
+    from desdobra.derivacao import galeria as mg
+    from desdobra.derivacao import solver as mod_solver
+    kw = {'specs': specs, 'arquivo_specs': arquivo_specs, 'params': params}
+    cache = {} if cache is None else cache
+    por_id = {f['id']: f for f in ctx['briefing']['formatos']}
+    fids = [f for f in familia['formatos'] if f in por_id and f in derivados]
+    saida = {f: None for f in fids}
+    if not fids:
+        return saida
+    ref = arquivo_de_edicao([por_id[f] for f in fids], familia.get('arquivo_de_edicao'))
+    edicoes = list(familia.get('edicoes') or [])
+    d_ref = derivados[ref]
+    if (d_ref or {}).get('situacao') == 'derivado':
+        elementos, caminho = d_ref['elementos'], d_ref['caminho']
+    elif usa_galeria(d_ref) and (versoes or {}).get(ref):
+        elementos, caminho = partida(None, versoes[ref], familia.get('versao')), 'galeria'
+    else:
+        return saida
+    if elementos is None:
+        return saida
+    if ('mestre', ref) not in cache:
+        # a mesma mestre da tela (Editor._contexto) e da derivacao: a da proposta, ou a da galeria
+        cache[('mestre', ref)] = mestre_do_membro(ctx, kv, por_id[ref], d_ref)
+    mestre = cache[('mestre', ref)]
+
+    def contexto(fid):
+        if ('cf', fid, ref) not in cache:
+            cache[('cf', fid, ref)] = mg.contexto_do_formato(ctx, mestre, por_id[fid], **kw)
+        return cache[('cf', fid, ref)]
+    extra = {'kv_por_id': {e['id']: e for e in kv['elementos']},
+             'conteudo': [e['id'] for e in kv['elementos'] if mod_solver.conteudo(e)],
+             'kv_caixas': {e['id']: [float(x) for x in e['caixa']] for e in kv['elementos']},
+             'kv_tamanho': (float(kv['largura']), float(kv['altura']))}
+    cf_ref = contexto(ref)
+    lay_ref = layout_do_membro(cf_ref, elementos, edicoes, tintas=tintas, **extra)
+    lay_ref.update(cf=cf_ref, caminho=caminho, mestre=mestre, arquivo_de_edicao=ref, situacao='arquivo_de_edicao',
+                   frases=[], transferencia=None)
+    saida[ref] = lay_ref
+    outros = [f for f in fids if f != ref and (derivados[f]['situacao'] == 'derivado' or usa_galeria(derivados[f]))]
+    if not outros:
+        return saida
+    modelo = _modelo(ctx, cf_ref, lay_ref, edicoes, ref)
+    membros = {m['id']: m for m in membros_na_composicao([por_id[f] for f in outros])}
+    for fid in outros:
+        try:
+            cf = contexto(fid)
+            lay = _copia(ctx, cf, modelo, lay_ref, dict(membros[fid], quadros=quadros_do_membro(cf)))
+        except Exception as e:  # noqa: BLE001 - o arquivo fica como o motor o deixou, com o registro
+            saida[fid] = {'erro': type(e).__name__}
+            continue
+        lay.update(cf=cf, caminho=CAMINHO_FAMILIA, mestre=mestre, arquivo_de_edicao=ref)
+        saida[fid] = lay
+    return saida
+
+
 def _origem_do_apagado(ctx, comp):
     conf = comp.get('confirmacao') or {}
     if conf.get('origem') in ORIGENS_DO_APAGADO:
@@ -418,18 +736,25 @@ def aviso_aprovado_pelo_da(lay, ruins, registros):
     return {'falhas': falhas, 'validacoes': validacoes, 'texto_na_borda': borda}
 
 
-def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
+def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado, d_ref=None):
     """A derivacao/1 do membro a partir do layout com as edicoes (layout_do_membro). cf: o contexto do formato, com a
-    mestre de onde o membro partiu (mestre_do_membro)."""
+    mestre de onde o membro partiu (mestre_do_membro). Na copia do arquivo de edicao (caminho 'familia', decisao 199;
+    d_ref: a derivacao/1 em memoria do arquivo de edicao), as quebras de linha sao as dele, cada elemento leva a
+    origem 'familia', e o registro transferencia leva o arquivo de edicao, a escala, o crescimento das bases, as
+    ancoras, os ajustes e as relacoes quebradas."""
     from desdobra.derivacao import galeria as mg
     from desdobra.derivacao import nucleo as nd
     from desdobra.derivacao import validacao as mv
     novo = copy.deepcopy(d)
     kv_por_id = {e['id']: e for e in kv['elementos']}
+    copia = caminho == CAMINHO_FAMILIA
     # a mestre do membro: a quebra da familia da tela que ela traz (quebras_origem e quebra_do_da, nucleo._com_quebras)
     da_mestre = {e['id']: e for e in cf['kv']['elementos']}
     do_da = set(lay['mexidos']) | {a['elementos'][0] for a in lay['alinhados']} | set(lay['textos'])
-    antes = {e['id']: e for e in d['elementos']} if d['situacao'] == 'derivado' else {}
+    # de onde vem a quebra de linha aprovada: a proposta do proprio membro, ou a do arquivo de edicao na copia
+    fonte = d_ref if copia else d
+    antes = {e['id']: e for e in fonte['elementos']} if (fonte or {}).get('situacao') == 'derivado' else {}
+    fid_quebras = fonte['formato']['id'] if copia else d['formato']['id']
     base = ORIGEM_POR_CAMINHO[caminho]
     elementos = []
     for e in lay['elementos']:
@@ -439,7 +764,7 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
         if e['id'] in lay['textos']:
             # o texto editado leva so as quebras do DA, nunca as da proposta junto com as linhas dele (M7b, A7); a
             # quebra da familia vale sobre o texto novo (C2)
-            _quebras_do_editado(ctx, x, d['formato']['id'])
+            _quebras_do_editado(ctx, x, fid_quebras)
         elif o is not None:
             # as quebras aprovadas da familia ficam as da proposta derivada (o render as aplica)
             for k in ('quebras', 'quebras_camada', 'quebras_origem'):
@@ -449,7 +774,10 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
             # a versao da galeria: a quebra da familia veio da mestre da galeria
             x['quebras_origem'] = m['quebras_origem']
         x['regra_aplicada'] = {'funcao': e['funcao'], 'regra': e['regra'], 'caminho': caminho, 'classe': e['classe']}
-        if e['id'] in do_da or (e['id'] not in lay['textos'] and m.get('quebra_do_da')):
+        if copia:
+            # a caixa veio da copia do layout aprovado no arquivo de edicao (199, 2)
+            x['origem_geometria'] = base
+        elif e['id'] in do_da or (e['id'] not in lay['textos'] and m.get('quebra_do_da')):
             # mexido, alinhado, com texto editado, ou com a quebra de linha que o DA fez ou aprovou na familia
             x['origem_geometria'] = ORIGEM_DA
         else:
@@ -482,7 +810,15 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
         lados = lados_fora(c, cf['W'], cf['H'], tol)
         if lados:
             registros.append({'codigo': 'texto_editado_passa_da_borda', 'medidas': {'elemento': eid, 'lados': lados}})
-    if d['situacao'] == 'devolvido':
+    if copia:
+        # a copia do arquivo de edicao (199, 2 e 3): o registro e a frase de cada ajuste e de cada relacao quebrada
+        medidas = dict(lay['transferencia'], situacao=lay['situacao'])
+        if d['situacao'] == 'devolvido':
+            medidas['motivo_da_devolucao'] = d['devolucao']['motivo']
+        registros.append({'codigo': CODIGO_TRANSFERENCIA, 'medidas': medidas})
+        novo['mestre'] = {'id': kv['id'], 'tipo': 'kv', 'largura': kv['largura'], 'altura': kv['altura']}
+        novo['restricoes'] = []
+    elif d['situacao'] == 'devolvido':
         registros.append({'codigo': 'proposta_da_galeria', 'medidas': {'motivo_da_devolucao': d['devolucao']['motivo']}})
         novo['mestre'] = {'id': kv['id'], 'tipo': 'kv', 'largura': kv['largura'], 'altura': kv['altura']}
         novo['restricoes'] = []
@@ -523,21 +859,40 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado):
     return novo
 
 
+def _conhecidos_gravados(ctx, comp):
+    """Os formatos da composicao sem arquivo de edicao gravado (o briefing da 0.9.6) que ja tinham a derivacao gravada
+    nesta familia (revisao da 0.10.0, a migracao): o arquivo de edicao sai deles, e o irmao novo copia o layout. Le so
+    o JSON das derivacoes do job; sem pasta (a derivacao so em memoria) ou sem derivacao gravada, None."""
+    from pathlib import Path
+
+    from desdobra import contratos
+    from desdobra.derivacao import nucleo as nd
+    pasta = ctx.get('pasta')
+    if not pasta:
+        return None
+    saida = []
+    for fid in comp['formatos']:
+        arq = Path(pasta) / nd.PASTA / ('%s.json' % fid)
+        try:
+            d = contratos.ler(arq, nd.ESQUEMA) if arq.is_file() else None
+        except (contratos.ErroContrato, OSError, ValueError):
+            d = None
+        # o que ja saiu como copia (caminho familia) nunca conta: a escolha fica a mesma derivacao apos derivacao
+        if d is not None and (d.get('proposta') or {}).get('familia') == comp['familia'] and \
+                d.get('caminho') != CAMINHO_FAMILIA:
+            saida.append(fid)
+    return saida or None
+
+
 def aplicar(ctx, kv, resultados, derivar_um, *, specs, arquivo_specs, params):
     """Aplica as composicoes do briefing (as familias confirmadas na tela) aos formatos de resultados ({id:
     derivacao/1}), no lugar. derivar_um(formato) deriva um membro da familia que nao esta em resultados (a derivacao
     de um formato so precisa dos outros devolvidos da familia para montar a galeria como a tela)."""
-    from desdobra.derivacao import galeria as mg
-    from desdobra.derivacao import solver as mod_solver
     comps = ctx['briefing'].get('composicoes') or []
     if not comps:
         return resultados
     kw = {'specs': specs, 'arquivo_specs': arquivo_specs, 'params': params}
     por_id = {f['id']: f for f in ctx['briefing']['formatos']}
-    kv_por_id = {e['id']: e for e in kv['elementos']}
-    extra = {'kv_por_id': kv_por_id, 'conteudo': [e['id'] for e in kv['elementos'] if mod_solver.conteudo(e)],
-             'kv_caixas': {e['id']: [float(x) for x in e['caixa']] for e in kv['elementos']},
-             'kv_tamanho': (float(kv['largura']), float(kv['altura']))}
     for comp in comps:
         alvo = [f for f in comp['formatos'] if f in resultados]
         if not alvo:
@@ -550,44 +905,67 @@ def aplicar(ctx, kv, resultados, derivar_um, *, specs, arquivo_specs, params):
                 dos[f] = derivar_um(por_id[f])
         proposta = {'familia': comp['familia'], 'versao': comp['versao'], 'edicoes': len(comp['edicoes']),
                     'confirmada': bool(comp['confirmada']), 'confirmacao': comp.get('confirmacao')}
+        formatos = [por_id[f] for f in comp['formatos'] if f in dos and f in por_id]
+        if not formatos:
+            continue
+        # decisao 199: o arquivo de edicao da familia (o mesmo da tela) e o unico que parte da galeria ou da proposta;
+        # os outros copiam o layout aprovado nele (layout_da_familia), com ou sem edicao (resposta 3 do Duda)
+        ref = arquivo_de_edicao(formatos, comp.get('arquivo_de_edicao'),
+                                None if comp.get('arquivo_de_edicao') else _conhecidos_gravados(ctx, comp))
         # a mesma galeria da tela, pela mesma regra (galeria_dos_devolvidos; desdobra.tela.estado.galerias): a mestre
-        # da galeria leva a quebra de linha da familia (M7b, C2); sem a medida dela, a galeria nao sai e os devolvidos
-        # ficam como o motor os deixou, com o registro
+        # da galeria leva a quebra de linha da familia (M7b, C2); sem a medida dela, a galeria nao sai e o arquivo de
+        # edicao fica como o motor o deixou, com o registro
         try:
-            galeria, kv_galeria, sem_medida = galeria_dos_devolvidos(
-                ctx, kv, dos, [por_id[f] for f in comp['formatos'] if f in dos and f in por_id], **kw)
+            galeria, _kv_galeria, sem_medida = galeria_dos_devolvidos(ctx, kv, dos, formatos, arquivo=ref, **kw)
         except Exception as e:  # noqa: BLE001 - a galeria que quebra deixa os formatos como o motor os deixou
-            galeria, kv_galeria, sem_medida = None, None, []
+            galeria, sem_medida = None, []
             erro_galeria = type(e).__name__
         else:
             erro_galeria = None
-        # a medida das linhas do DA do texto editado (0.9.6; decisao 196): a mesma para todo membro da familia
-        tintas = tintas_editadas(ctx, kv, comp['edicoes'], alvo[0]) if comp['edicoes'] else {}
+        d_ref = dos[ref]
+        # por que o arquivo de edicao fica sem layout (os outros arquivos da familia gravam o mesmo motivo)
+        motivo_ref = None if d_ref['situacao'] == 'derivado' else (d_ref.get('devolucao') or {}).get('motivo')
+        if d_ref['situacao'] == 'devolvido' and usa_galeria(d_ref):
+            if galeria is None:
+                # 0.9.6: o motivo fica gravado, e o passo 5 o diz (nunca "espera uma decisao sua em Familias")
+                d_ref['registros'].append({'codigo': 'erro_na_galeria', 'medidas': {'erro': erro_galeria}})
+                motivo_ref = 'erro_na_galeria'
+            elif sem_medida:
+                d_ref['registros'].append({'codigo': 'quebra_sem_medida', 'medidas': {'camadas': sem_medida}})
+                galeria = None
+                motivo_ref = 'quebra_sem_medida'
+        # a medida das linhas do DA do texto editado (0.9.6; decisao 196), no arquivo de edicao, com a quebra dele:
+        # a mesma tinta vale, escalada, em todo arquivo da familia
+        tintas = tintas_editadas(ctx, kv, comp['edicoes'], ref) if comp['edicoes'] else {}
+        try:
+            lays = layout_da_familia(
+                ctx, kv, dict(comp, arquivo_de_edicao=ref), derivados=dos, tintas=tintas,
+                versoes={fid: {v['id']: v for _n, v in pares} for fid, pares in (galeria or {}).items()}, **kw)
+        except Exception as e:  # noqa: BLE001 - os formatos ficam como o motor os deixou, com o registro
+            for fid in alvo:
+                dos[fid]['registros'].append({'codigo': 'erro_na_proposta', 'medidas': {'erro': type(e).__name__}})
+            continue
+        sem_arquivo = lays.get(ref) is None
         for fid in alvo:
-            d = dos[fid]
-            if d['situacao'] == 'devolvido':
-                if galeria is None and usa_galeria(d):
-                    # 0.9.6: o motivo fica gravado, e o passo 5 o diz (nunca "espera uma decisao sua em Familias")
-                    d['registros'].append({'codigo': 'erro_na_galeria', 'medidas': {'erro': erro_galeria}})
-                if galeria is None or not usa_galeria(d):
-                    continue
-                if sem_medida:
-                    d['registros'].append({'codigo': 'quebra_sem_medida', 'medidas': {'camadas': sem_medida}})
-                    continue
-                elementos = partida(None, {v['id']: v for _n, v in galeria.get(fid) or []}, comp['versao'])
-                caminho, mestre = 'galeria', kv_galeria
-                if elementos is None:
-                    continue
-            elif not comp['edicoes']:
+            d, lay = dos[fid], lays.get(fid)
+            if lay is None:
+                if fid != ref and sem_arquivo and (d['situacao'] == 'derivado' or usa_galeria(d)):
+                    # sem layout no arquivo de edicao, nao ha o que copiar: o arquivo fica como o motor o deixou
+                    d['registros'].append({'codigo': 'familia_sem_arquivo_de_edicao',
+                                           'medidas': {'arquivo_de_edicao': ref, 'motivo': motivo_ref}})
+                if d['situacao'] == 'derivado':
+                    d['proposta'] = dict(proposta)
+                continue
+            if 'erro' in lay:
+                d['registros'].append({'codigo': 'erro_na_proposta', 'medidas': {'erro': lay['erro']}})
+                continue
+            if fid == ref and d['situacao'] == 'derivado' and not comp['edicoes']:
+                # o arquivo de edicao sem edicao fica com a proposta do motor, como antes
                 d['proposta'] = dict(proposta)
                 continue
-            else:
-                elementos, caminho = d['elementos'], d['caminho']
-                mestre = mestre_do_membro(ctx, kv, por_id[fid], d)
             try:
-                cf = mg.contexto_do_formato(ctx, mestre, por_id[fid], **kw)
-                lay = layout_do_membro(cf, elementos, comp['edicoes'], tintas=tintas, **extra)
-                resultados[fid] = _derivacao(ctx, kv, cf, d, lay, caminho, proposta, _origem_do_apagado(ctx, comp))
+                resultados[fid] = _derivacao(ctx, kv, lay['cf'], d, lay, lay['caminho'], proposta,
+                                             _origem_do_apagado(ctx, comp), d_ref=d_ref)
             except Exception as e:  # noqa: BLE001 - o formato fica como o motor o deixou, com o registro
                 d['registros'].append({'codigo': 'erro_na_proposta', 'medidas': {'erro': type(e).__name__}})
     return resultados

@@ -39,6 +39,9 @@ FUN = {1: 'fundo', LOGO: 'logo_principal', CIRCULO: 'grafismo', GARRAFA: 'sujeit
 PRODUTOS = ['el%d' % k for k in (GARRAFA, COPO, LATA)]
 GRUPO = PRODUTOS + ['el%d' % CIRCULO]
 HORIZONTAIS = [('h1', 800, 400), ('h2', 840, 400), ('h3', 880, 400)]
+# decisao 199 (etapa E4): o arquivo de edicao da familia, o de maior area; o h1 e o h2 copiam o layout aprovado nele.
+# Os criterios abaixo de "cada membro" valem no arquivo de edicao, e nos outros pela copia (o grupo junto, na escala s)
+REF = 'h3'
 TOL = 0.5  # numero-neutro: px de folga do arredondamento da derivacao
 # o "antes" do Duda: o grupo grande, a lata cortada pela borda direita e o packshot sangrando na base
 ANTES = [{'elemento': GRUPO[0], 'elementos': GRUPO, 'acao': 'mover', 'dx': 0.12, 'dy': 0.06}]
@@ -87,6 +90,19 @@ def _caixas(d):
     return {e['id']: [float(x) for x in e['caixa']] for e in d['elementos']}
 
 
+def _junto_como_no_arquivo_de_edicao(d_ref, d, ids, tol=TOL):
+    """Decisao 199: o arquivo que copia o arquivo de edicao leva o grupo inteiro na escala s do registro
+    transferencia, com as mesmas posicoes relativas (o grupo nunca se separa nem muda de forma)."""
+    s = next(r for r in d['registros'] if r['codigo'] == 'transferencia')['medidas']['s']
+    r, c = _caixas(d_ref), _caixas(d)
+    ur = [min(r[i][0] for i in ids), min(r[i][1] for i in ids)]
+    uc = [min(c[i][0] for i in ids), min(c[i][1] for i in ids)]
+    for i in ids:
+        esperado = [uc[0] + (r[i][0] - ur[0]) * s, uc[1] + (r[i][1] - ur[1]) * s,
+                    uc[0] + (r[i][2] - ur[0]) * s, uc[1] + (r[i][3] - ur[1]) * s]
+        assert c[i] == pytest.approx(esperado, abs=tol), (d['formato']['id'], i, c[i], esperado)
+
+
 @pytest.mark.parametrize('edicoes', [ANTES, DEPOIS], ids=['lata_cortada', 'packshot_menor'])
 def test_derivacao_honra_a_caixa_que_o_da_deixou_sangrar(edicoes):
     tol = limites.valor('derivacao.enquadramento_tolerancia_px')
@@ -97,10 +113,20 @@ def test_derivacao_honra_a_caixa_que_o_da_deixou_sangrar(edicoes):
         assert d['situacao'] == 'derivado', (fid, d.get('devolucao'))
         assert [v['nome'] for v in d['validacoes'] if v['situacao'] == 'reprova'] == []
         assert not [r for r in d['registros'] if r['codigo'] == 'proposta_com_falha'], d['registros']
-        # a caixa de cada elemento do grupo e a que o DA deu: nada puxa o elemento para dentro nem separa o grupo
-        esperado = ed.aplicar(_caixas(antes[fid]), edicoes, w, h)[0]
         caixas = _caixas(d)
         por_id = {e['id']: e for e in d['elementos']}
+        if fid != REF:
+            # decisao 199: o outro arquivo copia o layout aprovado no arquivo de edicao: o grupo junto, na escala s, e
+            # o lado que passa da borda continua sangrando
+            _junto_como_no_arquivo_de_edicao(depois[REF], d, GRUPO)
+            for i in GRUPO:
+                e = por_id[i]
+                assert e['origem_geometria'] == 'familia'
+                assert all(e['transformacao']['sangra'][x] for x in _lados(caixas[i], w, h, tol)), (fid, i)
+            contratos.validar(d, nd.ESQUEMA)
+            continue
+        # a caixa de cada elemento do grupo e a que o DA deu: nada puxa o elemento para dentro nem separa o grupo
+        esperado = ed.aplicar(_caixas(antes[fid]), edicoes, w, h)[0]
         for i in GRUPO:
             assert caixas[i] == pytest.approx(esperado[i], abs=TOL), (fid, i, caixas[i], esperado[i])
             e = por_id[i]
@@ -198,8 +224,14 @@ def test_tamanho_no_elemento_cortado_no_kv_vale_igual_em_todo_membro(fator):
     antes, depois = _derivar([]), _derivar(eds)
     situacoes = set()
     for fid, w, h in HORIZONTAIS:
-        esperado = ed.aplicar(_caixas(antes[fid]), eds, w, h)[0][C]
-        assert _caixas(depois[fid])[C] == pytest.approx(esperado, abs=TOL), fid
+        if fid == REF:
+            esperado = ed.aplicar(_caixas(antes[fid]), eds, w, h)[0][C]
+            assert _caixas(depois[fid])[C] == pytest.approx(esperado, abs=TOL), fid
+        else:
+            # decisao 199: o tamanho do arquivo de edicao, na escala s da copia
+            s = next(r for r in depois[fid]['registros'] if r['codigo'] == 'transferencia')['medidas']['s']
+            c, cr = _caixas(depois[fid])[C], _caixas(depois[REF])[C]
+            assert c[2] - c[0] == pytest.approx((cr[2] - cr[0]) * s, abs=TOL), fid
         situacoes.add((depois[fid]['situacao'], (depois[fid].get('devolucao') or {}).get('motivo')))
         lay = _layout(eds, fid)
         corte = [f for f in lay['falhas'] if f['codigo'] == 'corte_a_mostra']
@@ -221,10 +253,14 @@ def test_tamanho_no_elemento_cortado_no_kv_vale_igual_em_todo_membro(fator):
 def test_grupo_com_o_elemento_cortado_no_kv_fica_junto(eds):
     antes, depois = _derivar([]), _derivar(eds)
     for fid, w, h in HORIZONTAIS:
-        esperado = ed.aplicar(_caixas(antes[fid]), eds, w, h)[0]
-        caixas = _caixas(depois[fid])
-        for i in GRUPO:
-            assert caixas[i] == pytest.approx(esperado[i], abs=TOL), (fid, i, caixas[i], esperado[i])
+        if fid == REF:
+            esperado = ed.aplicar(_caixas(antes[fid]), eds, w, h)[0]
+            caixas = _caixas(depois[fid])
+            for i in GRUPO:
+                assert caixas[i] == pytest.approx(esperado[i], abs=TOL), (fid, i, caixas[i], esperado[i])
+        else:
+            # decisao 199: a copia leva o grupo junto, como no arquivo de edicao
+            _junto_como_no_arquivo_de_edicao(depois[REF], depois[fid], GRUPO)
         lay = _layout(eds, fid)
         assert [f['elementos'] for f in lay['falhas'] if f['codigo'] == 'corte_a_mostra'] == [[C]], lay['falhas']
 

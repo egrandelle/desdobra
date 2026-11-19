@@ -27,6 +27,13 @@ from desdobra.render import derivado as rd
 
 HORIZONTAL = ('largo', 'perto')
 VERTICAL = ('v1', 'v2')
+# decisao 199 (etapa E4): o arquivo de edicao de cada familia (o de maior area) parte do motor ou da galeria, com a
+# edicao do DA; o outro copia o layout aprovado nele, com a mesma quebra, o caminho e a origem 'familia'
+ARQUIVOS_DE_EDICAO = ('largo', 'v2')
+
+
+def _origem(fid):
+    return 'da' if fid in ARQUIVOS_DE_EDICAO else 'familia'
 # a caixa do texto na mestre do KV e a entrelinha dele (test_quebras_da_familia._laudo)
 CAIXA_KV = [20.0, 40.0, 260.0, 110.0]
 ENTRELINHA = 23.0
@@ -92,7 +99,7 @@ def test_juntar_vale_em_todo_membro_da_familia():
         assert d['situacao'] == 'derivado', d['devolucao']
         e = _el(d)
         assert e['quebras'] == {'familia': [{'layer_id': 10, 'aprovadas': [], 'inseridas': [], 'caixa_doc': JUNTADA}]}
-        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == 'da'
+        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == _origem(fid)
         assert e['caixa_mestre'] == JUNTADA
         assert e['escala'] == pytest.approx(_escala_da_caixa(e), abs=1e-4)
         contratos.validar(d, nd.ESQUEMA)
@@ -106,9 +113,9 @@ def test_inserir_quebra_no_espaco_fora_da_mestre_propria():
     fs = _derivar(_b([_h(manter=(0,), inseridas=(3,))]))
     for fid in HORIZONTAL:
         e = _el(fs[fid])
-        assert fs[fid]['caminho'] in ('transform', 'solver')
+        assert fs[fid]['caminho'] in (('transform', 'solver') if fid in ARQUIVOS_DE_EDICAO else ('familia',))
         assert e['quebras']['familia'] == [{'layer_id': 10, 'aprovadas': [0], 'inseridas': [3], 'caixa_doc': INSERIDA}]
-        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == 'da'
+        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == _origem(fid)
         # a caixa ganha uma entrelinha pela quebra inserida
         assert e['caixa_mestre'] == INSERIDA
         assert e['escala'] == pytest.approx(_escala_da_caixa(e), abs=1e-4)
@@ -119,10 +126,11 @@ def test_quebra_na_familia_da_galeria():
     fs = _derivar(_b([q1._quebra(manter=(0,), inseridas=(3,))]))
     for fid in VERTICAL:
         d = fs[fid]
-        assert d['situacao'] == 'derivado' and d['caminho'] == 'galeria', d['devolucao']
+        # decisao 199: a galeria so no arquivo de edicao (o v2); o v1 copia a versao dele
+        assert d['situacao'] == 'derivado' and d['caminho'] == ('galeria' if fid == 'v2' else 'familia'), d['devolucao']
         e = _el(d)
         assert e['quebras']['familia'] == [{'layer_id': 10, 'aprovadas': [0], 'inseridas': [3], 'caixa_doc': INSERIDA}]
-        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == 'da'
+        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == _origem(fid)
         assert e['caixa_mestre'] == INSERIDA
         assert e['escala'] == pytest.approx(_escala_da_caixa(e), abs=1e-4)
         c = e['caixa']
@@ -140,10 +148,10 @@ def test_edicao_de_outro_elemento_mantem_a_quebra_e_a_escala_do_texto():
         assert d['situacao'] == 'derivado', d['devolucao']
         e = _el(d)
         assert e['quebras']['familia'][0]['caixa_doc'] == JUNTADA
-        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == 'da'
+        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == _origem(fid)
         assert e['caixa_mestre'] == JUNTADA
         assert e['escala'] == pytest.approx(_escala_da_caixa(e), abs=1e-4)
-        assert _el(d, 'el30')['origem_geometria'] == 'da'
+        assert _el(d, 'el30')['origem_geometria'] == _origem(fid)
 
 
 # ------------------------------------------------------------------ texto editado com a quebra da familia (A7)
@@ -156,7 +164,7 @@ def test_texto_editado_leva_a_quebra_da_familia_sem_medida():
         e = _el(d)
         assert e['texto_editado'] == 'AH VOX OX'
         assert e['quebras'] == {'familia': [{'layer_id': 10, 'aprovadas': [], 'inseridas': [2]}]}
-        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == 'da'
+        assert e['quebras_origem'] == 'da' and e['origem_geometria'] == _origem(fid)
         assert 'quebras_camada' not in e
     # sem quebra da familia, o texto editado leva so as quebras dele, como no A7
     fs = _derivar(_b([], edicoes_h=editado), medidas=None)
@@ -172,9 +180,14 @@ def test_sem_medida_o_formato_volta_ao_da():
         assert fs[fid]['devolucao']['motivo'] == 'quebra_sem_medida'
     fs = _derivar(_b([q1._quebra()]), medidas=None)
     for fid in VERTICAL:
-        # a galeria sem a medida da quebra nao sai: o formato fica devolvido, com o registro
+        # a galeria sem a medida da quebra nao sai: o formato fica devolvido, com o registro. Decisao 199: a galeria
+        # e so do arquivo de edicao (o v2); o v1, sem o que copiar, grava o motivo vindo dele
         assert fs[fid]['situacao'] == 'devolvido'
-        assert any(r['codigo'] == 'quebra_sem_medida' for r in fs[fid]['registros'])
+        if fid == 'v2':
+            assert any(r['codigo'] == 'quebra_sem_medida' for r in fs[fid]['registros'])
+        else:
+            assert [r['medidas'] for r in fs[fid]['registros'] if r['codigo'] == 'familia_sem_arquivo_de_edicao'] == [
+                {'arquivo_de_edicao': 'v2', 'motivo': 'quebra_sem_medida'}]
 
 
 def test_quebra_da_familia_vence_a_da_faixa():
@@ -195,7 +208,7 @@ def test_quebra_proposta_pelo_motor_leva_a_origem_dela():
     fs = _derivar(_b([_h(origem='proposta', aprovada=True)]))
     for fid in HORIZONTAL:
         e = _el(fs[fid])
-        assert e['quebras_origem'] == 'proposta' and e['origem_geometria'] == 'da'
+        assert e['quebras_origem'] == 'proposta' and e['origem_geometria'] == _origem(fid)
 
 
 # ------------------------------------------------------------------ determinismo

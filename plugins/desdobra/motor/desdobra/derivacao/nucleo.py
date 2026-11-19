@@ -668,17 +668,23 @@ def _fechar(ctx, saida, kv, m, formato, areas, caixas, escalas, base, regras=Non
 
 
 def contexto(laudo, briefing, *, ds=None, job_id=None, pasta=None, briefing_sha256=None, portao_fontes='passa',
-             medidas_quebras=None, da_tela=False, em_memoria=False):
+             medidas_quebras=None, da_tela=False, em_memoria=False, silhuetas=None):
     """Contexto da derivacao em memoria (o mesmo que preparar monta do job; os testes e a medicao usam direto).
     medidas_quebras: a medida das linhas juntadas (derivacao.medida_quebras.medir); sem ela, o formato com quebra
     aprovada volta ao DA. da_tela: o briefing e o da previa da tela (preparar com partida, desdobra.tela.estado), e a
     validacao confere contra ele (_esperado). em_memoria: o briefing ainda nao foi gravado (o salvar seletivo), e a
-    validacao confere contra ele tambem."""
+    validacao confere contra ele tambem. silhuetas: {layer_id: silhueta} das bases (decisao 199, 3;
+    desdobra.derivacao.silhueta); sem elas, as que o preparo gravou no job (ds/silhuetas), ou nenhuma, e a forma e
+    conferida pela caixa."""
+    from desdobra.derivacao import silhueta as mod_silhueta
+    if silhuetas is None:
+        silhuetas = mod_silhueta.carregar(pasta, laudo)
     resolvidas, _e, info = mb.resolver(laudo, briefing)
     return {'pasta': Path(pasta) if pasta else None, 'estado': {'job_id': job_id or briefing['job_id']},
             'briefing': briefing, 'laudo': laudo, 'ds': ds, 'resolvidas': resolvidas, 'info': info,
             'briefing_sha256': briefing_sha256 or '0' * 64, 'portao_fontes': portao_fontes,  # numero-neutro: hash vazio so em memoria
-            'medidas_quebras': dict(medidas_quebras or {}), 'da_tela': bool(da_tela), 'em_memoria': bool(em_memoria)}
+            'medidas_quebras': dict(medidas_quebras or {}), 'da_tela': bool(da_tela), 'em_memoria': bool(em_memoria),
+            'silhuetas': dict(silhuetas)}
 
 
 def derivar_em_memoria(ctx, *, specs=None, arquivo_specs=None, params=None, so=None, composicoes=True):

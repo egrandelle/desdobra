@@ -48,12 +48,14 @@ def _tela(conteudo, job, largura, altura):
     from desdobra.tela import servidor as ts
     tgr._limpar_rascunho(job)
     gid = next(g for g, f in conteudo['familias'].items() if 'h1' in f['formatos'])
+    # decisao 199: a pagina abre no arquivo de edicao da familia (o maior), o unico palco em que o DA edita
+    ref = next(g['arquivo_de_edicao'] for o in conteudo['estado']['orientacoes'] for g in o['grupos'] if g['id'] == gid)
     navegador.apontar_playwright()
     with ts.ServidorTela(conteudo, pasta=job, modo_teste=True,
                          atos=ta.atos_do_job(job, conteudo=conteudo)) as srv, sync_playwright() as pw:
         nav, pg = tp._pagina_da_tela(pw, srv, largura, altura)
         try:
-            tg._abrir(pg, conteudo['estado'], 'h1')
+            tg._abrir(pg, conteudo['estado'], ref)
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
             yield srv, pg, gid
         finally:

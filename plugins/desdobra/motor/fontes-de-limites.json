@@ -676,6 +676,18 @@
    "nota": "Com recorte em alfa, o limiar no maior componente conexo da a caixa certa do sujeito. Com o sujeito fundido a foto, o motor pede a caixa ao DA."
   },
   {
+   "id": "ds.silhueta_celulas",
+   "valor": 256,
+   "unidade": "celulas da grade da silhueta de uma base no lado longo do asset",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "199 (3), a forma e medida pelo desenho dela, com a diagonal"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Resolucao da silhueta de cada base (a tinta da forma que sangra) que o preparo grava a partir do alfa do asset do laudo, no limiar ds.sujeito_limiar_alfa (etapa E3 do desenho da familia; a derivacao le so o JSON). A conferencia das relacoes da familia (livre da tinta, dentro da tinta) usa esta grade. Origem: INFERENCIA. No caso de 18/11 a folga entre a assinatura e a diagonal no 1080x1920 fica entre 5 e 18 px; 256 celulas num lado de 1920 px dao 7,5 px por celula. A calibrar com o KV sintetico da diagonal e o caso real; a grade das previas de 384 px do laudo foi recusada por ser grossa demais. Medida da E3 (testes/sinteticos/kv_diagonal.py): o azul de 1180 x 2000 px vira uma grade de 152 x 256 (7,8 px por celula; a celula com ao menos metade dos pixels no limiar conta como tinta), e a folga da assinatura medida pela grade cai para 1,0 px, contra 5,3 px da diagonal verdadeira (o erro chega a meia celula). Mesmo assim a copia do 300x600 sai igual ao aprovado, sem ajuste."
+  },
+  {
    "id": "ds.ampliacao_raster_max",
    "valor": null,
    "unidade": "vezes o tamanho original do raster",
@@ -1469,6 +1481,30 @@
    "situacao": "a_calibrar",
    "efeito": "registra",
    "nota": "Entre um elemento de conteudo e o vizinho de conteudo mais perto num eixo (sem sobreposicao na mestre), a distancia no formato e pelo menos isto da distancia da mestre na escala media dos dois (obrigatoria; a distancia inteira e forte). No Globo 1080x1920, o cta e a linha de logos tinham ficado encostados (-1 px, eram 69 na mestre). Proposta: 0,5."
+  },
+  {
+   "id": "derivacao.familia_ajuste_escala_min",
+   "valor": 0.85,
+   "unidade": "fracao do tamanho copiado do arquivo de edicao (a escala unica s da familia), no bloco que a escada diminui",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "199 (3), o menor ajuste: diminuir o bloco ate o piso, a calibrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Piso do passo F3 da escada do menor ajuste (desdobra.derivacao.familia.ajustar_minimo): o bloco diminui em volta da ancora ate isto do tamanho copiado, e nunca abaixo do piso da 133 (derivacao.escala_conteudo_min_da_regra). Abaixo disto o arquivo pede ajuste com o valor. Origem: o caso do Duda de 18/11 (familia vertical 1080x1920 e 300x600): na ponta larga da faixa (1080x1600), a sonda do desenho 1 pedia 0,854 para a assinatura caber no branco, e a reducao que o Duda esperava no 300x600 era 46/53 = 0,87. Sem medicao em pecas humanas."
+  },
+  {
+   "id": "derivacao.familia_crescimento_max",
+   "valor": 1.5,
+   "unidade": "vezes o tamanho copiado do arquivo de edicao (a escala unica s da familia), na forma que sangra",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "199 (2), a base que sangra cresce so o necessario para continuar sangrando; limite escolhido pelo Duda em 18/11, a calibrar"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A forma que sangra (papel base) que precisa crescer mais que isto, em volta do ponto fixo, para continuar sangrando deixa o arquivo copiado em pede_ajuste, com a frase e o valor (desdobra.derivacao.familia.ajustar_minimo). O fundo puro nunca entra: ele cresce o quanto precisar para cobrir o arquivo. Origem: o caso do Duda de 18/11 (testes/familia_geometria.caso_diagonal). No aprovado, o maior crescimento da faixa de 0,3 e o do azul no 1080x1600, 1,42, e o da faixa verde no 900x1870, 1,19; com a assinatura sobre o azul (o hospede do azul passa a ser o texto, longe da diagonal), o azul cresce 1,8 no 1080x1600. Resposta do Duda: 1,5. Sem medicao em pecas humanas."
   },
   {
    "id": "entrega.peso_reprova_acima_da_leitura_decimal",

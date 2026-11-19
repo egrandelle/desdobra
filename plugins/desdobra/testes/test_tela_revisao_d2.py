@@ -196,10 +196,16 @@ def test_grupo_que_passa_um_px_da_borda_fica_inteiro():
     antes = tsg._derivar([])
     depois = tsg._derivar(eds)
     for fid, w, h in tsg.HORIZONTAIS:
-        esperado = ed.aplicar(tsg._caixas(antes[fid]), eds, w, h)[0]
         cx = tsg._caixas(depois[fid])
-        for k in tsg.GRUPO:
-            assert cx[k] == pytest.approx(esperado[k], abs=TOL), (fid, k, cx[k], esperado[k])
+        if fid == tsg.REF:
+            esperado = ed.aplicar(tsg._caixas(antes[fid]), eds, w, h)[0]
+            for k in tsg.GRUPO:
+                assert cx[k] == pytest.approx(esperado[k], abs=TOL), (fid, k, cx[k], esperado[k])
+        else:
+            # decisao 199: o outro arquivo copia o arquivo de edicao, com os produtos juntos na escala s; o circulo,
+            # que sangrava na base, cresce em volta do centro dele so o necessario para continuar sangrando
+            tsg._junto_como_no_arquivo_de_edicao(depois[tsg.REF], depois[fid], tsg.PRODUTOS)
+            assert cx[tsg.C][3] >= h - TOL, (fid, cx[tsg.C])
         assert len({round(cx[k][3], 1) for k in tsg.PRODUTOS}) == 1, (fid, [cx[k] for k in tsg.PRODUTOS])
 
 
@@ -433,11 +439,14 @@ def test_barra_nao_muda_de_altura_com_a_frase(job_escala, conteudo_escala, janel
         x, y = tgr._ponto(pg, grupo[0])
         pg.mouse.click(x, y)
         sem_frase = pg.evaluate(JS_MEDIDAS)
-        _tamanho(pg, '120')
+        # decisao 199: a pagina abre no arquivo de edicao (o h3). Nele, a garrafa a 120% sai de dentro do circulo, e a
+        # decisao do DA (a relacao do KV desfeita, 199, 3) aparece fora da barra e muda a altura do palco; este teste
+        # mede so a frase do Tamanho, entao os dois tamanhos ficam dentro do circulo (110% e 105%)
+        _tamanho(pg, '110')
         _esperar_edicoes(pg, job, gid, 1)
         pg.wait_for_timeout(300)  # numero-neutro: ms, o palco se ajusta
         uma = pg.evaluate(JS_MEDIDAS)
-        _tamanho(pg, '110')
+        _tamanho(pg, '105')
         _esperar_edicoes(pg, job, gid, 2)
         pg.wait_for_timeout(300)  # numero-neutro: ms, o palco se ajusta
         duas = pg.evaluate(JS_MEDIDAS)

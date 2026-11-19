@@ -252,7 +252,10 @@ def test_derivacao_poe_o_bloco_de_texto_na_margem_e_no_meio_da_altura_em_cada_me
                 assert cd[k][2] - cd[k][0] == pytest.approx(ca[k][2] - ca[k][0], abs=TOL), (fid, k)
                 assert cd[k][3] - cd[k][1] == pytest.approx(ca[k][3] - ca[k][1], abs=TOL), (fid, k)
             origem = {e['id']: e['origem_geometria'] for e in d['elementos']}
-            assert all(origem[k] == 'da' for k in BLOCO), origem
+            # decisao 199: o arquivo de edicao (o de maior area da familia) leva a edicao do DA; o outro copia o
+            # layout aprovado nele, com a origem 'familia'
+            ref = max(fs, key=lambda x: x[1] * x[2])[0]
+            assert all(origem[k] == ('da' if fid == ref else 'familia') for k in BLOCO), origem
 
 
 def test_layout_do_membro_deixa_o_bloco_na_margem_e_o_resto_parado():
@@ -309,10 +312,10 @@ def test_previa_alinha_o_grupo_em_cada_arquivo_com_a_margem_dele(job_grupo, cont
         cs = {e['id']: [float(x) for x in e['caixa']] for e in m['palco']['elementos']}
         u = _uniao([cs[k] for k in grupo])
         assert abs(u[2] - q[2]) <= TOL and abs((u[1] + u[3]) / 2.0 - (q[1] + q[3]) / 2.0) <= TOL, (m['formato'], u, q)
-    # a previa diz onde cada alinhamento ficou, para a linha no palco
+    # a previa diz onde cada alinhamento ficou, para a linha no palco. Decisao 199: so no arquivo de edicao, o unico
+    # palco em que o DA edita; os outros arquivos copiam o alinhamento pela ancora (o teste de cima)
     feitos = [(x['formato'], x['alvo']) for x in r['no_quadro']]
-    assert sorted(feitos) == sorted((m['formato'], a) for m in r['membros']
-                                    for a in ('margem_direita', 'centro_vertical'))
+    assert sorted(feitos) == sorted((r['arquivo_de_edicao'], a) for a in ('margem_direita', 'centro_vertical'))
 
 
 # ------------------------------------------------------------------ a tela no Chromium sem janela (modo de teste)
@@ -329,8 +332,10 @@ def test_alinhar_na_tela_do_chromium(job_grupo, conteudo_grupo):  # noqa: F811
     tgr._limpar_rascunho(job)
     estado = conteudo_grupo['estado']
     gid = _familia(conteudo_grupo)
-    titulo = next(e['id'] for e in conteudo_grupo['editar']({'familia': gid, 'versao': None, 'edicoes': []})
-                  ['membros'][0]['palco']['elementos'] if e['funcao'] == 'titulo')
+    r0 = conteudo_grupo['editar']({'familia': gid, 'versao': None, 'edicoes': []})
+    titulo = next(e['id'] for e in r0['membros'][0]['palco']['elementos'] if e['funcao'] == 'titulo')
+    # decisao 199: a tela abre no arquivo de edicao da familia, o unico palco em que o DA edita
+    ref = r0['arquivo_de_edicao']
     salvo = '() => (document.documentElement.dataset.rascunho === "salvo" && ' \
             'document.documentElement.dataset.previa === "pronta") ? "1" : ""'
     navegador.apontar_playwright()
@@ -338,9 +343,9 @@ def test_alinhar_na_tela_do_chromium(job_grupo, conteudo_grupo):  # noqa: F811
                          atos=ta.atos_do_job(job, conteudo=conteudo_grupo)) as srv, sync_playwright() as pw:
         nav, pg = tp._pagina_da_tela(pw, srv, 2048, 720)  # numero-neutro: a tela do Duda (decisao 157)
         try:
-            tg._abrir(pg, estado, 'h1')
+            tg._abrir(pg, estado, ref)
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
-            botoes = ['ed-al-esquerda', 'ed-al-centro', 'ed-al-direita', 'ed-al-topo', 'ed-al-meio', 'ed-al-base']
+            botoes =['ed-al-esquerda', 'ed-al-centro', 'ed-al-direita', 'ed-al-topo', 'ed-al-meio', 'ed-al-base']
             # sem nada escolhido, os botoes de alinhar ficam desligados; a area segura so liga com area segura
             assert all(pg.evaluate('i => document.getElementById(i).disabled', b) for b in botoes)
             assert pg.evaluate('() => document.getElementById("ed-ref-margem").getAttribute("aria-pressed")') == 'true'

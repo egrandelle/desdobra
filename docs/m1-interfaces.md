@@ -1825,3 +1825,110 @@ Dez achados; oito corrigidos, dois só em parte (ver o fim). Tudo em jobs sinté
 Testes novos em `test_tela_revisao_096.py`: a regra de antes só na família sem texto editado; o job da 0.9.5 com devolvido (`motor_versao` 0.9.5) que volta a pedir salvar e deriva no clique; a derivação que quebra no salvar, com o botão ligado e o aviso na página; o membro devolvido que mantém "Pede ajuste" na página; `medida_da_chave` com a chave do CSV sem circuito; frases concretas do aviso aceito; no Chromium do passo 1, a janela sem os formatos na frase e o giro em lote. `test_tela_revisao_094`: o teste do preparo que parava na borda virou o teste de que o bloqueio saiu.
 
 Ficou em parte: o giro em lote não cobre o formato em que a folha fala de giro (de propósito: o veículo pede o giro); o membro devolvido não desliga "Confirmar família" (a tela diz que ele fica sem layout, e os outros membros seguem).
+
+## 0.10.0, a família segue o arquivo de edição
+
+Caso: o job real da família vertical (1080x1920, 300x600 e os girados 1920x1080 a 270 e 640x360 a 90), relatado pelo Duda em 18/11 (o job não foi aberto; tudo reproduzido com a geometria dele em jobs sintéticos, `testes/sinteticos/kv_diagonal.py`). O DA editou só o 1080x1920, e o 300x600 saiu com a assinatura sobre o azul. Decisão 199 (aprovada em 18/11, com as respostas do Duda: o menor ajuste é o que menos aparece; o arquivo de edição é sempre o maior, trocável só sem edição; a família sem edição também segue o arquivo de edição, e a confirmada antes cai uma vez).
+
+Causa raiz: cada arquivo da família partia da própria galeria ou da própria proposta, e a mesma edição, levada em proporção a cada arquivo, dava resultados diferentes (a assinatura com 53% da largura no 300x600 e 46% no 1080x1920). `galeria._conferir` pulava o par conteúdo e forma que já se sobrepunha na mestre, e a assinatura sobre o azul nunca era conferida.
+
+Motor (etapas E1 a E4):
+
+- `derivacao/familia.py` (novo, sem I/O): `arquivo_de_edicao(membros, gravado)`, `extrair_modelo`, `transferir` (escala única `s`, âncoras por bloco, a forma que sangra cresce em volta do ponto da borda mais perto do conteúdo), a proteção de fundo (`ancora_desfeita_pelo_fundo`), `relacoes` com a silhueta e `ajustar_minimo` (F1 andar o bloco, F2 recuar a forma, F3 diminuir o bloco até `derivacao.familia_ajuste_escala_min`; custo pelo maior deslocamento visível sobre o lado menor; empate na ordem F1, F2, F3).
+- Silhueta no preparo isolado (`ds/silhueta.py`, `ds/silhueta_filho.py`, esquema `silhueta-1.json`), lida da grade do alfa do asset que o laudo grava; a base sem asset é conferida pela caixa, com o aviso `forma_conferida_pela_caixa`. Nunca chama `smart_object.open()` nem lê linkado.
+- `derivacao/proposta.py`: `layout_da_familia` (o arquivo de edição por `layout_do_membro`, os outros por `_copia`: `transferir`, `ajustar_minimo` e `conferir_edicao`), com `situacao` (`igual`, `ajustado` ou `pede_ajuste`) e `frases`; `aplicar` passa por ela; `_derivacao` grava `caminho` e `origem_geometria` `familia` e o registro `transferencia`. A galeria só no arquivo de edição. A aprovação soberana (198) não muda.
+- `tela/edicao.py`: `Editor.previa` chama `layout_da_familia`; cada membro leva `arquivo_de_edicao`, `situacao`, `frases` e `ajustes`; `conferir` recusa o pedido cujo campo `arquivo` não é o arquivo de edição.
+
+Tela e esquema (etapas E5 e E6):
+
+- `schemas/rascunho-tela-1.json`: a família ganha `arquivo_de_edicao` e `separados` (só o servidor grava; o que a página manda sai em `rascunho._familias_com_a_confirmacao`, `CAMPOS_DO_SERVIDOR`), e a `confirmacao` ganha `arquivo_de_edicao` e `layouts` ({formato: sha256 do palco}).
+- `schemas/briefing-1.json`: `composicoes[]` ganha `arquivo_de_edicao` e `separado_de` (opcionais; sem eles, a derivação usa a regra).
+- `schemas/derivacao-1.json`: `caminho` e `origem_geometria` aceitam `familia`; o registro `transferencia` tem as medidas conferidas (`arquivo_de_edicao`, `s`, `crescimento`, `ancoras`, `ajustes` com `frase`, `relacoes_quebradas`, `situacao`).
+- `tela/rascunho.py`:
+  - `_com_a_estrutura`: na primeira gravação da família, o servidor grava o arquivo de edição que a tela mostra (a regra); o gravado fica enquanto o arquivo está na família. É a migração do rascunho de antes da 0.10.0.
+  - `trocar_arquivo` (só sem edição nem quebra), `separar` (nunca o arquivo de edição; a família de onde ele sai guarda `separados` e passa a ter os formatos que ficam) e `juntar`; cada um tira a confirmação. Comandos novos em `humano.ATOS_DA_TELA`: `familia trocar arquivo`, `familia separar`, `familia juntar`.
+  - `confirmar_familia(..., arquivo_de_edicao, layouts)`; `confirmada_para` recusa a confirmação sem `arquivo_de_edicao` quando confere as peças (`confirmacao_da_0100`): a de antes da 0.10.0 cai uma vez, também sem edição, e as regras de antes (`_vale_pela_regra_de_antes`) deixam de salvá-la. `confirmada_de_antes(f)` diz à tela por que ela caiu. `estrutura(pasta)` lê os gravados.
+- `tela/estado.py`:
+  - `REGRA_DA_PREVIA` passa a `arquivo_de_edicao`; `impressao_das_pecas(..., arquivo)` leva o arquivo de edição (trocar o arquivo muda a impressão).
+  - `abas(..., arquivos, separados)`: o arquivo de edição de cada grupo é o gravado enquanto estiver nele, senão a regra; o arquivo separado vira um grupo dele (`_separar_grupos`), logo depois do grupo de onde saiu, com `separado_de`.
+  - `montar`: lê a estrutura do rascunho, passa o arquivo de edição ao `Editor` (`arquivos`), à galeria e a `faltam`; o grupo leva `reconfirmar` (`RECONFIRMAR_0100`) na família confirmada antes da 0.10.0; `conteudo['familias']` leva `arquivo_de_edicao`, `separados` e `separado_de`; o `atualizar` monta tudo de novo quando o arquivo de edição efetivo ou os separados mudam (um ato da estrutura), e não na primeira gravação, que grava o arquivo que a tela já mostra.
+- `tela/edicao.py`: `Editor(..., arquivos)`; `previa_gravada(editar, gid, f)` (a prévia com a versão, as edições e as quebras, a mesma da página); `hash_dos_layouts(previa)`; os `ajustes` e a falha `relacao_quebrada` da cópia levam os `elementos` (o contorno do "Ver grande").
+- `tela/atos.py`: o ato `familia` tem o título "Conferir os N arquivos" (o título de um ato pode ser função dos dados; `servidor._pedir_ato`) e grava o arquivo de edição e os hashes; atos novos `familia_arquivo`, `familia_separar` e `familia_juntar` (`_atos_da_estrutura`), com a janela do servidor e o Disparo da tela.
+- `briefing/salvar.py`: `composicoes[]` leva `arquivo_de_edicao` e `separado_de`; `pendencias` refaz a prévia com as quebras (`previa_gravada`) e recusa a família cujo layout de algum arquivo não é o confirmado (`layout_diferente_do_confirmado`, com o motivo em `atos.MOTIVOS_DO_SALVAR`).
+- `tela.html`, `tela.js` e `tela.css`:
+  - As fichas "Arquivo desta família" saíram (`fichaDeFormato`, `#fichas`). `grupo()` abre sempre o arquivo de edição; o cabeçalho (`#cabecalho-familia`) diz "Você edita o X. Os outros N arquivos seguem este layout.", com a etiqueta do giro e, na família sem edição, "Trocar arquivo de edição" (um botão de ato por arquivo).
+  - `novaEdicao` (e por ela `moverPor` e `escalarPor`) só no arquivo de edição; o pedido da prévia leva `arquivo`.
+  - A faixa "Como fica em cada arquivo" (`montarMembros`): o arquivo de edição primeiro (`.membro-seu`), numa coluna à direita do palco na janela de 1500 px ou mais (embaixo dele na janela estreita, e ao lado quando o controle da quebra abre), cada arquivo com cerca de 200 px de altura (100 px na janela de até 800 px de altura com a faixa embaixo, 132 px na coluna), a etiqueta "gira 90° na entrega" e o selo em palavras (`seloDaCopia`: "Igual ao seu", "Ajustado pelo desdobra: <frase>", "Pede ajuste: <frase com o valor>"; na família confirmada, "Aprovado por você"); o aviso do desdobra (a forma que passa da borda) fica embaixo, sem nada calado.
+  - O clique abre "Ver grande" (`#ver-grande`, só leitura), com "Mostrar o seu por cima" (o arquivo de edição por cima, na escala do arquivo, centrado), o contorno tracejado do que foi ajustado ou pede ajuste, as frases e os atos "Separar em família própria" e "Trocar o arquivo de edição para este" (só sem edição). A faixa da borda do texto também abre o "Ver grande".
+  - "Confirmar família" abre "Conferir os N arquivos" (`extraDaFamilia` na janela do servidor): o contador, o filtro (Todos, Pedem ajuste, Ajustados, Iguais) e a lista, primeiro os que pedem ajuste, depois os ajustados e o arquivo de edição, e os iguais recolhidos.
+  - A frase da família confirmada antes da 0.10.0 aparece acima do palco (`mostrarAvisoDaFamilia` com `reconfirmar`); depois dos atos da estrutura, a página lê o rascunho e as famílias de novo e volta à família do ato.
+- Versão 0.10.0 em `plugin.json` e `motor_versao` das biblioteca-specs.
+
+Testes:
+
+- E1 a E4: `test_familia_transferencia.py`, `test_familia_ajuste.py`, `test_silhueta.py` e `test_familia_diagonal.py` (o caso de aceitação: o 300x600 com a assinatura em 0,463 W, livre do azul com folga de pelo menos `folga_ref × s`, sem ajuste, e prévia igual ao Salvar com 0,00 px).
+- Novo `test_tela_familia_0100.py` (7 testes, 2 no Chromium): o arquivo de edição estável e só do servidor; a rota da prévia que recusa outro arquivo; a confirmação com o arquivo e os hashes, a de antes que cai uma vez com a frase e volta depois de confirmar de novo; o briefing com `arquivo_de_edicao` e a recusa do layout diferente; trocar só sem edição, separar e juntar pelas rotas; no Chromium, o palco só do arquivo de edição, o cabeçalho, a faixa com os selos, o "Ver grande" que não edita nem grava, e "Conferir os N arquivos" com as exceções primeiro e o filtro. Com `DESDOBRA_FOTOS_0100` apontando para uma pasta, o teste guarda as fotos da tela.
+- Ajustados, um por um:
+  - as três listas de `humano.ATOS_DA_TELA` (`test_marca_registrar`, `test_tela_ato_aprovar`, `test_tela_ato_render`);
+  - `test_tela_palco._abrir_formato` e `test_tela_galeria._abrir`: sem a ficha, abrem a família e conferem que o palco é o arquivo de edição que o cabeçalho diz; `test_tela_galeria._trocar_para` troca o arquivo de edição antes de abrir a página, para os testes que editam um formato que não é o maior (`test_tela_piso_do_da`, `test_tela_escala`, `test_tela_revisao_094` no 970x250);
+  - as confirmações feitas direto no rascunho (`test_tela_salvar`, `test_quebra_na_tela`, `e2e/test_editor_mestre`) levam o arquivo de edição, como o ato da janela;
+  - `test_tela_alinhamento_so_o_mexido` e `test_tela_revisao_096`: a confirmação sem o arquivo de edição cai; as regras de antes seguem conferidas na que o leva;
+  - `test_tela_edicao` (a frase da janela com a versão), `test_tela_escrita` e `test_tela_revisao_096` (a galeria e o palco do arquivo de edição);
+  - `test_quebra_na_tela`, o palco com o controle da quebra: a família de um arquivo só não tem a faixa, e o palco perde só a altura do controle; `test_tela_revisao_094`, o 970x250 de um arquivo só, numa janela mais baixa para manter a exibição do relato.
+- Na janela de 1500 px ou mais, a faixa fica numa coluna à direita do palco, e o editor do texto aberto toma o lugar dela: o palco guarda a altura (2048 x 720, decisão 157). Na janela baixa e estreita (1280 x 800), a faixa fica embaixo com prévias de 100 px, e "Como editar" abre preso ao alto da janela, com rolagem.
+
+Riscos declarados:
+
+- Toda família confirmada antes da 0.10.0 pede confirmação de novo, uma vez, também a sem edição (resposta 3 do Duda).
+- O arquivo separado parte da proposta ou da galeria dele mesmo, e não da cópia do layout aprovado da família de onde saiu (a decisão 199, 3, pede a cópia). Fazer isso pede a prévia de uma família depender das edições de outra, na tela e na derivação.
+- O hash do layout de cada arquivo compara o palco da prévia em JSON: qualquer mudança do motor que mexa no palco pede a confirmação de novo no "Salvar e seguir".
+
+### Revisão adversarial da 0.10.0
+
+Dezessete achados; quinze corrigidos e dois só em parte (ver o fim). Tudo em jobs sintéticos (`kv_diagonal` e os de `test_tela_salvar`); nenhum job real foi aberto.
+
+Motor da cópia (`derivacao/familia.py`, `derivacao/proposta.py`):
+
+- F3 composto (média). Dois F3 seguidos no mesmo bloco respeitavam o piso cada um sobre o tamanho atual, e o produto ficava abaixo de `derivacao.familia_ajuste_escala_min` e do piso da 133. `transferir` grava `reducao` (o produto dos F3 sobre o tamanho copiado); `_candidatos` limita o F3 por `max(escala_min, pisos[m]) / reducao[m]` em cada elemento do bloco.
+- `s` acima de 1 (média). A área segura do arquivo de edição aperta o quadro dele, e o membro sem área segura dava `s = 1,11`. `transferir`: `s = min(..., 1.0)`, e a sobra fica nos eixos (199, 1: nada amplia além do que o DA viu).
+- Âncora do grupo com a base que sangra (baixa). O grupo assinatura + faixa verde levava a âncora ao centro (a caixa da faixa tem a altura inteira). `extrair_modelo`: cada bloco guarda `caixa_ancora`, a união do que não sangra; `_deslocamento` usa ela. A faixa segue o conteúdo e cresce só para continuar sangrando.
+- Frase "A forma passa 2209,2 px da base" (baixa) e frase ambígua da base (baixa). `_base_passa_da_borda` diz a borda que a forma passa a tocar e o motivo, sem valor: "A forma chega até a borda de baixo neste arquivo e fica cortada ali, para o desenho ficar no mesmo lugar em relação à assinatura. No seu arquivo, ela não chegava a essa borda." O valor continua nas medidas.
+- Base sem silhueta (alta). Duas partes:
+  - `job/fases.py`: a fase `ds` ganha a externa `externa:preparo-silhueta` (`ds.silhueta.hash_do_preparo`: o esquema da silhueta e os limites `ds.silhueta_celulas` e `ds.sujeito_limiar_alfa`). O job preparado na 0.9.6 fica desatualizado uma vez, e o job próxima refaz o design system com as silhuetas.
+  - `extrair_modelo` guarda `sem_desenho`: a base conferida pela caixa com conteúdo sobre a caixa dela no aprovado. `ajustar_minimo` põe uma relação `sem_desenho` em `relacoes_quebradas` (valor 0 px, frase "O desdobra não tem o desenho da forma e não conseguiu conferir se a assinatura fica no mesmo fundo do seu arquivo. Confira este arquivo antes de confirmar."). A cópia sai "Pede ajuste" e nunca "Igual ao seu".
+- Irmão maior que derruba o aprovado (média). `proposta.arquivo_de_edicao(formatos, gravado, conhecidos)`: sem escolha gravada, a regra vale só entre os formatos que a família já tinha. `aplicar` usa `_conhecidos_gravados` (as derivações gravadas da família que não são cópia, caminho diferente de `familia`); `estado.abas` usa `familias_conhecidas`; `briefing.salvar._com_a_estrutura` usa os formatos gravados da família. `test_cadeia_por_formato` voltou ao irmão 1280x640.
+- `_copia` grava `levado`: a caixa de cada conteúdo do arquivo de edição levada ao arquivo pela cópia, antes da escada. A prévia manda em `seu_levado`.
+
+Tela e servidor:
+
+- Salvar recusado sem saída (alta). `atos._ato_de_salvar`: a recusa `layout_diferente_do_confirmado` tira a confirmação da família (`rascunho.derrubar_por_layout`), que guarda os arquivos em `layout_mudou` (campo novo do `rascunho-tela/1`, só do servidor, sai na confirmação). A recusa diz o arquivo e a família pela medida ("O layout do 300x600, na família do 1080x1920, ficou diferente do que você confirmou..."). `salvar.pendencias` leva `formatos`. `tela.js`: depois da recusa do salvar, a página lê o rascunho de novo; "Confirmar família" volta ligado, o rodapé sai de "Tudo confirmado", e a frase acima do palco diz o arquivo (`avisoDoLayoutMudado`).
+- Arquivo de edição que sai da família editada (média). `rascunho._com_a_estrutura` grava `arquivo_trocado` {de, para} quando troca o gravado numa família com edição ou quebra (campo novo, só do servidor, sai na confirmação e no "Trocar"). `estado.arquivo_trocado` e `frase_do_arquivo_trocado` levam a frase ao `reconfirmar` do grupo: "O arquivo em que você editava esta família, o 1080x1920, saiu dela. As suas edições passam a valer no 1080x1600, o maior arquivo que ficou. Confira a família e confirme de novo."
+- Nome do arquivo pelo id interno (média). `estado.nomes_dos_arquivos`: a medida, como o passo 5 (`_nomes_dos_formatos`), e o giro ("1920x1080 girado 270 graus"). Cada formato do grupo leva `nome`; as frases das famílias (`aviso_da_familia`, `aviso_de_familia_nova`) e as janelas da confirmação, do trocar, do separar e do juntar usam o nome. `tela.js`: `nomeDoArquivo` e `medidaDoArquivo` no cabeçalho, na faixa, no "Ver grande", na lista do "Trocar" e no `nome-palco`; o id fica só em `data-formato`.
+- Giro com nomes diferentes (baixa). `etiquetaDoGiro` diz "girado 270 graus na entrega", a frase do passo 5; o "Ver grande" do girado diz a medida em pé ("Aqui ele aparece em pé, 1080x1920, como o público vê.").
+- "Mostrar o seu por cima" contra o selo (média). Desenha o contorno tracejado de cada elemento do arquivo de edição levado pela cópia (`seu_levado`): no arquivo igual, o contorno cai em cima do elemento; no ajustado, mostra de onde o desdobra o tirou. O `title` do botão diz isso.
+- Palco pequeno abaixo de 1500 px (média). A faixa vira coluna (classe `faixa-coluna`, posta por `marcarFaixa`) também na janela deitada com o arquivo de edição em pé ou quadrado (até 1,2 de largura sobre altura), com 220 px abaixo de 1500. O CSS da coluna saiu da media query para a classe. A janela muda de forma: a faixa se monta de novo.
+- Lista do "Trocar" que passava da janela (baixa). `.trocar-lista` com `width: min(340px, 100vw - 32px)`, as opções quebram linha.
+- Aviso cortado embaixo do selo (baixa). `.selo-nota` sem `line-clamp`: o aviso aparece inteiro.
+- Base escondida depois da primeira edição na janela de 720 px (baixa). Na família de dois arquivos ou mais, a linha acima do palco fica à vista desde a abertura ("Você edita este arquivo, e os outros arquivos da família seguem este layout."): a linha "Com as suas edições" toma o lugar dela, e o palco, que guarda a exibição de antes da primeira edição (0.9.5), não perde a base.
+- Trocar com a versão da galeria escolhida (baixa). A janela do "Trocar" diz que a versão escolhida na galeria do arquivo atual deixa de valer, porque a galeria é do arquivo de edição.
+
+Testes:
+
+- `test_familia_ajuste`: dois F3 no mesmo bloco nunca passam do piso (escala mínima e piso da 133).
+- `test_familia_transferencia`: `s` nunca passa de 1; o grupo com a faixa que sangra não muda a âncora da assinatura.
+- `test_silhueta`: o job de antes da 0.10.0 refaz a fase `ds` com as silhuetas; sem silhueta, o 1080x1600 sai "Pede ajuste" com a frase, e com ela sai "Igual ao seu".
+- `test_familia_diagonal`: a frase nova da base que passa da borda.
+- `test_tela_familia_0100`: a recusa do salvar que tira a confirmação, diz o arquivo e volta na confirmação; o arquivo de edição que sai da família editada; o trocar com a versão escolhida; no Chromium, o caminho inteiro do salvar recusado, a peça maior que cada miniatura em 1366 x 768, 1280 x 800, 1440 x 900 e 2048 x 720 (e a base à vista depois da primeira edição na janela do Duda), os nomes pela medida, o giro com o sentido, o aviso inteiro, a lista do "Trocar" dentro da janela e o contorno do "seu por cima" em cima de cada elemento no arquivo igual.
+- `e2e/test_editor_mestre`: caminho `galeria` só no arquivo de edição, `familia` com o registro `transferencia` nos outros; a origem do campo é `da` no arquivo de edição e `familia` na cópia.
+- Ajustados: `test_tela_familia_estavel` (as frases pela medida), `test_tela_palco` e `test_tela_galeria` (o id do cabeçalho e do `nome-palco` pelo `data-formato`), `test_cadeia_por_formato` (o irmão 1280x640 de volta).
+
+Ficou em parte:
+
+- O caminho do salvar recusado só derruba a confirmação no clique em "Salvar e seguir": até lá, a tela mostra a família confirmada (conferir os hashes a cada montagem pede a prévia de cada família confirmada na abertura).
+
+Depois da revisão, o limite do crescimento (resposta do Duda em 18/11):
+
+- `derivacao.familia_crescimento_max` = 1,5 (a calibrar, registra): a forma que sangra e precisa crescer mais que isto sobre `s` para continuar sangrando deixa a cópia em `pede_ajuste`. Vale para a base (`bases[k]['crescimento']`, em volta do ponto fixo) e para a forma que o DA juntou a um conteúdo num grupo (papel `movel`, `crescimento_movel[k]`, em volta do centro). `ajustar_minimo(..., crescimento_max=None)` põe em `relacoes_quebradas` uma relação de tipo `crescimento` (id `crescimento:<elemento>`, `valor_px` 0, `crescimento` com o valor) e a frase "A forma precisou ficar 1,8 vezes maior neste arquivo para continuar chegando às bordas esquerda, de cima e direita, e o desdobra só aumenta até 1,5 vezes sem pedir o seu olhar. Confira este arquivo antes de confirmar." As bordas são as que a forma tocava no aprovado; a borda nova continua na frase de `_base_passa_da_borda`. O valor mostrado nunca empata com o limite: entre 1,5 e 1,55 ele sobe para 1,6. O layout fica como a cópia deu, ainda sangrando. O fundo puro nunca entra.
+- O valor: no caso aprovado (`caso_diagonal`), o maior crescimento da faixa de 0,3 é o do azul no 1080x1600, 1,42 (1,417 no job sintético `kv_diagonal`), e o da faixa verde no 900x1870, 1,19. Os 15% da proposta inicial deixariam esses dois arquivos pedindo ajuste sem nada errado. Com a assinatura sobre o azul, o azul cresce 1,8 no 1080x1600 (5,6 no `kv_diagonal`, medido no recorte).
+- Revisão independente do limite: três achados confirmados e corrigidos (a forma agrupada ficava fora do limite, o valor da frase empatava com o limite entre 1,5 e 1,55, e a frase não dizia quais bordas); três refutados (o teto de `s` com o arquivo de edição trocado por um menor é a decisão 199, 1; "vez" e "vezes"; a força do teste).
+- Testes: `test_familia_ajuste` (o caso aprovado sem pedido, o caso da assinatura sobre o azul com o pedido e a frase, o fundo puro sem limite, a forma agrupada, o valor que nunca empata, as regras de escrita, o limite com fonte).

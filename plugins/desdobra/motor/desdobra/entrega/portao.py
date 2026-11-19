@@ -122,7 +122,8 @@ def conferir_familia(pasta, briefing, formato):
         d = contratos.ler(arq, nd.ESQUEMA) if arq.is_file() else None
     except contratos.ErroContrato:
         d = None
-    if d is not None and d.get('caminho') == 'galeria' and not (d.get('proposta') or {}).get('confirmada'):
+    # a versao da galeria e a copia do arquivo de edicao (decisao 199) so saem com a familia confirmada pelo DA
+    if d is not None and d.get('caminho') in ('galeria', 'familia') and not (d.get('proposta') or {}).get('confirmada'):
         falhas.append(_falha('proposta_sem_confirmacao'))
     return falhas
 

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:desdobra:schema:silhueta:1",
+  "title": "Silhueta de uma base (silhueta/1)",
+  "description": "Gravado em ds/silhuetas/<sha256>.json pelo preparo da silhueta (desdobra.ds.silhueta, decisao 199, 3): a grade do alfa do asset que o leitor gravou, decodificado so no processo filho isolado (desdobra.ds.silhueta_filho). A grade vai em fracao da caixa do asset: celulas por linha, de cima para baixo, '1' com tinta e '0' sem. So numeros e ids: nunca os pixels. O filho grava com arquivo_sha256 e origem_alfa nulos e camadas vazia; o pai completa.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "sha256", "arquivo_sha256", "origem_alfa", "dims", "grade", "limiar", "celulas", "camadas", "motor"],
+  "properties": {
+    "esquema": {"const": "silhueta/1"},
+    "sha256": {"description": "sha256 do PNG do alfa lido (alfa_visivel_sha256, senao asset_sha256)", "type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "arquivo_sha256": {"description": "sha256 do KV do laudo", "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "origem_alfa": {"enum": ["alfa_visivel_com_mascara", "alfa_da_camada", null]},
+    "dims": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1}},
+    "grade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["colunas", "linhas", "celulas"],
+      "properties": {
+        "colunas": {"type": "integer", "minimum": 1},
+        "linhas": {"type": "integer", "minimum": 1},
+        "celulas": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "limiar": {"$ref": "#/$defs/citacao"},
+    "celulas": {"$ref": "#/$defs/citacao"},
+    "camadas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer_id", "caixa_asset"],
+        "properties": {
+          "layer_id": {"type": "integer"},
+          "caixa_asset": {"description": "a caixa do asset no documento [x0, y0, x1, y1], pode passar do canvas", "type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer"}}
+        }
+      }
+    },
+    "motor": {"type": "string"}
+  },
+  "$defs": {
+    "citacao": {
+      "type": "object",
+      "required": ["limite_id", "valor"],
+      "properties": {
+        "limite_id": {"type": "string"},
+        "valor": {"type": ["number", "null"]}
+      }
+    }
+  }
+}

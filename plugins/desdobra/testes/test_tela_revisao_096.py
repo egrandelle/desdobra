@@ -465,8 +465,14 @@ def test_confirmacao_de_antes_da_096_cai_so_na_familia_com_texto_editado():
     mover = {'elemento': 'a', 'acao': 'mover', 'dx': 0.1, 'dy': 0.0}
     texto = {'elemento': 'a', 'acao': 'texto', 'texto': 'X'}
 
+    # 0.10.0 (decisao 199, resposta 3 do Duda): a confirmacao sem o arquivo de edicao (de antes da 0.10.0) cai uma
+    # vez, tambem sem edicao; as regras de antes continuam conferidas na que leva o arquivo de edicao
+    assert not rascunho.confirmada_para({'confirmada': True, 'edicoes': [], 'confirmacao': {
+        'formatos': ['f1'], 'pecas': antes}}, ['f1'], agora, sem_edicao=alt)
+
     def fam(edicoes, pecas):
-        return {'confirmada': True, 'edicoes': edicoes, 'confirmacao': {'formatos': ['f1'], 'pecas': pecas}}
+        return {'confirmada': True, 'edicoes': edicoes,
+                'confirmacao': {'formatos': ['f1'], 'pecas': pecas, 'arquivo_de_edicao': 'f1'}}
     # a familia sem texto editado confirmada na 0.9.5 continua confirmada: a previa dela nao mudou
     assert rascunho.confirmada_para(fam([mover], antes), ['f1'], agora, sem_edicao=alt)
     assert rascunho.confirmada_para(fam([], antes), ['f1'], agora, sem_edicao=alt)
@@ -619,7 +625,10 @@ def test_pagina_mantem_pede_ajuste_no_membro_sem_layout_da_familia(tmp_path, mon
                              atos=ta.atos_do_job(j['job'], conteudo=conteudo)) as srv, sync_playwright() as pw:
             nav, pg = tp._pagina_da_tela(pw, srv, 1600, 900)  # numero-neutro: janela do teste
             try:
-                tg._abrir(pg, conteudo['estado'], devolvidos[0])
+                # 0.10.0 (decisao 199): a familia abre no arquivo de edicao; o membro sem layout fica na faixa
+                ref = next(g['arquivo_de_edicao'] for o in conteudo['estado']['orientacoes'] for g in o['grupos']
+                           if g['id'] == gid)
+                tg._abrir(pg, conteudo['estado'], ref)
                 tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
                 tp._esperar(pg, '() => document.querySelector(\'%s\') ? "1" : ""' % marca)
                 ler = '''s => ({marcas: Array.from(document.querySelectorAll(s)).map(x => [x.textContent, x.className]),
@@ -641,7 +650,10 @@ def test_pagina_mantem_pede_ajuste_no_membro_sem_layout_da_familia(tmp_path, mon
     finally:
         medida_quebras.limpar_cache()
     assert any(t == 'Pede ajuste' and 'forte' in c for t, c in antes['marcas']), antes
-    assert 'sem layout' in antes['resumo'] and devolvidos[0] in antes['resumo'], antes
+    # revisao da 0.10.0: o resumo diz o arquivo pela medida, como o passo 5, e nunca pelo id interno
+    nome = te.nomes_da_tela(conteudo)[devolvidos[0]]
+    assert 'sem layout' in antes['resumo'] and nome in antes['resumo'], antes
+    assert devolvidos[0] not in antes['resumo'], antes
     assert not any(x in antes['resumo'] for x in PROIBIDOS), antes['resumo']
     assert all(t != 'Aprovado por você' and 'aceito' not in c for t, c in depois['marcas']), depois
     assert any('forte' in c for _t, c in depois['marcas']), depois

@@ -63,7 +63,10 @@ COMANDOS = ('render', 'linkado confirmar', 'spec confirmar', 'briefing confirmar
 # e a declaracao do DA de que a face nao tem arquivo e o texto vai como imagem (0.9.1, desdobra.fontes.como_imagem);
 # 'formatos digitados' e a lista de formatos que o DA escreve na tela, sem folha de spec (0.9.2, desdobra.specs.digitados)
 ATOS_DA_TELA = ('modo dados escolher', 'familia confirmar', 'marca escolher', 'marca registrar', 'fonte como imagem',
-                'formatos digitados')
+                'formatos digitados',
+                # decisao 199 (0.10.0): trocar o arquivo de edicao, separar um arquivo em familia propria e junta-lo
+                # de volta (desdobra.tela.rascunho)
+                'familia trocar arquivo', 'familia separar', 'familia juntar')
 # marcas do painel de terminal do app do Claude (decisoes-v1.md, 160), medidas no shell do painel em 04/11: o painel
 # nao poe as VARIAVEIS_DO_CLAUDE, mas poe TERM_PROGRAM=claude-desktop e CLAUDE_AGENT_SDK_VERSION, e o shell dele e
 # filho de claude.exe (powershell.exe -> claude.exe -> claude.exe -> sihost.exe). Cada marca recusa sozinha

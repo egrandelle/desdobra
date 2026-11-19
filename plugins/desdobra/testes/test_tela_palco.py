@@ -439,7 +439,10 @@ def test_palco_no_chromium_sem_janela(job_palco):
             assert pg.evaluate('() => document.querySelectorAll("#composicoes [aria-selected=true]").length') == 1
             _o, g, _co = _onde(conteudo['estado'], 'perto')
             _clicar_grupo(pg, g['id'])
-            assert 'perto' in ' '.join(_textos(pg, '#fichas .ficha'))
+            # 0.10.0 (decisao 199): as fichas sairam; o cabecalho diz o arquivo de edicao da familia
+            # revisao da 0.10.0: o cabecalho diz a medida; o id do arquivo fica no data-atributo
+            assert pg.evaluate('() => document.querySelector("#cabecalho-familia .cabecalho-arquivo").dataset.formato') \
+                == 'perto'
             assert _no_palco(pg) == 'perto'
             assert SELO_PROPOSTA in pg.evaluate('() => document.getElementById("selo-palco").textContent')
             # o texto do palco: fonte de autoteste do motor, propria (CDP), e tinta medida
@@ -462,10 +465,12 @@ def test_palco_no_chromium_sem_janela(job_palco):
             o, g, _co = _onde(conteudo['estado'], 'largo')
             _clicar_aba(pg, 'orientacoes', o['rotulo'])
             _clicar_grupo(pg, g['id'])
-            pg.evaluate('() => document.querySelector(\'.ficha[data-formato="largo"]\').click()')
+            # 0.10.0 (decisao 199): a familia abre no arquivo de edicao, sem ficha para clicar
             _esperar(pg, '() => document.getElementById("palco").dataset.pronto || ""')
             assert _no_palco(pg) == 'largo'
-            assert pg.evaluate('() => document.getElementById("nome-palco").textContent') == 'largo'
+            # revisao da 0.10.0: o nome do arquivo para o DA e a medida; o id interno fica so no data-atributo
+            assert pg.evaluate('() => document.getElementById("nome-palco").dataset.formato') == 'largo'
+            assert pg.evaluate('() => document.getElementById("nome-palco").textContent') == '2048x720'
             caixa = pg.evaluate('() => { const r = document.querySelector("#palco .moldura").getBoundingClientRect();'
                                 ' return [r.left, r.top, r.right, r.bottom]; }')
             assert caixa[0] >= 0 and caixa[2] <= 2048 and caixa[3] <= 720, caixa  # numero-neutro: a tela 2048x720
@@ -606,9 +611,11 @@ def _abrir_formato(pg, estado, fid):
     o, g, _co = _onde(estado, fid)
     _clicar_aba(pg, 'orientacoes', o['rotulo'])
     _clicar_grupo(pg, g['id'])
-    pg.evaluate('f => document.querySelector(\'.ficha[data-formato="\' + f + \'"]\').click()', fid)
+    # 0.10.0 (decisao 199): a familia abre sempre no arquivo de edicao, e as fichas sairam
     _esperar(pg, '() => document.getElementById("palco").dataset.pronto || ""')
-    assert _no_palco(pg) == fid
+    ref = g.get('arquivo_de_edicao') or fid
+    assert _no_palco(pg) == ref
+    return ref
 
 
 def _pagina_da_tela(pw, srv, largura, altura):

@@ -221,6 +221,41 @@
             "type": "string"
           }
         },
+        "arquivo_de_edicao": {
+          "description": "O arquivo de edicao da familia (decisao 199, 1; 0.10.0): o unico em que o DA edita no palco, e os outros arquivos copiam o layout aprovado nele. O servidor grava pela regra (o de maior area em pe; no empate, o sem giro, depois o primeiro da lista) na primeira gravacao da familia, e ele fica enquanto o arquivo estiver na familia: o arquivo maior que entra depois nao troca. So o ato Trocar arquivo de edicao da janela o troca, e so na familia sem edicao. O que a pagina manda e jogado fora. Ausente no rascunho de antes da 0.10.0: vale a regra.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "separados": {
+          "description": "Os arquivos que o DA separou desta familia em familia propria (decisao 199, 3; 0.10.0), pelo ato Separar em familia propria da janela. Cada um vira uma familia com ele de arquivo de edicao; o ato Juntar de volta o tira daqui. So o servidor grava; o que a pagina manda e jogado fora.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 500,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        },
+        "arquivo_trocado": {
+          "description": "O arquivo de edicao gravado saiu da familia (o DA tirou o formato no passo 1, ou a familia foi montada de novo) com a familia ja editada: as edicoes, em fracao do arquivo de edicao, passam a valer no arquivo da regra (revisao da 0.10.0). de: o arquivo que saiu; para: o de agora. A tela diz isso ate o DA confirmar a familia. So o servidor grava; o que a pagina manda e jogado fora.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["de", "para"],
+          "properties": {
+            "de": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+            "para": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
+          }
+        },
+        "layout_mudou": {
+          "description": "Os arquivos da familia cujo layout saiu diferente do que o DA confirmou, quando o Salvar e seguir conferiu o hash de cada um (decisao 199, 5; revisao da 0.10.0). A confirmacao cai, a tela diz quais arquivos mudaram e pede a confirmacao de novo. So o servidor grava; o que a pagina manda e jogado fora, e o campo sai quando o DA confirma a familia.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 500,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        },
         "confirmacao": {
           "description": "Quem confirmou a familia e como (decisoes-v1.md, 167): so o ato Confirmar familia da janela grava; a pagina nunca manda. Some quando a familia muda depois da confirmacao.",
           "type": "object",
@@ -258,6 +293,23 @@
               "description": "A impressao das pecas da familia quando o DA confirmou (revisao 3 da regra spec_por_confirmar): a medida, as faixas, a area util e a area segura de cada formato e as versoes da galeria. Outra impressao hoje e outra peca, e a confirmacao nao vale para ela.",
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
+            },
+            "arquivo_de_edicao": {
+              "description": "O arquivo de edicao da familia quando o DA confirmou (decisao 199, 5; 0.10.0). A confirmacao sem este campo e de antes da 0.10.0 e cai uma vez, com a frase do motivo na tela.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*$"
+            },
+            "layouts": {
+              "description": "O hash do layout de cada arquivo da familia como a janela mostrou na confirmacao (decisao 199, 5; 0.10.0): o sha256 do palco de cada arquivo na previa. O Salvar e seguir refaz a previa e recusa a familia cujo layout de algum arquivo saiu diferente do confirmado.",
+              "type": "object",
+              "maxProperties": 500,
+              "propertyNames": {
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
             }
           }
         }

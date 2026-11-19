@@ -35,6 +35,8 @@ GRUPO = ['el%d' % GARRAFA, 'el%d' % COPO, 'el%d' % CIRCULO]
 FUN = {1: 'fundo', 30: 'logo_principal', CIRCULO: 'grafismo', GARRAFA: 'sujeito', COPO: 'sujeito'}
 # uma familia horizontal de tres arquivos (derivacao.grupo_proporcao_dif_max)
 HORIZONTAIS = [('h1', 800, 400), ('h2', 840, 400), ('h3', 880, 400)]
+# decisao 199: o arquivo de edicao da familia, o de maior area; os outros copiam o layout aprovado nele
+REF = 'h3'
 TOL = 0.5  # numero-neutro: px de folga do arredondamento da derivacao
 
 
@@ -213,9 +215,11 @@ def test_derivacao_escala_o_packshot_junto_em_todos_os_membros(fator, fx, fy):
     for fid, _w, _h in HORIZONTAIS:
         a, d = antes[fid], depois[fid]
         assert a['situacao'] == 'derivado' and d['situacao'] == 'derivado', (fid, d.get('devolucao'))
-        _confere_grupo(_caixas(a), _caixas(d), fator, fx, fy, GRUPO)
+        # decisao 199: o ponto fixo vale no arquivo de edicao (o h3, o maior); os outros copiam o layout aprovado
+        # nele, presos a ancora do bloco: o grupo continua junto, com os tamanhos e as distancias na razao do fator
+        _confere_grupo(_caixas(a), _caixas(d), fator, fx, fy, GRUPO, ponto=fid == REF)
         origem = {e['id']: e['origem_geometria'] for e in d['elementos']}
-        assert all(origem[i] == 'da' for i in GRUPO), origem
+        assert all(origem[i] == ('da' if fid == REF else 'familia') for i in GRUPO), origem
 
 
 def test_encaixe_refeito_nao_desfaz_o_tamanho_que_o_da_deu():
@@ -235,7 +239,8 @@ def test_derivacao_move_e_escala_o_grupo_e_continua_junto():
     for fid, w, h in HORIZONTAIS:
         a = _caixas(antes[fid])
         movido = {i: [a[i][0] - 0.05 * w, a[i][1] + 0.02 * h, a[i][2] - 0.05 * w, a[i][3] + 0.02 * h] for i in GRUPO}
-        _confere_grupo(movido, _caixas(depois[fid]), 0.85, 0.5, 1.0, GRUPO)
+        # decisao 199: o lugar exato vale no arquivo de edicao; nos outros, o grupo copiado continua junto
+        _confere_grupo(movido, _caixas(depois[fid]), 0.85, 0.5, 1.0, GRUPO, ponto=fid == REF)
 
 
 def test_derivacao_com_o_grupo_e_deterministica():

@@ -71,8 +71,10 @@ def _regra(b, funcao, regra):
 
 def test_caminhos_da_base_e_sha_de_64(base):
     imp, r = base
+    # decisao 199: na familia dos verticais, so o arquivo de edicao (o alto, o maior) parte da galeria; o vertical
+    # copia o layout aprovado nele
     assert {k: d['caminho'] for k, d in r['formatos'].items()} == {
-        'mesmo': 'transform', 'perto': 'solver', 'vertical': 'galeria', 'alto': 'galeria'}
+        'mesmo': 'transform', 'perto': 'solver', 'vertical': 'familia', 'alto': 'galeria'}
     assert all(d['situacao'] == 'derivado' for d in r['formatos'].values())
     assert 'el20' not in {e['id'] for e in r['formatos']['mesmo']['elementos']}
     assert all(len(v) == 64 and int(v, 16) >= 0 for v in imp.values())

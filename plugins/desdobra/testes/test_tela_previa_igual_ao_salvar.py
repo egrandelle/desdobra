@@ -211,7 +211,14 @@ def test_sem_a_medida_da_quebra_a_previa_mostra_o_membro_devolvido_como_o_salvar
         ds = _salvar(j, conteudo, esc)
         for fid in ('v1', 'v2'):
             m, d = membros[fid], ds[fid]
-            assert d['situacao'] == 'devolvido' and any(x['codigo'] == 'quebra_sem_medida' for x in d['registros'])
+            # decisao 199: a galeria sai so no arquivo de edicao (o v2, o maior); o v1 copiaria o layout dele e grava
+            # o mesmo motivo, vindo do arquivo de edicao (antes, cada um gravava a quebra sem medida na galeria dele)
+            if fid == 'v2':
+                assert d['situacao'] == 'devolvido' and any(x['codigo'] == 'quebra_sem_medida' for x in d['registros'])
+            else:
+                assert d['situacao'] == 'devolvido' and [
+                    x['medidas'] for x in d['registros'] if x['codigo'] == 'familia_sem_arquivo_de_edicao'] == [
+                    {'arquivo_de_edicao': 'v2', 'motivo': 'quebra_sem_medida'}], d['registros']
             # a previa mostra o mesmo: o membro devolvido, sem versao da galeria, e pede ajuste
             assert m['situacao'] == 'devolvido', m['situacao']
             assert [f['codigo'] for f in m['falhas']] == ['quebra_sem_medida'], m['falhas']

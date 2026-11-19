@@ -281,7 +281,9 @@ def test_quebra_na_tela_do_clique_a_reabertura(job, modelo):
                 tr.confirmar_familia(job, gid, f['versao'], disparo=d, job_id=srv.job_id,
                                      laudo_atual=srv.laudo_sha256, edicoes=f['edicoes'],
                                      formatos=conteudo['familias'][gid]['formatos'],
-                                     pecas=conteudo['familias'][gid]['pecas'])
+                                     pecas=conteudo['familias'][gid]['pecas'],
+                                     # 0.10.0 (decisao 199): a confirmacao leva o arquivo de edicao, como o ato da janela
+                                     arquivo_de_edicao=conteudo['familias'][gid]['arquivo_de_edicao'])
         modo_dados.gravar(job, 'c', disparo=humano.exigir_tela(modo_dados.ESCOLHER, srv._sessao_humana,
                                                                confirmado=True))
         srv.estado = conteudo['recarregar']()
@@ -409,7 +411,9 @@ def _preparar_pagina(job, modelo, srv, conteudo, gm, confirmar_gm=False, edicoes
             d = humano.exigir_tela(tr.COMANDO_FAMILIA, srv._sessao_humana, confirmado=True)
             tr.confirmar_familia(job, gid, f['versao'], disparo=d, job_id=srv.job_id, laudo_atual=srv.laudo_sha256,
                                  edicoes=f['edicoes'], formatos=conteudo['familias'][gid]['formatos'],
-                                 pecas=conteudo['familias'][gid]['pecas'])
+                                 pecas=conteudo['familias'][gid]['pecas'],
+                                 # 0.10.0 (decisao 199): a confirmacao leva o arquivo de edicao, como o ato da janela
+                                 arquivo_de_edicao=conteudo['familias'][gid]['arquivo_de_edicao'])
     modo_dados.gravar(job, 'c', disparo=humano.exigir_tela(modo_dados.ESCOLHER, srv._sessao_humana,
                                                            confirmado=True))
     srv.estado = conteudo['recarregar']()
@@ -510,10 +514,15 @@ def test_palco_continua_legivel_com_o_titulo_editado_e_o_controle(job, modelo, j
     assert depois['faixa'] == 0 and depois['controle'] > 0
     assert not depois['rola_x']
     medidas = json.dumps({'antes': antes, 'depois': depois})
-    assert depois['palco'] >= 0.8 * antes['palco'], medidas  # numero-neutro: o palco perde no maximo 20%
-    assert depois['largura'] >= 0.8 * antes['largura'], medidas  # numero-neutro: idem para a peca
-    # o DA ve a quebra nos membros da familia enquanto clica (plano do M7b, C4; revisao 2 do C)
-    assert depois['miniaturas'] > 0 and len(depois['miniaturas_a_vista']) == depois['miniaturas'], medidas
+    # 0.10.0 (decisao 199): a familia de um arquivo so nao tem a faixa "Como fica em cada arquivo" (o palco ja e o
+    # arquivo), e o palco antes do controle fica mais alto. O palco perde so a altura do controle, e a peca encolhe na
+    # mesma proporcao do palco (ela cabe pela altura)
+    assert depois['palco'] >= antes['palco'] - depois['controle'] - 2, medidas  # numero-neutro: px de arredondamento
+    # numero-neutro: 5% para a margem fixa do palco, que a peca nao divide com ele
+    assert depois['largura'] >= 0.95 * antes['largura'] * depois['palco'] / antes['palco'], medidas
+    # o DA ve a quebra nos membros da familia enquanto clica (plano do M7b, C4; revisao 2 do C). 0.10.0: a familia de
+    # um arquivo so nao mostra a faixa (o palco ja e o arquivo); a de varios arquivos e a do teste de baixo
+    assert depois['miniaturas'] == 1 and depois['membros'] == 0, medidas
 
 
 @pytest.mark.skipif(sys.platform != 'win32', reason='o isolador dos filhos roda no Windows')
@@ -539,7 +548,9 @@ def test_membros_da_galeria_ficam_a_vista_enquanto_o_da_quebra_a_linha(job, mode
     assert antes['miniaturas'] == depois['miniaturas'] == 3, medidas
     assert len(depois['miniaturas_a_vista']) == 3, medidas
     assert all(['VOX', 'AH'] == [x for x in ls if x in ('VOX', 'AH', 'VOX AH')] for ls in linhas), medidas
-    assert depois['palco'] >= 0.7 * antes['palco'], medidas  # numero-neutro: a galeria perde no maximo 30%
+    # revisao da 0.10.0: a 1280 x 800, a faixa da familia em pe virou coluna a direita do palco, e o palco antes do
+    # controle ficou mais alto (a faixa embaixo comia a altura dele). O controle aberto tira do palco so a altura dele
+    assert depois['palco'] >= antes['palco'] - depois['controle'] - 2, medidas  # numero-neutro: px de arredondamento
     assert not depois['rola_x']
 
 

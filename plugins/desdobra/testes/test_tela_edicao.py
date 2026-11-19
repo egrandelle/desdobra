@@ -17,6 +17,9 @@ Criterios de pronto cobertos aqui:
     confirmacao exige confirmar de novo;
   - o desempenho: uma edicao numa familia de 5 membros refaz o encaixe abaixo do alvo de latencia registrado;
   - a caixa das linhas juntadas (quebra por familia) acompanha a tinta medida no Chromium, como o render a desenha.
+Desde a decisao 199 (etapa E4), a edicao vale no arquivo de edicao da familia (o maior, em pe; aqui o v5) e os
+outros arquivos copiam o layout aprovado nele com a escala unica s: os criterios "em proporcao a cada formato membro"
+passaram a ser conferidos no arquivo de edicao e, nos outros, pela copia.
 Tudo sintetico: o PSD de test_tela_palco e a fonte de autoteste do motor."""
 import json
 import time
@@ -91,7 +94,10 @@ def _elemento(palco, funcao):
 
 
 def _versao(conteudo, fid):
-    return conteudo['previas'][fid]['galeria']['variantes'][0]['id']
+    # decisao 199: a galeria fica so no arquivo de edicao da familia (o maior, em pe); a versao vale para a familia
+    ref = next(g['arquivo_de_edicao'] for o in conteudo['estado']['orientacoes'] for g in o['grupos']
+               if any(x['id'] == fid for co in g['composicoes'] for x in co['formatos']))
+    return conteudo['previas'][ref]['galeria']['variantes'][0]['id']
 
 
 # ------------------------------------------------------------------ a intencao de alinhamento (168), sem job
@@ -186,12 +192,25 @@ def test_mover_na_familia_vai_a_cada_membro_em_proporcao(conteudo):
                                  'edicoes': [{'elemento': el, 'acao': 'mover', 'dx': 0.0, 'dy': 0.05}]})
     assert [m['formato'] for m in depois['membros']] == [m['formato'] for m in antes['membros']]
     assert sorted(m['formato'] for m in depois['membros']) == sorted(membros)
+    # decisao 199: a edicao vale no arquivo de edicao (o v5, o maior), 5% da altura dele; os outros arquivos copiam o
+    # layout aprovado com a escala unica s, e o deslocamento e o do arquivo de edicao x s (a largura do titulo da o s).
+    # Antes, cada membro andava 5% da propria altura
+    ref = depois['arquivo_de_edicao']
+    assert ref == 'v5'
+
+    def caixa(r, fid):
+        m = next(x for x in r['membros'] if x['formato'] == fid)
+        return next(e for e in m['palco']['elementos'] if e['id'] == el)['caixa'], m
+    ca_r, _m = caixa(antes, ref)
+    cd_r, m_r = caixa(depois, ref)
+    assert cd_r[1] - ca_r[1] == pytest.approx(0.05 * m_r['palco']['altura'], abs=1.0), (ca_r, cd_r)
     for a, d in zip(antes['membros'], depois['membros']):
         ca = next(e for e in a['palco']['elementos'] if e['id'] == el)['caixa']
         cd = next(e for e in d['palco']['elementos'] if e['id'] == el)['caixa']
-        # o encaixe pode segurar o elemento na area segura; dentro dela, o deslocamento e 5% da altura de cada membro
-        assert cd[1] - ca[1] == pytest.approx(0.05 * d['palco']['altura'], abs=1.0), (d['formato'], ca, cd)
+        s = (cd[2] - cd[0]) / (cd_r[2] - cd_r[0])
+        assert cd[1] - ca[1] == pytest.approx((cd_r[1] - ca_r[1]) * s, abs=1.0), (d['formato'], ca, cd)
         assert d['palco']['selo'] == 'variante' and d['palco']['pecas']
+        assert d['arquivo_de_edicao'] == (d['formato'] == ref)
     assert depois['tempo_ms'] >= 0
 
 
@@ -202,7 +221,9 @@ def test_previa_diz_o_alinhamento_que_a_tela_mostra(conteudo):
     gid = _familia_de(estado, 'v1')
     vid = _versao(conteudo, 'v1')
     antes = conteudo['editar']({'familia': gid, 'versao': vid, 'edicoes': []})
-    m = next(x for x in antes['membros'] if x['formato'] == 'v1')['palco']
+    # decisao 199: o DA edita no arquivo de edicao (o v5), e e nele que a previa diz a linha
+    ref = antes['arquivo_de_edicao']
+    m = next(x for x in antes['membros'] if x['formato'] == ref)['palco']
     t, logo = _elemento(m, 'titulo'), _elemento(m, 'logo_principal')
     # decisao 185: a linha que a edicao deixou para tras nao puxa o elemento de volta. O titulo sai 5 px da borda
     # direita do logo e volta 4 px na direcao dela: para a 1 px da linha e encaixa
@@ -212,7 +233,7 @@ def test_previa_diz_o_alinhamento_que_a_tela_mostra(conteudo):
                             'edicoes': [{'elemento': t['id'], 'acao': 'mover', 'dx': sai / m['largura'], 'dy': 0.0},
                                         {'elemento': t['id'], 'acao': 'mover', 'dx': (dx - sai) / m['largura'],
                                          'dy': 0.0}]})
-    assert any(a['formato'] == 'v1' and t['id'] in a['elementos'] and a['eixo'] == 'x' and
+    assert any(a['formato'] == ref and t['id'] in a['elementos'] and a['eixo'] == 'x' and
                isinstance(a['valor'], float) for a in r['alinhados']), r['alinhados']
 
 
@@ -372,7 +393,8 @@ def test_confirmar_familia_grava_no_rascunho_com_a_origem_do_disparo(job_edicao,
         gal = next(conteudo['previas'][x]['galeria'] for x in conteudo['familias'][gid]['formatos']
                    if conteudo['previas'][x].get('galeria'))
         ordem = next(v['ordem'] for v in gal['variantes'] if v['id'] == vid)
-        assert ('na versão %s,' % ordem) in p['texto']
+        # 0.10.0: a frase segue com o arquivo de edicao ("na versao N: o v5 ..."); a versao continua dita
+        assert ('na versão %s' % ordem) in p['texto']
         r = json.loads((job_edicao / tr.ARQUIVO).read_text(encoding='utf-8'))
         f = r['familias'][gid]
         assert f['confirmada'] is True and f['versao'] == vid
@@ -502,7 +524,8 @@ def test_edicao_da_familia_no_chromium(job_edicao, conteudo):
     estado = conteudo['estado']
     gid = _familia_de(estado, 'v1')
     base = conteudo['editar']({'familia': gid, 'versao': None, 'edicoes': []})
-    palco0 = base['membros'][0]['palco']
+    ref = base['arquivo_de_edicao']
+    palco0 = next(m for m in base['membros'] if m['formato'] == ref)['palco']
     titulo = _elemento(palco0, 'titulo')['id']
     logo = _elemento(palco0, 'logo_principal')['id']
     apoio = _elemento(palco0, 'texto_de_apoio')['id']
@@ -511,7 +534,8 @@ def test_edicao_da_familia_no_chromium(job_edicao, conteudo):
                          atos=ta.atos_do_job(job_edicao, conteudo=conteudo)) as srv, sync_playwright() as pw:
         nav, pg = tp._pagina_da_tela(pw, srv, 2048, 720)  # numero-neutro: a tela do Duda (decisao 157)
         try:
-            tg._abrir(pg, estado, 'v1')
+            # decisao 199: o DA edita so o arquivo de edicao da familia (o v5, o maior); a tela abre nele
+            tg._abrir(pg, estado, ref)
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
             # as miniaturas de cada arquivo da familia, desenhadas pelo motor, antes de qualquer edicao
             membros = pg.evaluate('() => Array.from(document.querySelectorAll("#membros-lista .membro")).map(b => '
@@ -540,7 +564,7 @@ def test_edicao_da_familia_no_chromium(job_edicao, conteudo):
             # elemento, a guia fica no palco e a tela avisa, senao nada aparece
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
             r = conteudo['editar']({'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']})
-            alinhou = any(a['formato'] == 'v1' and titulo in a['elementos'] for a in r['alinhados'])
+            alinhou = any(a['formato'] == ref and titulo in a['elementos'] for a in r['alinhados'])
             assert (pg.evaluate('() => document.querySelectorAll("#palco .guia").length') > 0) == alinhou
             assert ('Ficou alinhado' in pg.evaluate('() => document.getElementById("ed-mensagem").textContent')) == \
                 alinhou
@@ -626,7 +650,7 @@ def test_edicao_da_familia_no_chromium(job_edicao, conteudo):
             # desdobra alinha de novo, e a tela mostra a guia e avisa (revisao do M7a)
             f = _rascunho_gravado(job_edicao)['familias'][gid]
             largura = next(x for x in conteudo['editar']({'familia': gid, 'versao': f['versao'], 'edicoes': []})[
-                'membros'] if x['formato'] == 'v1')['palco']['largura']
+                'membros'] if x['formato'] == ref)['palco']['largura']
             andou = sum(e['dx'] for e in f['edicoes'] if e['acao'] == 'mover' and e['elemento'] == titulo) * largura
             for _ in range(int(round(andou)) + 2):  # numero-neutro: 2 px antes da linha, dentro da tolerancia
                 pg.keyboard.press('ArrowLeft')
@@ -634,7 +658,7 @@ def test_edicao_da_familia_no_chromium(job_edicao, conteudo):
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
             f = _rascunho_gravado(job_edicao)['familias'][gid]
             r = conteudo['editar']({'familia': gid, 'versao': f['versao'], 'edicoes': f['edicoes']})
-            assert any(a['formato'] == 'v1' and titulo in a['elementos'] for a in r['alinhados'])
+            assert any(a['formato'] == ref and titulo in a['elementos'] for a in r['alinhados'])
             assert pg.evaluate('() => document.querySelectorAll("#palco .guia").length') > 0
             assert 'Ficou alinhado' in pg.evaluate('() => document.getElementById("ed-mensagem").textContent')
             texto = pg.evaluate(tp.JS_TEXTO_DA_MOLDURA)

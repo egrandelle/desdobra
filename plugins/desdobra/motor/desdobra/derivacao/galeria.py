@@ -37,8 +37,10 @@ import statistics
 
 from desdobra import limites
 from desdobra.derivacao import escala as mod_escala
+from desdobra.derivacao import familia as mod_familia
 from desdobra.derivacao import formatos as mod_formatos
 from desdobra.derivacao import nucleo as mod_nucleo
+from desdobra.derivacao import silhueta as mod_silhueta
 from desdobra.derivacao import solver as mod_solver
 from desdobra.derivacao import validacao as mod_validacao
 
@@ -58,6 +60,8 @@ ROTULO = {'titulo': 'o título', 'texto_de_apoio': 'o texto', 'cta': 'a chamada'
           'selo': 'o selo', 'logo_de_parceiro': 'os logos', 'grafismo': 'o grafismo', 'sujeito': 'o produto',
           'imagem': 'a imagem', 'fundo': 'o fundo'}
 ROTULO_GERAL = 'o elemento'
+# a concordancia de "inteiro" com o artigo do rotulo (a frase da relacao de fundo quebrada, decisao 199, 3)
+INTEIRO = {'o': 'inteiro', 'a': 'inteira', 'os': 'inteiros', 'as': 'inteiras'}
 # M7b, D5: os pisos que a decisao do DA fura sem pedir ajuste (133 e 135); o resto das falhas continua falha
 PISOS_DO_DA = ('abaixo_do_piso_da_regra', 'distancia_menor_que_na_mestre')
 # revisao 1 da fase D do M7b: a borda do KV em que o asset acaba, na frase do corte a vista (corte_a_mostra)
@@ -466,8 +470,14 @@ def _contexto(ctx, kv, formato, specs=None, arquivo_specs=None, params=None):
     base_q = (areas.get('area_segura') or areas.get('area_util') or {}).get('caixa') or [0.0, 0.0, W, H]
     ins = an['margem_rel'] * min(W, H)
     quadro = [max(base_q[0], ins), max(base_q[1], ins), min(base_q[2], W - ins), min(base_q[3], H - ins)]
+    # o formato na familia do KV (na faixa, ou na mesma proporcao, como derivacao.nucleo decide): o layout dele copia o
+    # do KV, e as relacoes de fundo do KV valem nele (_relacoes_de_fundo). Na troca de orientacao e fora da faixa, a
+    # galeria reorganiza o conteudo sobre a cena de proposito (a imagem livre), e as relacoes do KV nao se aplicam
+    fam = mod_formatos.familia(bm, bf, params['faixa']['valor'])
+    copia = fam['na_faixa'] or abs(bm[1] * W / bm[0] - H) <= limites.valor('derivacao.mesma_proporcao_px')
     return {'ctx': ctx, 'kv': kv, 'formato': formato, 'W': W, 'H': H, 'areas': areas, 'bf': bf, 'bm': bm,
-            'regras': regras, 'regra_ref': statistics.median(rc) if rc else 1.0, 'an': an, 'quadro': quadro}
+            'regras': regras, 'regra_ref': statistics.median(rc) if rc else 1.0, 'an': an, 'quadro': quadro,
+            'copia_do_kv': bool(copia)}
 
 
 def _ordem(cf):
@@ -716,7 +726,8 @@ def decisoes_do_da(cf, falhas, do_da, da_partida=()):
     quadro, area segura, sobreposicao, validacao do motor) continua falha. Revisao 1 da fase D: o piso que a versao de
     partida ja furava (da_partida: os pares (codigo, elementos ordenados) das falhas dela) continua falha, porque o DA
     nao o furou; a distancia de duas caixas que se sobrepoem (zero ou menos) tambem, porque a sobreposicao ja pede
-    ajuste e px negativo nao diz nada ao DA. A ordem das listas e a das falhas."""
+    ajuste e px negativo nao diz nada ao DA. A relacao de fundo quebrada (relacao_quebrada, decisao 199, 3) com um
+    elemento que o DA mexeu tambem e decisao dele, com a mesma frase. A ordem das listas e a das falhas."""
     do_da = set(do_da)
     da_partida = set(da_partida)
     por_id = {e['id']: e for e in cf['kv']['elementos']}
@@ -724,6 +735,11 @@ def decisoes_do_da(cf, falhas, do_da, da_partida=()):
     for f in falhas:
         els = set(f['elementos'])
         m = f.get('medidas') or {}
+        if f['codigo'] == 'relacao_quebrada' and els & do_da and (f['codigo'], tuple(sorted(els))) not in da_partida:
+            # a relacao de fundo que o proprio DA desfez no palco e o layout que ele aprova (199, 3): decisao dele,
+            # com a frase a vista
+            decisoes.append(dict(f))
+            continue
         if f['codigo'] not in PISOS_DO_DA or not els & do_da or \
                 (f['codigo'], tuple(sorted(els))) in da_partida or \
                 (f['codigo'] == 'distancia_menor_que_na_mestre' and float(m.get('distancia_px', 1)) <= 0):
@@ -784,6 +800,58 @@ def elementos_do_layout(cf, caixas, sangra, apagados=()):
     return _elementos(sem_elementos(cf, apagados), {'caixas': caixas, 'sangra': sangra})
 
 
+def _tinta_da_base(cf, e):
+    """(tinta na mestre, tinta no espaco do KV, caixa de partida, sem silhueta) da base e (desdobra.derivacao.silhueta),
+    guardada no contexto do formato: a mesma em todas as conferencias dele."""
+    cache = cf.setdefault('_tintas', {})
+    if e['id'] not in cache:
+        kv = cf['kv']
+        canvas = [float(v) for v in (kv.get('canvas_doc') or [0.0, 0.0, kv['largura'], kv['altura']])]
+        de = [float(v) for v in (e.get('caixa_kv') or e['caixa'])]
+        partes = mod_silhueta.partes_do_elemento(cf['ctx'], e, canvas)
+        tinta, sem = mod_silhueta.tinta_do_elemento(partes, de, canvas[2] - canvas[0], canvas[3] - canvas[1])
+        mestre = mod_silhueta.tinta_no_layout(tinta, de, e['caixa'], float(kv['largura']), float(kv['altura']))
+        cache[e['id']] = (mestre, tinta, de, sem)
+    return cache[e['id']]
+
+
+def _relacoes_de_fundo(cf, caixas, cont, tol):
+    """O ponto cego da conferencia (decisao 199, 3): o par conteudo x base que ja se sobrepunha na mestre fica fora do
+    "nao sobrepor" acima, e a assinatura podia ir para cima do azul sem falha. Agora o par e conferido pela tinta da
+    base (a silhueta que o preparo gravou; sem ela, a caixa): quando, na mestre, o conteudo estava dentro da tinta ou
+    livre dela, a relacao tem de continuar no formato, com a folga do pixel (tol). O fundo puro (a tinta cobre ao
+    menos derivacao.bloco_fundo_fracao do canvas da mestre) fica de fora: o conteudo nunca sai de cima dele. So no
+    formato que copia o layout do KV (copia_do_kv, em _contexto); a variante da galeria reorganiza de proposito. Devolve
+    ([(conteudo, base, relacao, fracao do conteudo sobre a tinta no formato)], [bases conferidas pela caixa])."""
+    kv, W, H = cf['kv'], cf['W'], cf['H']
+    Wm, Hm = float(kv['largura']), float(kv['altura'])
+    fundo_min = limites.valor('derivacao.bloco_fundo_fracao')
+    quebradas, pela_caixa = [], []
+    for b in kv['elementos']:
+        if mod_solver.conteudo(b) or b['classe'] != 'base' or b['id'] not in caixas:
+            continue
+        kb = b['caixa']
+        pares = [c for c in cont if _sobra(c['caixa'][0], c['caixa'][2], kb[0], kb[2]) > 0 and
+                 _sobra(c['caixa'][1], c['caixa'][3], kb[1], kb[3]) > 0]
+        if not pares:
+            continue
+        mestre, tinta, de, sem = _tinta_da_base(cf, b)
+        if mod_silhueta.cobertura([0.0, 0.0, Wm, Hm], mestre) >= fundo_min:
+            continue
+        no_formato = None
+        for c in pares:
+            rel = mod_silhueta.relacao(c['caixa'], mestre, tol)
+            if rel is None:
+                continue
+            if sem and b not in pela_caixa:
+                pela_caixa.append(b)
+            if no_formato is None:
+                no_formato = mod_silhueta.tinta_no_layout(tinta, de, caixas[b['id']], W, H)
+            if mod_silhueta.quebrada(rel, caixas[c['id']], no_formato, tol):
+                quebradas.append((c, b, rel, mod_silhueta.cobertura(caixas[c['id']], no_formato)))
+    return quebradas, pela_caixa
+
+
 def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False, geometria=None):
     """Falhas obrigatorias contra a mestre verdadeira e avisos de elemento. Devolve (falhas, avisos); com_validacoes,
     (falhas, avisos, nomes das validacoes do motor que reprovam). geometria: as caixas que dao a escala (0.9.6; sem
@@ -819,6 +887,7 @@ def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False, geometria=N
         ca, cb = caixas[a['id']], caixas[b['id']]
         if _sobra(ca[0], ca[2], cb[0], cb[2]) > tol_col and _sobra(ca[1], ca[3], cb[1], cb[3]) > tol_col:
             sobre.append((a, b))
+    quebradas, pela_caixa = _relacoes_de_fundo(cf, caixas, cont, tol) if cf.get('copia_do_kv') else ([], [])
     # 135 contra a mestre verdadeira: o vizinho de conteudo mais perto em cada eixo, na mestre do KV (como o solver o
     # escolhe); na variante, o par fica a pelo menos piso_d da distancia da mestre na escala media dos dois. O legal
     # colado a borda fica fora (decisoes-v1.md, 165): a distancia dele na mestre vem da largura do KV, e ele segue preso
@@ -858,6 +927,16 @@ def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False, geometria=N
     for a, b in sobre:
         falhas.append(_item('sobreposicao_nova', '%s e %s passam a se sobrepor.' % (_maiuscula(_rotulo(a)), _rotulo(b)),
                              [a['id'], b['id']]))
+    for c, b, rel, cob in quebradas:
+        base, nome = _rotulo(b), _rotulo(c)
+        if rel['tipo'] == mod_silhueta.LIVRE:
+            texto = '%s passa por cima %s, e no KV ficava fora %s.' % (
+                _maiuscula(nome), mod_familia._contrair('de', base), mod_familia._dela(base))
+        else:
+            texto = '%s deixa de ficar %s sobre %s, como estava no KV.' % (
+                _maiuscula(nome), INTEIRO.get(nome.partition(' ')[0], 'inteiro'), base)
+        falhas.append(_item('relacao_quebrada', texto, [c['id'], b['id']], relacao=rel['tipo'],
+                             fracao_sobre_a_forma=round(cob, 4)))  # numero-neutro: casas da medida
     for a, b, sep, minimo in perto:
         falhas.append(_item('distancia_menor_que_na_mestre', '%s e %s ficam mais perto do que o KV permite.'
                              % (_maiuscula(_rotulo(a)), _rotulo(b)), [a['id'], b['id']],
@@ -866,6 +945,10 @@ def _conferir(cf, caixas, sangra, apagados=(), com_validacoes=False, geometria=N
         falhas.append(_item('validacao_reprova', 'A conferência do motor reprova esta versão.', v['elementos'],
                              validacao=v['nome']))
     avisos = _avisos_de_elemento(cf, caixas, sangra, esc)
+    for b in pela_caixa:
+        base = _rotulo(b)
+        avisos.append(_item(mod_silhueta.AVISO_CAIXA, 'O desdobra conferiu %s pela caixa, porque não tem o desenho %s.'
+                            % (base, mod_familia._dela(base)), [b['id']]))
     if com_validacoes:
         return falhas, avisos, sorted({v['nome'] for v in mod_validacao.reprovadas(val)})
     return falhas, avisos

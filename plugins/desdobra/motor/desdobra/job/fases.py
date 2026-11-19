@@ -77,6 +77,11 @@ FASES_M1 = (
 )
 
 
+def _silhueta():
+    from desdobra.ds import silhueta
+    return silhueta
+
+
 def _fase_ds(anteriores):
     """Fase ds (M2): design system da peca e limites do job. Vem depois de ler e, quando a esteira tem, da
     conferencia de fontes; sem fontes/conferencia.json, sai com a pendencia "fontes nao conferidas"."""
@@ -85,6 +90,9 @@ def _fase_ds(anteriores):
                           'parametros/cor.json'),
                 depende_de=tuple(f.id for f in anteriores if f.id in ('ler', 'fontes')),
                 saidas=('ds/design-system.json', 'ds/limites.json'),
+                # o preparo das silhuetas (0.10.0, decisao 199): o job de antes nunca as gravou, e a fase so roda de
+                # novo quando o hash dela muda (desdobra.ds.silhueta.hash_do_preparo)
+                externas=(('externa:preparo-silhueta', lambda: _silhueta().hash_do_preparo()),),
                 comando=comando_motor('ds', 'montar'),
                 o_que_fazer='A montagem do design system falhou. ' + SE_A_FASE_FALHA)
 

@@ -275,14 +275,20 @@ def test_familia_sem_edicao_vista_antes_da_185_continua_valendo():
     agora = estado.impressao_das_pecas(['f1'], formatos, [])
     antes = estado.impressao_das_pecas(['f1'], formatos, [], regra=estado.REGRA_SEM_EDICAO)
     assert antes != agora
-    sem = {'confirmada': True, 'edicoes': [], 'confirmacao': {'formatos': ['f1'], 'pecas': antes}}
+    # 0.10.0 (decisao 199, resposta 3 do Duda): a confirmacao sem o arquivo de edicao e de antes da 0.10.0 e cai uma
+    # vez, tambem sem edicao. A regra de antes da 185 continua conferida na confirmacao que leva o arquivo de edicao
+    velha = {'confirmada': True, 'edicoes': [], 'confirmacao': {'formatos': ['f1'], 'pecas': antes}}
+    assert not rascunho.confirmada_para(velha, ['f1'], agora, sem_edicao=antes)
+    sem = {'confirmada': True, 'edicoes': [],
+           'confirmacao': {'formatos': ['f1'], 'pecas': antes, 'arquivo_de_edicao': 'f1'}}
     assert rascunho.confirmada_para(sem, ['f1'], agora, sem_edicao=antes)
     assert rascunho.sem_confirmacao_velha({'familias': {'g': sem}}, {'g': ['f1']}, {'g': agora},
                                           {'g': antes})['familias']['g']['confirmada']
     # a familia com edicoes vista pela regra de antes pede o clique de novo: a previa dela pode mudar
     com = dict(sem, edicoes=[_mover('f', 1.0, 0.0)])
     assert not rascunho.confirmada_para(com, ['f1'], agora, sem_edicao=antes)
-    assert rascunho.confirmada_para(dict(com, confirmacao={'formatos': ['f1'], 'pecas': agora}), ['f1'], agora,
+    assert rascunho.confirmada_para(dict(com, confirmacao={'formatos': ['f1'], 'pecas': agora,
+                                                           'arquivo_de_edicao': 'f1'}), ['f1'], agora,
                                     sem_edicao=antes)
 
 

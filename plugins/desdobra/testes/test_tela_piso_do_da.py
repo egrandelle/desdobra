@@ -307,6 +307,8 @@ def test_decisao_do_da_na_tela_do_chromium(job_escala, conteudo_escala):  # noqa
     navegador.apontar_playwright()
     with ts.ServidorTela(conteudo_escala, pasta=job, modo_teste=True,
                          atos=ta.atos_do_job(job, conteudo=conteudo_escala)) as srv, sync_playwright() as pw:
+        # 0.10.0 (decisao 199): o DA edita so o arquivo de edicao; o h1 do relato passa a ser o da familia
+        tg._trocar_para(srv, job, conteudo_escala, gid, 'h1')
         nav, pg = tp._pagina_da_tela(pw, srv, 2048, 720)  # numero-neutro: a tela do Duda (decisao 157)
         try:
             tg._abrir(pg, estado, 'h1')

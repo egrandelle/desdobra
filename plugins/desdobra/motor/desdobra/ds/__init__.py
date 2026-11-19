@@ -23,6 +23,7 @@ from pathlib import Path
 from desdobra import __version__, contratos, limites
 from desdobra import cor as mod_cor
 from desdobra.arquivos import sha256_arquivo
+from desdobra.ds import silhueta as mod_silhueta
 from desdobra.ds import sujeito as mod_sujeito
 from desdobra.ds import tokens as mod_tokens
 from desdobra.resultado import Codigo, Resultado
@@ -312,7 +313,9 @@ def _sha(caminho):
     return sha256_arquivo(caminho) if Path(caminho).is_file() else None
 
 
-def executar_montar(pasta):
+def executar_montar(pasta, com_silhuetas=False):
+    """Grava o design system, os limites do job e as silhuetas das bases. Devolve (ds, limites); com_silhuetas, (ds,
+    limites, resumo do preparo da silhueta)."""
     pasta = Path(pasta).resolve()
     caminho_laudo = pasta / ARQUIVO_LAUDO
     if not caminho_laudo.is_file():
@@ -340,7 +343,10 @@ def executar_montar(pasta):
     (pasta / 'ds').mkdir(exist_ok=True)
     contratos.gravar(pasta / ARQUIVO_DS, ds, ESQUEMA_DS)
     contratos.gravar(pasta / ARQUIVO_LIMITES, lim, ESQUEMA_LIMITES)
-    return ds, lim
+    # a silhueta das bases que sangram (decisao 199, 3), do alfa do asset, decodificado so no filho isolado: a
+    # derivacao le so o JSON (desdobra.derivacao.silhueta). Sem silhueta, a forma e conferida pela caixa, com o aviso
+    silhuetas = mod_silhueta.preparar(pasta, estrutura)
+    return (ds, lim, silhuetas) if com_silhuetas else (ds, lim)
 
 
 def _montar(args):
@@ -349,7 +355,7 @@ def _montar(args):
         return Resultado(comando='ds montar', codigo=int(Codigo.USO), situacao='erro',
                          o_que_fazer='Falta a pasta do job.')
     try:
-        ds, lim = executar_montar(pasta)
+        ds, lim, silhuetas = executar_montar(pasta, com_silhuetas=True)
     except ErroDs as e:
         return Resultado(comando='ds montar', fase='ds', codigo=int(e.codigo), situacao='recusado',
                          o_que_fazer=e.o_que_fazer, pasta_job=pasta, linhas_humanas=[str(e)])
@@ -357,6 +363,11 @@ def _montar(args):
         return Resultado(comando='ds montar', fase='ds', codigo=int(Codigo.AUDITORIA), situacao='recusado',
                          o_que_fazer='O processo da conversão de cor tentou uma ação que o desdobra não permite e foi '
                                      'parado. Não peça a fase de novo: mande o código para o suporte.',
+                         pasta_job=pasta, linhas_humanas=[str(e)])
+    except mod_silhueta.ErroAuditoriaSilhueta as e:
+        return Resultado(comando='ds montar', fase='ds', codigo=int(Codigo.AUDITORIA), situacao='recusado',
+                         o_que_fazer='O processo que mede o desenho das formas tentou uma ação que o desdobra não '
+                                     'permite e foi parado. Não peça a fase de novo: mande o código para o suporte.',
                          pasta_job=pasta, linhas_humanas=[str(e)])
     except (contratos.ErroContrato, mod_cor.ErroCor) as e:
         return Resultado(comando='ds montar', fase='ds', codigo=int(Codigo.RECUSADO), situacao='recusado',
@@ -382,11 +393,16 @@ def _montar(args):
                  'medidas': r['n_medidas'], 'sujeito_alfa': r['n_sujeito_alfa'],
                  'sujeito_pedir_ao_da': r['n_sujeito_pedir_ao_da'],
                  'assets_perfil_convertido': r['n_assets_perfil_convertido'], 'limites': len(lim['limites']),
-                 'pendencias': len(ds['pendencias'])}
+                 'pendencias': len(ds['pendencias']), 'silhuetas': silhuetas['gravadas'],
+                 'silhuetas_pela_caixa': len(silhuetas['sem_silhueta'])}
     linhas = ['Design system gravado em %s' % (pasta / ARQUIVO_DS), 'Limites do job em %s' % (pasta / ARQUIVO_LIMITES),
               'Perfil do documento: %s (%s)' % (ds['documento']['perfil']['nome'], ds['documento']['perfil']['tratamento']),
               'Intent: %s' % ds['cor']['parametros']['intent']['valor']]
     linhas += ['Pendência: %s' % p['descricao'] for p in ds['pendencias']]
+    linhas.append('Desenho das formas: %d gravado(s) em %s' % (silhuetas['gravadas'], pasta / mod_silhueta.PASTA))
+    if silhuetas['sem_silhueta']:
+        linhas.append('Forma conferida pela caixa em %d asset(s): %s.' % (
+            len(silhuetas['sem_silhueta']), silhuetas['motivo'] or silhuetas['sem_silhueta'][0]['motivo']))
     return Resultado(comando='ds montar', fase='ds', situacao=situacao, o_que_fazer=o_que_fazer, contagens=contagens,
                      ids={'arquivo_sha256': ds['origem']['arquivo_sha256']}, pasta_job=pasta, linhas_humanas=linhas)
 

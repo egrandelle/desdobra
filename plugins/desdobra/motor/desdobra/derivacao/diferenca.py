@@ -46,10 +46,12 @@ ANCORAS = {'esquerda': 'esquerda', 'centro': 'centro', 'direita': 'direita', 'to
            'base': 'base'}
 ANCORA_GERAL = 'outra posição'
 ORIGENS = {'da': 'da sua edição', 'regra': 'das regras', 'transformacao': 'da escala do KV',
-           'galeria': 'da versão da galeria', 'sugestao_citada': 'da sugestão citada'}
+           'galeria': 'da versão da galeria', 'sugestao_citada': 'da sugestão citada',
+           'familia': 'do layout que você aprovou no arquivo de edição'}
 ORIGEM_GERAL = 'de outra origem'
 CAMINHOS = {'transform': 'da escala do KV', 'solver': 'das regras', 'mestre_propria': 'da sua mestre',
-            'galeria': 'da versão da galeria', 'devolvido': 'de lugar nenhum'}
+            'galeria': 'da versão da galeria', 'familia': 'do layout que você aprovou no arquivo de edição',
+            'devolvido': 'de lugar nenhum'}
 CAMINHO_GERAL = 'de outro caminho'
 CASAS_PORCENTO = 1  # numero-neutro: casas decimais do % do lado na frase
 LADOS_DA_CAIXA = 4  # numero-neutro: a caixa e [x0, y0, x1, y1]

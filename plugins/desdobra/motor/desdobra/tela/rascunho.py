@@ -25,6 +25,12 @@ fica salvo sozinho, a cada mudanca, neste arquivo. Regras:
   - cada familia guarda os formatos que a tela mostrava quando o DA mexeu nela pela ultima vez (revisao do M7b, fase
     A; so o servidor grava, _com_os_formatos): a tela casa o id com o grupo que divide mais formatos com eles
     (desdobra.tela.estado.abas), e a familia que a tela nao mostra mais fica aqui com as edicoes dela;
+  - cada familia guarda o arquivo de edicao dela (decisao 199, 1; 0.10.0; so o servidor grava): na primeira gravacao,
+    o que a tela mostra pela regra (_com_a_estrutura), e ele fica enquanto o arquivo estiver na familia. So os atos da
+    janela o trocam (trocar_arquivo, na familia sem edicao) e separam um arquivo em familia propria (separar e
+    juntar, com a lista separados). A confirmacao guarda o arquivo de edicao e o hash do layout de cada arquivo
+    (decisao 199, 5); a confirmacao de antes da 0.10.0, sem eles, cai uma vez (confirmada_para), e a tela diz por que
+    (desdobra.tela.estado.RECONFIRMAR_0100);
   - gravacao atomica, com o esquema rascunho-tela/1 conferido antes. A origem e 'rascunho', ou 'fixture_de_teste' no
     modo de teste da tela (proposta do M7, 159c).
 """
@@ -46,6 +52,13 @@ CAMPOS_DO_PASSO_1 = ('quadro', 'rotacoes')
 CAMPOS_DAS_ESCOLHAS = CAMPOS_DO_PASSO_1 + CAMPOS_DO_PASSO_2
 # o ato da janela que confirma uma familia (humano.ATOS_DA_TELA)
 COMANDO_FAMILIA = 'familia confirmar'
+# decisao 199 (0.10.0): os atos da janela que trocam o arquivo de edicao e separam um arquivo em familia propria (e o
+# juntam de volta). So o servidor grava estes campos da familia; o que a pagina manda e jogado fora
+COMANDO_TROCAR_ARQUIVO = 'familia trocar arquivo'
+COMANDO_SEPARAR = 'familia separar'
+COMANDO_JUNTAR = 'familia juntar'
+CAMPOS_DO_SERVIDOR = ('confirmacao', 'formatos', 'cedidos', 'arquivo_de_edicao', 'separados', 'layout_mudou',
+                      'arquivo_trocado')
 
 
 class ErroRascunho(Exception):
@@ -104,7 +117,8 @@ def origem_gravada(pasta):
     return dados.get('origem') if isinstance(dados, dict) else None
 
 
-def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=None, elementos_da_tela=None):
+def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=None, elementos_da_tela=None,
+           arquivos_da_tela=None):
     """Confere o rascunho mandado pela pagina e grava de forma atomica. ErroRascunho quando ele e de outro job, de
     outro laudo, nao segue o esquema, cita um elemento que a mestre da tela nao tem ou um grupo que nao comeca pelo
     elemento da edicao (desdobra.tela.edicao.ids_conferem, 'edicao') ou leva um elemento a um tamanho fora dos limites
@@ -114,7 +128,9 @@ def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=Non
     familias_da_tela: {id: [formatos]} das familias que a tela mostra
     agora (o servidor da tela); com elas, cada familia guarda os formatos de quando o DA mexeu nela (_com_os_formatos).
     elementos_da_tela: {id do elemento: [layer_ids]} da mestre que a tela mostra agora; com eles, a quebra de linha
-    so cita o elemento que existe e uma camada dele (_conferir_quebras). Devolve o que foi gravado."""
+    so cita o elemento que existe e uma camada dele (_conferir_quebras). arquivos_da_tela: {id: arquivo de edicao}
+    que a tela mostra agora (decisao 199, 1); com eles, a familia sem arquivo de edicao gravado (ou com um que saiu
+    dela) grava o da tela (_com_a_estrutura). Devolve o que foi gravado."""
     from desdobra.briefing import modelo
     from desdobra.tela import funcoes
     if not isinstance(recebido, dict) or not set(CAMPOS_DA_PAGINA) <= set(recebido) or             not set(recebido) <= set(CAMPOS_DA_PAGINA + CAMPOS_DAS_ESCOLHAS):
@@ -126,6 +142,8 @@ def gravar(pasta, recebido, *, job_id, laudo_atual, origem, familias_da_tela=Non
     familias = _familias_com_a_confirmacao(pasta, recebido['familias'], laudo_atual)
     anterior, _de_outro = ler(pasta, laudo_atual)
     familias = _com_os_formatos(familias, (anterior or {}).get('familias') or {}, familias_da_tela or {})
+    familias = _com_a_estrutura(familias, (anterior or {}).get('familias') or {}, familias_da_tela or {},
+                                arquivos_da_tela or {})
     if any((recebido.get(k) or {}) != ((anterior or {}).get(k) or {}) for k in CAMPOS_DAS_ESCOLHAS):
         # a prancheta, o giro, o passo 2 e o Design system mudam o layout de todas as familias: nenhuma confirmacao
         # fica (revisao do M7a)
@@ -227,7 +245,7 @@ def _familias_com_a_confirmacao(pasta, familias, laudo_atual):
     for gid, f in familias.items():
         if not isinstance(f, dict):
             raise ErroRascunho('esquema')
-        f = {k: v for k, v in f.items() if k not in ('confirmacao', 'formatos', 'cedidos')}
+        f = {k: v for k, v in f.items() if k not in CAMPOS_DO_SERVIDOR}
         if f.get('confirmada') is True:
             g = gravadas.get(gid) or {}
             if not g.get('confirmada') or _escolhas_da_familia(g) != _escolhas_da_familia(f):
@@ -274,6 +292,144 @@ def _ceder(familias, gid, formatos):
         comum = levados & set(f.get('formatos') or ()) if g != gid else set()
         if comum:
             f['cedidos'] = sorted(comum | set(f.get('cedidos') or ()))
+
+
+def _com_a_estrutura(familias, gravadas, tela, arquivos):
+    """As familias da pagina com o arquivo de edicao e os separados (decisao 199; 0.10.0), que so o servidor grava: a
+    pagina nunca os manda (o que ela manda ja saiu em _familias_com_a_confirmacao). Cada familia guarda os gravados.
+    A familia que a tela mostra (tela: {id: [formatos]}) sem arquivo de edicao gravado, ou com um que nao esta mais
+    nela, grava o que a tela mostra (arquivos: {id: arquivo}, a regra de desdobra.derivacao.proposta.arquivo_de_edicao):
+    a escolha fica estavel dali em diante, e o arquivo maior que entra depois nao troca. Este e o caminho da migracao do
+    rascunho de antes da 0.10.0: ele recebe o arquivo de edicao pela regra na primeira gravacao."""
+    saida = {}
+    for gid, f in familias.items():
+        g = gravadas.get(gid) or {}
+        f = dict(f)
+        for k in ('arquivo_de_edicao', 'separados', 'layout_mudou', 'arquivo_trocado'):
+            if g.get(k):
+                f[k] = list(g[k]) if isinstance(g[k], list) else g[k]
+        if gid in tela and arquivos.get(gid) and f.get('arquivo_de_edicao') not in tela[gid]:
+            if f.get('arquivo_de_edicao') and (f.get('edicoes') or f.get('quebras')):
+                # o arquivo em que o DA editou saiu da familia, e as edicoes dele (fracoes do arquivo de edicao)
+                # passam a valer no arquivo da regra: a tela diz isso ate o DA confirmar de novo (revisao da 0.10.0;
+                # nada calado)
+                f['arquivo_trocado'] = {'de': f['arquivo_de_edicao'], 'para': arquivos[gid]}
+            f['arquivo_de_edicao'] = arquivos[gid]
+        saida[gid] = f
+    return saida
+
+
+def _familia_gravada(pasta, familia, laudo_atual, job_id):
+    """(dados do rascunho, familia) gravados agora para os atos da estrutura (trocar_arquivo, separar e juntar)."""
+    if laudo_atual is None or laudo_sha256(pasta) != laudo_atual:
+        raise ErroRascunho('outro_laudo')
+    dados, _de_outro = ler(pasta, laudo_atual)
+    if dados is None:
+        dados = {'esquema': ESQUEMA, 'job_id': job_id, 'laudo_sha256': laudo_atual, 'familias': {}}
+    return dados, dict(dados['familias'].get(familia) or {'versao': None, 'confirmada': False, 'edicoes': []})
+
+
+def _gravar_estrutura(pasta, dados, mudadas, disparo):
+    """Grava o rascunho com as familias mudadas por um ato da estrutura: cada uma perde a confirmacao (a familia
+    mudou de arquivos ou de arquivo de edicao, e o DA confere de novo)."""
+    from desdobra.briefing import modelo
+    familias = dict(dados['familias'])
+    for gid, f in mudadas.items():
+        f = {k: v for k, v in f.items() if k != 'confirmacao'}
+        f['confirmada'] = False
+        familias[gid] = f
+    teste = disparo.origem == modelo.ORIGEM_FIXTURE
+    dados = dict(dados, familias=familias, origem=modelo.ORIGEM_FIXTURE if teste else modelo.ORIGEM_RASCUNHO,
+                 atualizado_em=modelo.agora())
+    contratos.gravar(Path(pasta) / ARQUIVO, dados, ESQUEMA)
+    return dados
+
+
+def trocar_arquivo(pasta, familia, arquivo, *, disparo, job_id, laudo_atual, formatos):
+    """O ato "Trocar arquivo de edicao" da janela (decisao 199, 1; resposta 2 do Duda em 18/11): a familia sem edicao
+    nem quebra de linha passa a ser editada em outro arquivo dela (formatos: os da familia na tela agora). A versao da
+    galeria sai (a galeria e do arquivo de edicao) e a confirmacao cai. ErroRascunho('com_edicao') na familia com
+    edicao; ErroRascunho('arquivo') no arquivo que nao e da familia. O Disparo vale um ato so."""
+    from desdobra import humano
+    humano.conferir(disparo, COMANDO_TROCAR_ARQUIVO, consumir=True)
+    dados, f = _familia_gravada(pasta, familia, laudo_atual, job_id)
+    if f.get('edicoes') or f.get('quebras'):
+        raise ErroRascunho('com_edicao')
+    if arquivo not in formatos:
+        raise ErroRascunho('arquivo')
+    f.update(arquivo_de_edicao=arquivo, versao=None, formatos=list(formatos))
+    f.pop('cedidos', None)
+    f.pop('arquivo_trocado', None)
+    return _gravar_estrutura(pasta, dados, {familia: f}, disparo)['familias'][familia]
+
+
+def separar(pasta, familia, arquivo, *, disparo, job_id, laudo_atual, formatos, arquivo_de_edicao):
+    """O ato "Separar em familia propria" da janela (decisao 199, 3): o arquivo (nunca o de edicao) sai da familia e
+    vira uma familia com ele de arquivo de edicao. A familia de onde ele saiu guarda o arquivo em separados e perde a
+    confirmacao; os formatos dela passam a ser os que ficam (a tela nao diz que ele "saiu": foi o DA que o tirou).
+    ErroRascunho('arquivo') no arquivo de edicao, no que nao e da familia ou na familia de um arquivo so."""
+    from desdobra import humano
+    humano.conferir(disparo, COMANDO_SEPARAR, consumir=True)
+    dados, f = _familia_gravada(pasta, familia, laudo_atual, job_id)
+    if arquivo not in formatos or arquivo == arquivo_de_edicao or len(formatos) < 2:  # numero-neutro: familia de um so
+        raise ErroRascunho('arquivo')
+    f['separados'] = sorted(set(f.get('separados') or ()) | {arquivo})
+    f['formatos'] = [x for x in formatos if x != arquivo]
+    f.setdefault('arquivo_de_edicao', arquivo_de_edicao)
+    f.pop('cedidos', None)
+    return _gravar_estrutura(pasta, dados, {familia: f}, disparo)['familias'][familia]
+
+
+def juntar(pasta, familia, arquivo, *, disparo, job_id, laudo_atual):
+    """O ato "Juntar de volta" da janela (decisao 199, 3): o arquivo separado volta a familia de onde saiu (familia),
+    que perde a confirmacao e volta a leva-lo nos formatos. ErroRascunho('arquivo') no arquivo que ela nao separou."""
+    from desdobra import humano
+    humano.conferir(disparo, COMANDO_JUNTAR, consumir=True)
+    dados, f = _familia_gravada(pasta, familia, laudo_atual, job_id)
+    if arquivo not in (f.get('separados') or ()):
+        raise ErroRascunho('arquivo')
+    resto = [x for x in f['separados'] if x != arquivo]
+    if resto:
+        f['separados'] = resto
+    else:
+        f.pop('separados')
+    if f.get('formatos') is not None and arquivo not in f['formatos']:
+        f['formatos'] = list(f['formatos']) + [arquivo]
+    return _gravar_estrutura(pasta, dados, {familia: f}, disparo)['familias'][familia]
+
+
+def derrubar_por_layout(pasta, laudo_atual, quedas):
+    """A confirmacao das familias cujo layout saiu diferente do confirmado no "Salvar e seguir" cai (decisao 199, 5;
+    revisao da 0.10.0): sem isto, a tela continuava com a familia confirmada, o rodape dizia "Tudo confirmado", e o DA
+    nao tinha botao para confirmar de novo. quedas: {id da familia: [arquivos que mudaram]}. Cada familia guarda os
+    arquivos em layout_mudou, para a tela dizer quais foram, ate o DA confirmar de novo. Nao precisa de Disparo: e a
+    consequencia da conferencia do servidor, e a familia so perde a confirmacao. Devolve o rascunho gravado, ou None."""
+    dados, _de_outro = ler(pasta, laudo_atual)
+    if dados is None or not quedas:
+        return None
+    familias = dict(dados['familias'])
+    for gid, fids in quedas.items():
+        if gid not in familias:
+            continue
+        f = {k: v for k, v in familias[gid].items() if k != 'confirmacao'}
+        f.update(confirmada=False, layout_mudou=sorted(set(fids)))
+        familias[gid] = f
+    dados = dict(dados, familias=familias)
+    contratos.gravar(Path(pasta) / ARQUIVO, dados, ESQUEMA)
+    return dados
+
+
+def estrutura(pasta):
+    """({id: arquivo de edicao gravado}, {id: [separados]}) do rascunho gravado agora (decisao 199; 0.10.0), vazios
+    sem rascunho valido. A tela (desdobra.tela.estado.abas) e a previa (desdobra.tela.edicao.Editor) os leem."""
+    dados, _de_outro = ler(pasta, laudo_sha256(pasta))
+    arquivos, separados = {}, {}
+    for gid, f in ((dados or {}).get('familias') or {}).items():
+        if f.get('arquivo_de_edicao'):
+            arquivos[gid] = f['arquivo_de_edicao']
+        if f.get('separados'):
+            separados[gid] = list(f['separados'])
+    return arquivos, separados
 
 
 def edicoes_gravadas(pasta, familia):
@@ -336,6 +492,18 @@ def _vale_pela_regra_de_antes(f, conf, antes):
     return sem_texto and antes.get('sem_texto') is not None and conf.get('pecas') == antes['sem_texto']
 
 
+def confirmacao_da_0100(conf):
+    """A confirmacao foi feita na tela da 0.10.0 ou depois (decisao 199, 5): ela leva o arquivo de edicao."""
+    return bool((conf or {}).get('arquivo_de_edicao'))
+
+
+def confirmada_de_antes(familia):
+    """A familia do rascunho estava confirmada por uma tela de antes da 0.10.0 (a confirmacao sem arquivo de edicao):
+    a confirmacao cai uma vez, e a tela diz por que."""
+    f = familia or {}
+    return bool(f.get('confirmada')) and not confirmacao_da_0100(f.get('confirmacao'))
+
+
 def confirmada_para(familia, formatos, pecas=None, sem_edicao=None):
     """A familia do rascunho esta confirmada para estes formatos: a confirmacao guarda os formatos que o DA viu
     (revisao do M7a), e a familia de mesmo id que ganhou ou perdeu formatos (desdobra.tela.estado.abas) pede a
@@ -350,6 +518,12 @@ def confirmada_para(familia, formatos, pecas=None, sem_edicao=None):
     (estado.REGRA_SEM_TEXTO_EDITADO), que vale so para a familia sem texto editado, cuja previa nao muda."""
     f = familia or {}
     conf = f.get('confirmacao') or {}
+    if pecas is not None and not confirmacao_da_0100(conf):
+        # decisao 199 (5; resposta 3 do Duda em 18/11): a confirmacao de antes da 0.10.0 foi feita numa tela em que
+        # cada arquivo partia da propria proposta. Agora os outros arquivos seguem o arquivo de edicao, e ela cai uma
+        # vez, tambem na familia sem edicao (a tela diz por que, desdobra.tela.estado.RECONFIRMAR_0100). As regras de
+        # antes (_vale_pela_regra_de_antes) deixam de salvar essa confirmacao
+        return False
     if pecas is not None and conf.get('pecas') != pecas and not _vale_pela_regra_de_antes(f, conf, sem_edicao):
         return False
     if set(f.get('cedidos') or ()) & set(formatos):
@@ -373,13 +547,15 @@ def sem_confirmacao_velha(dados, familias, pecas=None, sem_edicao=None):
 
 
 def confirmar_familia(pasta, familia, versao, *, disparo, job_id, laudo_atual, edicoes=None, formatos=None,
-                      pecas=None, quebras=None, versoes=None):
+                      pecas=None, quebras=None, versoes=None, arquivo_de_edicao=None, layouts=None):
     """O ato "Confirmar familia" da janela (decisoes-v1.md, 167): a familia fica confirmada no rascunho, com a versao
     mostrada e as edicoes gravadas, e a confirmacao leva a origem e o meio do Disparo da tela e os formatos da familia.
     edicoes e quebras: as edicoes e as quebras de linha que a janela mostrou (revisao do C: a quebra e edicao da
     familia); diferentes das gravadas, ErroRascunho('mudou') e nada e gravado. versoes: as da galeria da familia na
     tela agora; com elas, a versao gravada que a galeria nao tem mais conta como nenhuma (versao_de_agora), e a
-    confirmacao grava a versao que a janela mostrou. A familia com
+    confirmacao grava a versao que a janela mostrou. arquivo_de_edicao e layouts (decisao 199, 5; 0.10.0): o arquivo
+    de edicao e o hash do layout de cada arquivo como a janela mostrou; vao a confirmacao (a impressao da 175). A
+    familia com
     quebra de linha proposta pelo desdobra e ainda sem a aprovacao do DA nao e confirmada:
     ErroRascunho('quebra_proposta') (M7b, C4). O Disparo vale um ato so. Devolve a familia gravada."""
     from desdobra import humano
@@ -409,7 +585,14 @@ def confirmar_familia(pasta, familia, versao, *, disparo, job_id, laudo_atual, e
         f.pop('cedidos', None)
     if pecas is not None:
         conf['pecas'] = pecas
+    if arquivo_de_edicao is not None:
+        conf['arquivo_de_edicao'] = arquivo_de_edicao
+        f['arquivo_de_edicao'] = arquivo_de_edicao
+    if layouts is not None:
+        conf['layouts'] = dict(sorted(layouts.items()))
     f.update(versao=versao, confirmada=True, confirmacao=conf)
+    f.pop('layout_mudou', None)  # o DA conferiu os arquivos de novo (derrubar_por_layout)
+    f.pop('arquivo_trocado', None)  # e viu as edicoes no arquivo de edicao de agora (_com_a_estrutura)
     dados['familias'] = dict(dados['familias'], **{familia: f})
     if formatos is not None:
         # as outras familias que ainda tinham estes formatos na lista guardam que esta os levou

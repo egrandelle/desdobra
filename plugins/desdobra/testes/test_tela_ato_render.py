@@ -194,7 +194,9 @@ def test_ato_de_render_usa_o_comando_render_sem_ato_novo_da_tela(job):
     assert 'render' in humano.COMANDOS and \
         humano.ATOS_DA_TELA == ('modo dados escolher', 'familia confirmar', 'marca escolher', 'marca registrar',
                                 'fonte como imagem',  # 0.9.1: o texto como imagem
-                                'formatos digitados')  # 0.9.2: os formatos digitados
+                                'formatos digitados',  # 0.9.2: os formatos digitados
+                                # 0.10.0 (decisao 199): trocar o arquivo de edicao, separar e juntar
+                                'familia trocar arquivo', 'familia separar', 'familia juntar')
 
 
 # ------------------------------------------------------------------ o pedido

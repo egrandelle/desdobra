@@ -205,7 +205,7 @@ class Ato:
     da tela de cada um desses comandos (o aprovar da tela grava o sentido do giro com o do parametros-entrega), e
     executar recebe outros={comando: Disparo}; todos sao gastos quando a tarefa acaba."""
     comando: str
-    titulo: str
+    titulo: object  # o texto, ou titulo(dados) -> str (decisao 199)
     texto: str
     sim: str
     nao: str
@@ -297,6 +297,9 @@ class ServidorTela:
                                  for g, f in (conteudo.get('familias') or {}).items()}
         self.pecas_da_tela = {g: f.get('pecas') for g, f in (conteudo.get('familias') or {}).items()}
         self.sem_edicao_da_tela = {g: f.get('pecas_sem_edicao') for g, f in (conteudo.get('familias') or {}).items()}
+        # decisao 199 (0.10.0): o arquivo de edicao de cada familia como a tela mostra; a primeira gravacao da familia
+        # o grava no rascunho (desdobra.tela.rascunho._com_a_estrutura)
+        self.arquivos_da_tela = {g: f.get('arquivo_de_edicao') for g, f in (conteudo.get('familias') or {}).items()}
         # {id do elemento: [layer_ids]} da mestre da tela: a quebra de linha do rascunho cita um deles (revisao 2 do C)
         self.elementos_da_tela = conteudo.get('elementos')
         self.previas = dict(conteudo.get('previas') or {})
@@ -635,6 +638,7 @@ class ServidorTela:
         self.familias_da_tela = {g: list(f.get('formatos') or ()) for g, f in (novo.get('familias') or {}).items()}
         self.pecas_da_tela = {g: f.get('pecas') for g, f in (novo.get('familias') or {}).items()}
         self.sem_edicao_da_tela = {g: f.get('pecas_sem_edicao') for g, f in (novo.get('familias') or {}).items()}
+        self.arquivos_da_tela = {g: f.get('arquivo_de_edicao') for g, f in (novo.get('familias') or {}).items()}
         self.elementos_da_tela = novo.get('elementos')
         self._pendente = None  # o pedido de ato aberto e de antes do passo 3 novo
 
@@ -762,6 +766,7 @@ class ServidorTela:
             # cada familia mexida guarda os formatos que a tela mostra para ela agora (revisao do M7b, fase A)
             gravado = rascunho.gravar(self.pasta, dados, job_id=self.job_id, laudo_atual=laudo_agora,
                                       origem=self.origem_rascunho, familias_da_tela=self.familias_da_tela,
+                                      arquivos_da_tela=self.arquivos_da_tela,
                                       elementos_da_tela=self.elementos_da_tela)
         except rascunho.ErroRascunho:
             return None
@@ -790,7 +795,9 @@ class ServidorTela:
         pedido = secrets.token_hex(16)  # numero-neutro: bytes de entropia do pedido
         self._pendente = (pedido, dados['ato'], dados['dados'], None)  # um pedido novo derruba o anterior
         texto = ato.texto(dados['dados']) if callable(ato.texto) else ato.texto
-        return 200, {'pedido': pedido, 'titulo': ato.titulo, 'texto': texto, 'sim': ato.sim,  # numero-neutro: codigo HTTP
+        # o titulo tambem pode ser funcao dos dados (decisao 199: "Conferir os N arquivos" da familia)
+        titulo = ato.titulo(dados['dados']) if callable(ato.titulo) else ato.titulo
+        return 200, {'pedido': pedido, 'titulo': titulo, 'texto': texto, 'sim': ato.sim,  # numero-neutro: codigo HTTP
                      'nao': ato.nao}
 
     def _preparar_ato(self, nome, ato, dados):

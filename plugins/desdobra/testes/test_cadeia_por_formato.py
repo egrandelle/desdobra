@@ -372,6 +372,9 @@ def test_formato_novo_na_familia_nao_derruba_o_irmao(job_aprovado, copia, monkey
     shas = _shas(job, *_rels_de('mesma'))
 
     def com_irmao(b):
+        # decisao 199: o irmao copia o layout do arquivo de edicao (mesma), e mesma fica. Revisao da 0.10.0 (a
+        # migracao): o briefing sem arquivo_de_edicao gravado (o da 0.9.6) fixa o arquivo de edicao entre os formatos
+        # que a familia ja tinha derivados, entao o irmao maior (1280x640) tambem nao derruba mesma
         b['formatos'].append(ap.formato('mesma2', 1280, 640, rotacao=ROT0))
         next(c for c in b['composicoes'] if c['familia'] == 'familia-mesma')['formatos'].append('mesma2')
     mud = _salvar_seletivo(job, com_irmao)

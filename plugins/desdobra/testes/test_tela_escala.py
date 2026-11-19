@@ -336,10 +336,14 @@ def test_escala_por_numero_na_tela_do_chromium(job_escala, conteudo_escala):
     navegador.apontar_playwright()
     with ts.ServidorTela(conteudo_escala, pasta=job, modo_teste=True,
                          atos=ta.atos_do_job(job, conteudo=conteudo_escala)) as srv, sync_playwright() as pw:
+        # 0.10.0 (decisao 199): o DA edita so o arquivo de edicao; o h1 do teste passa a ser o da familia
+        tg._trocar_para(srv, job, conteudo_escala, gid, 'h1')
         nav, pg = tp._pagina_da_tela(pw, srv, 2048, 720)  # numero-neutro: a tela do Duda (decisao 157)
         try:
             tg._abrir(pg, estado, 'h1')
             tp._esperar(pg, '() => document.documentElement.dataset.previa === "pronta" ? "1" : ""')
+            # 0.10.0: com o h1 de arquivo de edicao, os outros arquivos copiam o layout dele; a partida e a de agora
+            base = conteudo_escala['editar']({'familia': gid, 'versao': None, 'edicoes': []})
             # sem nada escolhido, o campo e o botao ficam desligados; o rotulo diz o que e
             assert pg.evaluate('() => document.getElementById("ed-tamanho").disabled') is True
             assert pg.evaluate('() => document.getElementById("ed-tamanho-aplicar").disabled') is True

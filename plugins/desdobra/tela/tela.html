@@ -144,7 +144,7 @@
           <button type="button" id="ver-limpo" class="botao-vista" aria-pressed="false">Ver limpo</button>
         </div>
       </div>
-      <div id="fichas" class="fichas" aria-label="Arquivos desta família"></div>
+      <div id="cabecalho-familia" class="cabecalho-familia" aria-label="Arquivo de edição desta família"></div>
       <p id="devolucao" class="devolucao" hidden></p>
       <p id="aviso-familia" class="devolucao" role="status" hidden></p>
       <p id="aviso-passo-2" class="devolucao" role="status" hidden>As funções ou o Design system mudaram depois que a tela abriu. As famílias abaixo ainda mostram o que estava antes e passam a seguir o que você escolheu assim que as funções e o Design system estiverem completos.</p>
@@ -172,7 +172,7 @@
                 <li>Para encostar na margem ou centralizar, use os botões de Alinhar.</li>
                 <li>Pelo teclado, as setas movem, + e - mudam o tamanho, F2 abre o texto escolhido e Delete apaga.</li>
                 <li>Ctrl+Z ou Desfazer volta a última edição. Esc tira a escolha.</li>
-                <li>Cada mudança vale para todos os arquivos da família.</li>
+                <li>Você edita este arquivo. Os outros arquivos da família seguem o layout dele.</li>
               </ul>
               <button type="button" id="ed-ajuda-fechar" class="botao-vista">Fechar</button>
             </div>
@@ -238,7 +238,7 @@
           </div>
           <section id="membros" class="membros" aria-labelledby="t-membros" hidden>
             <div class="membros-topo">
-              <h2 id="t-membros">Como fica em cada arquivo da família</h2>
+              <h2 id="t-membros">Como fica em cada arquivo</h2>
               <p id="resumo-edicao" class="resumo-edicao"></p>
             </div>
             <div id="membros-lista" class="membros-lista"></div>
@@ -318,6 +318,26 @@
   <div class="confirmacao-acoes">
     <button type="button" class="botao" data-resposta="nao"></button>
     <button type="button" class="botao botao-primario" data-resposta="sim"></button>
+  </div>
+</dialog>
+<dialog id="ver-grande" class="confirmacao ver-grande" aria-labelledby="ver-grande-titulo" aria-describedby="ver-grande-nota">
+  <div class="ver-grande-topo">
+    <div class="ver-grande-textos">
+      <h2 id="ver-grande-titulo" tabindex="-1"></h2>
+      <p id="ver-grande-nota" class="nota">Só para ver. Para mudar o layout, edite o arquivo de edição no palco.</p>
+    </div>
+    <button type="button" id="ver-grande-por-cima" class="botao-vista" aria-pressed="false" title="Desenha, em linha tracejada, onde cada elemento do seu arquivo de edição cai neste arquivo pela cópia do desdobra. No arquivo igual ao seu, a linha fica em cima do elemento. No ajustado, ela mostra de onde o desdobra tirou o elemento.">Mostrar o seu por cima</button>
+  </div>
+  <div class="ver-grande-corpo">
+    <div id="ver-grande-palco" class="ver-grande-palco" aria-label="Este arquivo, em tamanho grande"></div>
+    <div class="ver-grande-lado">
+      <p id="ver-grande-selo" class="selo-copia"></p>
+      <ul id="ver-grande-frases" class="ver-grande-frases"></ul>
+      <div id="ver-grande-atos" class="ver-grande-atos"></div>
+    </div>
+  </div>
+  <div class="confirmacao-acoes">
+    <button type="button" class="botao botao-primario" data-resposta="fechar">Fechar</button>
   </div>
 </dialog>
 <dialog id="sentido" class="confirmacao confirmacao-larga" aria-labelledby="sentido-titulo" aria-describedby="sentido-texto">

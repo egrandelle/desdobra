@@ -598,9 +598,10 @@ def test_rascunho_espera_e_confirmacao_no_chromium(job_galeria):  # noqa: F811
         nav, pg = tp._pagina_da_tela(pw, srv, 2048, 720)  # numero-neutro: a tela do Duda (decisao 157)
         try:
             assert pg.evaluate('() => document.querySelector("meta[name=dsd-csrf]").content') == srv.csrf
-            tg._abrir(pg, c['estado'], 'vertical')
+            # 0.10.0 (decisao 199): a familia abre no arquivo de edicao, o unico com a galeria
+            ref = tg._abrir(pg, c['estado'], 'vertical')
             familia = pg.evaluate('() => document.querySelector("#composicoes [aria-selected=true]").dataset.grupo')
-            vs = c['previas']['vertical']['galeria']['variantes']
+            vs = c['previas'][ref]['galeria']['variantes']
             # a primeira versao vem do motor sem clique: nada e gravado
             time.sleep(espera * 2)  # numero-neutro: o dobro da espera
             assert _ler_rascunho(job_galeria) is None and srv.contagem['rascunho'] == 0

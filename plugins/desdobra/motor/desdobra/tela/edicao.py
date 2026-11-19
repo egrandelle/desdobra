@@ -2,7 +2,10 @@
 """Edicao da composicao no palco, por familia (M7a, fatia 4; decisoes-v1.md, 164, 166, 167, 168, 169, 171 e 185).
 
 A familia (as composicoes de proporcao parecida de uma orientacao, desdobra.tela.estado.agrupar_por_proporcao) recebe
-as decisoes do DA de uma vez so, nunca peca a peca:
+as decisoes do DA de uma vez so, nunca peca a peca. Desde a decisao 199 (etapa E4), o DA edita so o arquivo de edicao
+da familia (Editor.arquivo_de_edicao: o de maior area, em pe); o pedido que diz outro arquivo e recusado (conferir).
+As regras abaixo valem nele, e os outros arquivos copiam o layout aprovado nele pela mesma conta do "Salvar e seguir"
+(desdobra.derivacao.proposta.layout_da_familia), cada um com a situacao (igual, ajustado ou pede_ajuste) e as frases:
   - o ponto de partida de cada membro e a versao da galeria que o DA escolheu (o formato devolvido) ou a proposta da
     derivacao (o formato derivado); sem escolha, a primeira versao sem falha, como a tela mostra;
   - cada edicao (mover, escalar, texto, apagar) e gravada em fracao do lado da peca e vai a cada membro em proporcao
@@ -81,7 +84,14 @@ ALVOS = {'margem_esquerda': ('x', 'esquerda'), 'centro_horizontal': ('x', 'centr
          'topo': ('y', 'topo'), 'centro_vertical': ('y', 'meio'), 'base': ('y', 'base')}
 REFERENCIAS = ('margem', 'area_segura')  # o quadro de cada membro: a margem dele ou a area segura dele
 CAMPOS =('familia', 'versao', 'edicoes')
-CAMPOS_OPCIONAIS = ('quebras',)  # M7b, C3: as quebras de linha do rascunho da familia
+# M7b, C3: as quebras de linha do rascunho da familia. Decisao 199 (etapa E4): o arquivo em cujo palco o DA editou,
+# que tem de ser o arquivo de edicao da familia
+CAMPOS_OPCIONAIS = ('quebras', 'arquivo')
+# decisao 199: o arquivo que nao tem o que copiar, ou cuja copia quebrou, fica como o motor o deixou, com a frase
+TEXTO_SEM_ARQUIVO_DE_EDICAO = ('O arquivo de edição desta família está sem layout. Este arquivo fica com a proposta do '
+                               'desdobra até o arquivo de edição ter uma versão.')
+TEXTO_ERRO_NA_COPIA = ('O desdobra não conseguiu copiar o seu layout para este arquivo. Ele fica como o desdobra o '
+                       'deixou. Fale com a Trezion.')
 VIVAS_MAX = 8  # numero-neutro: familias com quebra nova guardadas na previa (a ultima mexida fica)
 # as linhas de alinhamento de uma caixa [x0, y0, x1, y1]: (nome para o DA, indice, indice do outro lado para o centro)
 LINHAS = {'x': (('esquerda', 0, None), ('centro', 0, 2), ('direita', 2, None)),  # numero-neutro: indices da caixa
@@ -673,11 +683,14 @@ class Editor:
     derivados: {id do formato: derivacao/1 em memoria}; brutos: {id do formato: {id da versao: variante do motor}};
     familias: {id da familia: [ids dos formatos membros]}; faces: as faces servidas do job (com o cmap)."""
 
-    def __init__(self, ctx, kv, laudo, base, derivados, brutos, familias, faces, *, specs, arquivo_specs, params):
+    def __init__(self, ctx, kv, laudo, base, derivados, brutos, familias, faces, *, specs, arquivo_specs, params,
+                 arquivos=None):
         from desdobra.derivacao import solver as mod_solver
         from desdobra.tela import estado
         self.ctx, self.kv, self.laudo, self.base = ctx, kv, laudo, base
         self.derivados, self.brutos, self.familias = derivados, brutos, familias
+        # decisao 199 (0.10.0): {id: arquivo de edicao} como a tela mostra (o gravado no rascunho ou a regra)
+        self.arquivos = dict(arquivos or {})
         self.faces = {f['id']: f for f in faces}
         self.kw = {'specs': specs, 'arquivo_specs': arquivo_specs, 'params': params}
         self.por_formato = {f['id']: f for f in ctx['briefing']['formatos']}
@@ -693,6 +706,14 @@ class Editor:
 
     def versoes(self, gid):
         return {vid for fid in self.familias.get(gid, ()) for vid in (self.brutos.get(fid) or {})}
+
+    def arquivo_de_edicao(self, gid):
+        """O arquivo de edicao da familia (decisao 199, 1): o que a tela mostra (o gravado no rascunho, enquanto
+        estiver na familia), senao a mesma regra da derivacao (desdobra.derivacao.proposta.arquivo_de_edicao). None sem
+        formato."""
+        from desdobra.derivacao import proposta
+        fs = [self.por_formato[f] for f in self.familias.get(gid, ()) if f in self.por_formato]
+        return proposta.arquivo_de_edicao(fs, self.arquivos.get(gid)) if fs else None
 
     def _contexto(self, fid, viva=None):
         from desdobra.derivacao import galeria as mg
@@ -724,6 +745,9 @@ class Editor:
             return False
         gid, versao, edicoes = dados['familia'], dados['versao'], dados['edicoes']
         if not isinstance(gid, str) or gid not in self.familias:
+            return False
+        # decisao 199 (1): so o arquivo de edicao aceita edicao no palco. O pedido que diz outro arquivo e recusado
+        if 'arquivo' in dados and dados['arquivo'] != self.arquivo_de_edicao(gid):
             return False
         if versao is not None and (not isinstance(versao, str) or versao not in self.versoes(gid)):
             return False
@@ -799,7 +823,7 @@ class Editor:
         novo = dict(b, quebras_por_familia=[q for q in b.get('quebras_por_familia') or [] if q not in antes] + novas)
         novo['composicoes'] = [c for c in b.get('composicoes') or [] if not set(c['formatos']) & set(fids)] + [
             {'familia': gid, 'formatos': fids, 'versao': None, 'edicoes': list(edicoes), 'confirmada': False,
-             'confirmacao': None}]
+             'confirmacao': None, 'arquivo_de_edicao': self.arquivo_de_edicao(gid)}]
         a_medir = [n for n, q in zip(novas, quebras) if q['elemento'] not in editados]
         medidas = dict(self.ctx.get('medidas_quebras') or {})
         if a_medir and self.ctx.get('pasta') is not None:
@@ -814,7 +838,8 @@ class Editor:
         # membro que a quebra nova deixa sem galeria (tambem pela quebra sem medida) nao parte da versao de antes
         brutos = {f: v for f, v in self.brutos.items() if f not in fids}
         por, _mestre, sem_medida = proposta.galeria_dos_devolvidos(
-            ctx, self.kv, derivados, [self.por_formato[f] for f in fids], **self.kw)
+            ctx, self.kv, derivados, [self.por_formato[f] for f in fids], arquivo=self.arquivo_de_edicao(gid),
+            **self.kw)
         brutos.update({f: {v['id']: v for _n, v in pares} for f, pares in por.items()})
         viva = {'chave': chave, 'ctx': ctx, 'derivados': derivados, 'brutos': brutos, 'sem_medida': sem_medida}
         self._vivas[chave] = viva
@@ -883,19 +908,30 @@ class Editor:
         # a tinta das linhas do DA do texto editado (0.9.6; decisao 196), a mesma medida do "Salvar e seguir": a
         # caixa do texto encolhe e cresce com as linhas dele no palco e na conferencia
         fids = list(self.familias[gid])
-        tintas = proposta.tintas_editadas(viva['ctx'] if viva else self.ctx, self.kv, aceitas, fids[0]) \
-            if fids and any(e['acao'] == 'texto' for e in aceitas) else {}
+        # decisao 199: o arquivo de edicao parte da galeria ou da proposta com as edicoes do DA, e os outros copiam o
+        # layout aprovado nele, pela mesma conta do "Salvar e seguir" (desdobra.derivacao.proposta.layout_da_familia).
+        # A tinta das linhas do DA e medida no arquivo de edicao, com a quebra dele
+        ref = self.arquivo_de_edicao(gid)
+        ctx = viva['ctx'] if viva else self.ctx
+        derivados, brutos = (viva['derivados'], viva['brutos']) if viva else (self.derivados, self.brutos)
+        tintas = proposta.tintas_editadas(ctx, self.kv, aceitas, ref) \
+            if ref and any(e['acao'] == 'texto' for e in aceitas) else {}
+        cache = self._cf.setdefault(('familia', viva['chave'] if viva else None), {})
+        lays = proposta.layout_da_familia(
+            ctx, self.kv, {'familia': gid, 'formatos': fids, 'versao': versao, 'edicoes': aceitas,
+                           'arquivo_de_edicao': ref},
+            derivados=derivados, versoes={ref: brutos.get(ref) or {}}, tintas=tintas, cache=cache, **self.kw)
+        sem_arquivo = lays.get(ref) is None
         for fid in self.familias[gid]:
-            elementos = self.partida(fid, versao, viva)
-            if elementos is None:
-                # o membro devolvido sem versao da galeria fica devolvido, como o "Salvar e seguir" o grava
-                membros.append(self._devolvido(fid, viva))
+            lay = lays.get(fid)
+            if lay is None or 'erro' in lay:
+                # o membro devolvido sem versao da galeria fica devolvido, como o "Salvar e seguir" o grava; o que nao
+                # tem o que copiar fica com a proposta do motor, com a frase
+                membros.append(dict(self._sem_copia(fid, viva, sem_arquivo and fid != ref, lay is not None),
+                                    arquivo_de_edicao=fid == ref))
                 continue
-            cf = self._contexto(fid, viva)
+            cf = lay['cf']
             W, H = cf['W'], cf['H']
-            # a mesma conta da derivacao da familia confirmada (desdobra.derivacao.proposta)
-            lay = proposta.layout_do_membro(cf, elementos, aceitas, kv_por_id=self.kv_por_id, conteudo=self.conteudo,
-                                            kv_caixas=self.kv_caixas, kv_tamanho=self.kv_tamanho, tintas=tintas)
             apagados, textos, alinhados = lay['apagados'], lay['textos'], lay['alinhados']
             falhas, avisos, reprovadas = lay['falhas'], lay['avisos'], lay['reprovadas']
             els = lay['elementos']
@@ -911,8 +947,23 @@ class Editor:
                     e['caixa_das_linhas'] = True
             # os quadros do membro para alinhar (M7b, D2): a margem dele e a area segura da folha, None sem ela
             seg = ((cf.get('areas') or {}).get('area_segura') or {}).get('caixa')
+            copia = fid != ref
             membros.append({'formato': fid, 'palco': palco,
-                            'falhas': [{'codigo': f['codigo'], 'texto': f['texto']} for f in falhas],
+                            # decisao 199: o arquivo de edicao e o unico em que o DA edita; os outros dizem em
+                            # palavras como ficaram ("Igual ao seu", "Ajustado pelo desdobra" com a frase de cada
+                            # ajuste, ou "Pede ajuste" com o valor)
+                            'arquivo_de_edicao': not copia,
+                            'frases': list(lay.get('frases') or []),
+                            # os elementos de cada ajuste e de cada relacao quebrada: o "Ver grande" da tela mostra o
+                            # contorno deles (decisao 199, 6)
+                            'ajustes': [{'tipo': a.get('tipo') or a.get('codigo'), 'frase': a['frase'],
+                                         'elementos': list(a.get('elementos') or
+                                                           ([a['elemento']] if a.get('elemento') else []))}
+                                        for a in ((lay.get('transferencia') or {}).get('ajustes') or [])],
+                            'falhas': [dict({'codigo': f['codigo'], 'texto': f['texto']},
+                                            **({'elementos': list(f['elementos'])}
+                                               if copia and f['codigo'] == 'relacao_quebrada' else {}))
+                                       for f in falhas],
                             # o piso que o DA furou com a edicao dele (M7b, D5), com o valor no texto
                             'decisoes_do_da': [{'codigo': d['codigo'], 'texto': d['texto'],
                                                 'elementos': list(d['elementos']),
@@ -920,9 +971,13 @@ class Editor:
                                                for d in lay['decisoes_do_da']],
                             'avisos': [{'codigo': a['codigo'], 'texto': a['texto']} for a in avisos],
                             'validacoes_reprovadas': reprovadas,
-                            # nada refaz o encaixe depois da edicao (0.9.5): o membro e sempre a proposta com as
-                            # edicoes do DA, e o que precisa do olhar dele vem nas falhas
-                            'situacao': 'proposta',
+                            # nada refaz o encaixe depois da edicao (0.9.5): o arquivo de edicao e sempre a proposta
+                            # com as edicoes do DA, e o que precisa do olhar dele vem nas falhas. Os outros: igual,
+                            # ajustado ou pede_ajuste (199, 3)
+                            'situacao': lay['situacao'] if copia else 'proposta',
+                            # revisao da 0.10.0: o contorno do "Mostrar o seu por cima", pela mesma conta da copia
+                            'seu_levado': [{'id': k, 'caixa': c} for k, c in (lay.get('levado') or {}).items()]
+                            if copia else [],
                             'sangria_do_da': {k: list(v) for k, v in lay['sangria_do_da'].items()},
                             'quadro': {'margem': [round(v, 4) for v in lay['quadros']['margem']],  # numero-neutro: casas do px
                                        'area_segura': [round(float(v), 4) for v in seg] if seg else None}})  # numero-neutro: casas do px
@@ -933,12 +988,34 @@ class Editor:
             alinhados_fam.extend(dict(a, formato=fid) for a in alinhados)
             no_quadro_fam.extend(dict(a, formato=fid) for a in lay['no_quadro'])
         nome = self._nome
-        return {'familia': gid, 'versao': versao, 'membros': membros,
+        return {'familia': gid, 'versao': versao, 'membros': membros, 'arquivo_de_edicao': ref,
                 'apagados': [{'elemento': k, 'nome': nome(k), 'origem': origem} for k in apagados_fam],
                 'textos_editados': [{'elemento': k, 'nome': nome(k)} for k in textos_fam],
                 'recusas': recusas, 'alinhados': alinhados_fam, 'no_quadro': no_quadro_fam,
                 'textos_da_quebra': self._textos_da_quebra(aceitas),
                 'tempo_ms': round((time.perf_counter() - inicio) * POR_MS, CASAS_MS)}
+
+    def _sem_copia(self, fid, viva, sem_arquivo, erro):
+        """O membro sem layout da familia, como o "Salvar e seguir" o grava (decisao 199; previa igual ao Salvar): o
+        devolvido fica devolvido (_devolvido); o derivado que nao tem o que copiar (o arquivo de edicao sem layout) ou
+        cuja copia quebrou (erro) fica com a proposta do motor, com a frase que diz por que."""
+        from desdobra.tela import estado
+        d = (viva['derivados'] if viva else self.derivados)[fid]
+        if d['situacao'] != 'derivado':
+            m = self._devolvido(fid, viva)
+            if erro:
+                m['falhas'].append({'codigo': 'erro_na_copia', 'texto': TEXTO_ERRO_NA_COPIA})
+            elif sem_arquivo and m['falhas'][0]['codigo'] == 'formato_devolvido':
+                m['avisos'].append({'codigo': 'familia_sem_arquivo_de_edicao', 'texto': TEXTO_SEM_ARQUIVO_DE_EDICAO})
+            return dict(m, arquivo_de_edicao=False, frases=[f['texto'] for f in m['falhas']], ajustes=[])
+        W, H = d['formato']['composicao']
+        falhas = [{'codigo': 'erro_na_copia', 'texto': TEXTO_ERRO_NA_COPIA}] if erro else []
+        avisos = [{'codigo': 'familia_sem_arquivo_de_edicao', 'texto': TEXTO_SEM_ARQUIVO_DE_EDICAO}] \
+            if sem_arquivo and not erro else []
+        return {'formato': fid, 'palco': estado.palco(d, self.kv, self.laudo, self.base), 'falhas': falhas,
+                'decisoes_do_da': [], 'avisos': avisos, 'validacoes_reprovadas': [], 'situacao': 'proposta',
+                'arquivo_de_edicao': False, 'frases': [x['texto'] for x in falhas + avisos], 'ajustes': [],
+                'sangria_do_da': {}, 'quadro': {'margem': [float(v) for v in (0, 0, W, H)], 'area_segura': None}}
 
     def _devolvido(self, fid, viva=None):
         """O membro devolvido sem versao da galeria, como a derivacao da familia confirmada o grava (previa igual ao
@@ -981,6 +1058,27 @@ class Editor:
     def _nome(self, eid):
         e = self.kv_por_id[eid]
         return self.nomes.get(e.get('raiz')) or ''
+
+
+def previa_gravada(editar, gid, f):
+    """A previa da familia gid com o que o rascunho tem dela (f: a familia do rascunho), como a pagina a pede: a
+    versao, as edicoes e as quebras de linha (decisao 199, 5: a confirmacao e o "Salvar e seguir" medem o mesmo).
+    editar: Editor.previa. None quando os dados nao valem."""
+    f = f or {}
+    dados = {'familia': gid, 'versao': f.get('versao'), 'edicoes': list(f.get('edicoes') or []),
+             'quebras': list(f.get('quebras') or [])}
+    return editar(dados, antes=list(f.get('edicoes') or []))
+
+
+def hash_dos_layouts(previa):
+    """{id do formato: sha256 do palco} de cada arquivo da previa da familia (decisao 199, 5; 0.10.0): o layout de
+    cada arquivo como a janela mostrou, para a impressao da confirmacao (175). O palco vai em JSON com as chaves em
+    ordem; a previa e deterministica, e a mesma familia da o mesmo hash."""
+    import hashlib
+    import json
+    return {m['formato']: hashlib.sha256(json.dumps(m['palco'], sort_keys=True, ensure_ascii=True,
+                                                    separators=(',', ':')).encode('utf-8')).hexdigest()
+            for m in (previa or {}).get('membros') or []}
 
 
 def _assinatura(entradas):
