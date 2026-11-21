@@ -1051,18 +1051,6 @@
    "nota": "Nas variantes de imagem livre, o conteudo fica reunido nesta parte do lado maior e a imagem fica livre no resto. Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
   },
   {
-   "id": "derivacao.galeria_faixa_razao_min",
-   "valor": 3.0,
-   "unidade": "lado longo sobre lado curto do formato",
-   "fonte": {
-    "arquivo": "decisoes-v1.md",
-    "secao": "05/11, comentarios do Duda sobre a tela (sem regra fixa de rediagramacao; galeria de variantes) e a revisao da 164"
-   },
-   "situacao": "a_calibrar",
-   "efeito": "registra",
-   "nota": "A partir disto o formato e faixa: a galeria abre com o conteudo no inicio e a imagem no fim, e com o inverso (a tendencia de leitura citada pelo Duda, como opcao). Valor do prototipo da galeria de 05/11 (scratchpad/m7/galeria, revisado), sem medicao."
-  },
-  {
    "id": "derivacao.galeria_arte_area_min",
    "valor": 0.25,
    "unidade": "fracao de 0 a 1 da area do canvas da mestre",
@@ -1181,6 +1169,285 @@
    "situacao": "a_calibrar",
    "efeito": "registra",
    "nota": "Margem minima do quadro das variantes; vale a da mestre quando ela e maior. Valor do fluxo B do prototipo aprender-referencias (04/11), herdado pela galeria de 05/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_variantes_min",
+   "valor": 3,
+   "unidade": "versoes por formato na galeria",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "164 (de 3 a 4 versoes por formato devolvido) e a calibracao da galeria de 19/11"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Minimo de versoes que a galeria mostra por formato. As versoes com falha obrigatoria so entram para chegar a este minimo: com tantas versoes limpas quanto isto, nenhuma com falha aparece. Valor da decisao 164, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_fundo_max",
+   "valor": 1,
+   "unidade": "versoes com a figura de fundo antes das com a figura numa banda, por formato na galeria",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 202 (20/11: no KV deitado com a figura, no formato em pe ou quadrado, a foto pode virar fundo; as versoes com a figura numa banda ficam como antes; o Duda confirmou a versao de fundo em segundo lugar)"
+   },
+   "situacao": "decidido",
+   "efeito": "registra",
+   "nota": "A versao com a foto de fundo e uma opcao a mais na galeria, nunca o lugar das versoes com a foto numa banda: a melhor versao com a foto numa banda abre a galeria (a partida de quem ainda nao escolheu versao fica como antes), e so este tanto de versoes de fundo entra antes das outras com banda (as limpas primeiro, depois as com falha, como sempre); as demais de fundo so ocupam a vaga que sobrar. As versoes de fundo nao contam para o minimo de versoes limpas (derivacao.galeria_variantes_min), entao as com banda vao ao solver como antes. Valor escolhido para a 0.11.0 (uma versao basta para o DA ver a foto de fundo), a confirmar com o Duda, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_candidatas_ao_solver",
+   "valor": 10,
+   "unidade": "candidatas por lote que vao ao solver e a conferencia",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "164 e 166 (previa de um formato em menos de 2 s); calibracao da galeria de 19/11, prototipo fluxo"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Todas as candidatas ganham a nota antes do solver; as de melhor nota e diferentes vao ao solver em lotes deste tamanho, e outro lote vai so enquanto faltar versao para o minimo. Valor escolhido para o orcamento de 2 s por formato (o KV do cartaz leva de 0,2 a 0,4 s), sem medicao em pecas humanas."
+  },
+  {
+   "id": "derivacao.galeria_teto_sobre_regra",
+   "valor": 3.5,
+   "unidade": "escala do conteudo sobre a escala da regra de referencia",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "166 e a calibracao da galeria de 19/11 (metas do Duda no KV do cartaz, testes/sinteticos/kv_cartaz.py)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O conteudo cresce para ocupar o espaco livre ate esta vezes a regra (nenhum bloco passa disto, nem com a hierarquia). Nas metas do cartaz de 19/11, o conteudo das faixas chega de 2 a 3,5 vezes a regra. A calibrar com mais pecas."
+  },
+  {
+   "id": "derivacao.galeria_expoente_titulo",
+   "valor": 1.5,
+   "unidade": "expoente do crescimento do titulo sobre o do conteudo",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 200 (19/11: na galeria, o titulo pode crescer mais que os outros textos) e as metas do KV do cartaz"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Quando o conteudo cresce g vezes sobre a regra, o titulo cresce g elevado a isto (limitado por derivacao.galeria_titulo_sobre_outros_max). Nas metas do cartaz de 19/11, o titulo cresce de 1,5 a 2,3 vezes o crescimento dos grafismos, em log. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_titulo_sobre_outros_max",
+   "valor": 1.6,
+   "unidade": "escala do titulo sobre a dos outros textos, cada uma relativa a sua regra",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 200 (19/11: o titulo pode crescer mais que os outros textos) e as metas do KV do cartaz"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto do crescimento a mais do titulo: ele fica no maximo isto vezes os outros textos. Na nota, o titulo satura em derivacao.galeria_nota_satura vezes isto. Nas metas do cartaz de 19/11, titulo sobre texto de apoio de 1,4 a 1,6 nas faixas. Vem do prototipo zonas, enxertado pelo juiz. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_expoente_secundario",
+   "valor": 0.8,
+   "unidade": "expoente do crescimento de marcas, logos, selo, assinatura, contato e legal sobre o do conteudo",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (metas do Duda no KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Quando o conteudo cresce g vezes sobre a regra, a marca, os logos, o selo, a assinatura, o contato e o legal crescem g elevado a isto (crescem menos). Nas metas do cartaz de 19/11, logos e marca crescem de 0,5 a 0,9 do crescimento dos grafismos, em log. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_serie_tolerancia",
+   "valor": 0.15,
+   "unidade": "fracao da maior largura (e altura) entre dois itens",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11, prototipo fluxo"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Itens consecutivos de um elemento so, da mesma funcao e com largura e altura a menos disto um do outro formam uma lista, que a galeria pode girar para o outro eixo. Os itens da lista do cartaz de 19/11 variam ate 8%. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_faixa_distancia_max",
+   "valor": 0.06,
+   "unidade": "fracao da altura do KV",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (a faixa de contato no topo do KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Faixa de borda: o bloco que abre ou fecha a leitura a menos disto do topo ou da base do KV (e fino, derivacao.galeria_faixa_espessura_max, e largo, derivacao.galeria_faixa_largura_min) pode ficar preso a essa borda no formato. No cartaz de 19/11, o contato fica a 0,024 do topo. Valor com folga, a calibrar."
+  },
+  {
+   "id": "derivacao.galeria_faixa_espessura_max",
+   "valor": 0.06,
+   "unidade": "fracao da altura do KV",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (a faixa de contato no topo do KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Espessura maxima da faixa de borda (derivacao.galeria_faixa_distancia_max). No cartaz de 19/11, o contato tem 0,028 da altura. Valor com folga, a calibrar."
+  },
+  {
+   "id": "derivacao.galeria_faixa_largura_min",
+   "valor": 0.6,
+   "unidade": "fracao da largura do KV",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (a faixa de contato no topo do KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Largura minima da faixa de borda (derivacao.galeria_faixa_distancia_max). No cartaz de 19/11, o contato cobre 0,93 da largura. Valor com folga, a calibrar."
+  },
+  {
+   "id": "derivacao.galeria_figura_area_min",
+   "valor": 0.08,
+   "unidade": "fracao de 0 a 1 da area do canvas do KV",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "n 201 (19/11: o sujeito fica do lado em que esta no KV, preso a borda que toca) e o prototipo fluxo"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O sujeito recortado que cobre ao menos isto do KV vira a figura: uma banda num lado do formato, e o conteudo vai para o resto. Abaixo disto ele segue de fundo. No cartaz de 19/11, o sujeito cobre 37%. Julgamento do prototipo, a calibrar."
+  },
+  {
+   "id": "derivacao.galeria_figura_banda_max",
+   "valor": 0.5,
+   "unidade": "fracao do lado do formato em que a banda da figura corre",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (metas do Duda no KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A banda da figura ocupa no maximo isto do lado do formato. Nas metas do cartaz de 19/11, o sujeito ocupa de 16% a 49% da largura. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_figura_teto_sobre_regra",
+   "valor": 2.5,
+   "unidade": "escala da figura sobre a escala da regra dela",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (metas do Duda no KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto do crescimento da figura na banda (e da parte dela na nota). Nas metas do cartaz de 19/11, o sujeito fica de 1,25 a 1,65 vezes a regra; o valor tem folga. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_figura_reducao_passo",
+   "valor": 0.9,
+   "unidade": "fator de reducao da figura por volta",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "133 (piso da escala do conteudo) e a calibracao da galeria de 19/11, prototipo zonas"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Piso por bloco: quando o conteudo so caberia abaixo do piso da 133, a figura cede primeiro, encolhendo por este fator a cada volta (ate derivacao.galeria_figura_reducao_min). Julgamento do prototipo zonas, enxertado pelo juiz em 19/11, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_figura_reducao_min",
+   "valor": 0.6,
+   "unidade": "fracao do tamanho da figura que enche a banda",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "133 (piso da escala do conteudo) e a calibracao da galeria de 19/11, prototipo zonas"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A figura cede ao conteudo ate isto do tamanho que enche a banda (derivacao.galeria_figura_reducao_passo); nunca abaixo do piso da 133 da regra dela. Se o conteudo ainda nao couber, ele fica no piso e a conferencia diz o que falha. Julgamento do prototipo zonas, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_sujeito_sangria_extra",
+   "valor": 0.03,
+   "unidade": "fracao do lado curto do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (metas do Duda no KV do cartaz: 300x150 e 1280x720)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "A figura presa a borda que sangra passa dela por isto do lado curto. Nas metas do cartaz de 19/11, o sujeito passa 3% da base no 300x150 e no 1280x720. Vem do prototipo zonas. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_figura_visivel_min",
+   "valor": 0.85,
+   "unidade": "fracao de 0 a 1 da caixa da figura dentro do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (metas do Duda no KV do cartaz: 970x250)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Na nota, a figura com menos disto da caixa dentro do formato perde pontos (peso cobre de derivacao.galeria_nota_pesos). Na meta do 970x250 de 19/11, o sujeito passa 12% da base e fica com 0,89 da caixa a vista. Vem do prototipo zonas. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_nota_satura",
+   "valor": 2.0,
+   "unidade": "escala sobre a regra a partir da qual a nota nao melhora",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11 (metas do Duda no KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Na nota, crescer alem disto da regra nao melhora a legibilidade (o titulo satura em isto vezes derivacao.galeria_titulo_sobre_outros_max). Nas metas do cartaz de 19/11, fora o titulo, o conteudo das faixas fica de 1,2 a 2,3 vezes a regra. Vem do prototipo zonas. A calibrar."
+  },
+  {
+   "id": "derivacao.galeria_folga_135",
+   "valor": 0.1,
+   "unidade": "fracao a mais sobre o piso da 135 (derivacao.distancia_entre_linhas_min)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "135 (distancia minima entre conteudo) e a calibracao da galeria de 19/11, prototipo fluxo"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "O fluxo abre o vao entre dois blocos vizinhos no KV com esta folga sobre o piso da 135, para a conferencia contra a mestre verdadeira nao reprovar por arredondamento nem pelo ajuste do solver. Folga numerica do prototipo, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_margem_max_lado_curto",
+   "valor": 0.12,
+   "unidade": "fracao do lado curto do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "164 (de 3 a 4 versoes por formato devolvido) e a revisao da galeria de 19/11"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Teto da margem do quadro das variantes, que vem da menor distancia de um item do KV a borda. Sem teto, o conteudo pequeno no meio do KV (um titulo so, centrado) virava margem de um terco do lado curto, o quadro do formato ficava do tamanho do conteudo e as versoes saiam iguais (menos que o minimo). Valor logo acima da maior margem dos KVs sinteticos da calibracao (0,11 do KV A do juiz), sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_ordem_tolerancia",
+   "valor": 0.01,
+   "unidade": "fracao do lado do formato",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "calibracao da galeria de 19/11, prototipo fluxo"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Na nota, dois centros a menos disto um do outro contam como lado a lado (nem antes nem depois) ao medir a ordem do KV invertida. O solver mexe alguns px. Julgamento do prototipo, sem medicao."
+  },
+  {
+   "id": "derivacao.galeria_nota_pesos",
+   "valor": [{"termo": "falha", "peso": 1.0}, {"termo": "escala", "peso": 1.0}, {"termo": "menor", "peso": 0.6},
+             {"termo": "razao", "peso": 0.5}, {"termo": "figura", "peso": 0.5}, {"termo": "cobre", "peso": 2.0},
+             {"termo": "lado", "peso": 0.3}, {"termo": "espelho", "peso": 0.15}, {"termo": "vazio", "peso": 0.4},
+             {"termo": "ordem", "peso": 2.0}, {"termo": "serie_partida", "peso": 0.3}],
+   "unidade": "peso de cada termo da nota de uma versao (log da escala sobre a regra, fracao ou contagem)",
+   "fonte": {
+    "arquivo": "decisoes-v1.md",
+    "secao": "97 (razao de corpo), 166 (a escolha e pela nota) e a calibracao da galeria de 19/11 (metas do Duda no KV do cartaz)"
+   },
+   "situacao": "a_calibrar",
+   "efeito": "registra",
+   "nota": "Pesos da nota da galeria: falha (cada falha obrigatoria, prevista antes do solver ou da conferencia, e cada bloco que o solver esmagou), escala (media do log da escala do conteudo sobre a regra, saturada), menor (log do menor corpo sobre a regra, sem corte no piso), razao (espalhamento das escalas, 97), figura (log da escala da figura), cobre (fracao do conteudo sobre a figura e a parte da figura fora do formato), lado (figura no lado oposto ao do KV), espelho (ordem espelhada), vazio (fracao vazia do quadro do conteudo), ordem (fracao dos pares com a ordem do KV invertida), serie_partida (lista quebrada entre trilhas). Calibrados em 19/11 no KV do cartaz (prototipo fluxo; menor vem do prototipo busca e razao do zonas). Com os enxertos, o peso da ordem passou de 1 para 2: com 1, no 970x250 as quatro versoes perdiam a do contato no topo e o deslocamento medio da melhor versao subia de 0,094 para 0,105. A recalibrar com mais pecas."
   },
   {
    "id": "derivacao.base_calculo",

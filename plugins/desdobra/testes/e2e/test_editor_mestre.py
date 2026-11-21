@@ -271,7 +271,15 @@ def test_editor_de_mestre_de_ponta_a_ponta(job, modelo, medida_limpa):
 
     # reabrir: um servidor novo, montado do zero, e uma janela nova
     conteudo2 = te.montar(job)
-    assert conteudo2['familias'] == conteudo['familias']
+    # 0.11.0: a lista das versoes da galeria depende da medida do conteudo, e a quebra aprovada pelo DA a troca na
+    # familia editada; o resto da familia (a impressao, que conta so se ha galeria) fica igual, e a versao confirmada
+    # continua na galeria
+    def sem_versoes(fams):
+        return {g: {k: v for k, v in x.items() if k != 'versoes'} for g, x in fams.items()}
+    assert sem_versoes(conteudo2['familias']) == sem_versoes(conteudo['familias'])
+    assert all(conteudo2['familias'][g]['versoes'] == conteudo['familias'][g]['versoes']
+               for g in conteudo['familias'] if g != gv)
+    assert f['versao'] in conteudo2['familias'][gv]['versoes']
     assert conteudo2['estado']['briefing']['salvo'] is True
     with ts.ServidorTela(conteudo2, pasta=job, modo_teste=True,
                          atos=ta.atos_do_job(job, conteudo=conteudo2)) as srv, sync_playwright() as pw:

@@ -294,12 +294,17 @@ def _resolver_lp(obrigatorias, suaves, n):
     return [float(x) for x in r.x[:n]]
 
 
-def resolver(elementos, mestre, formato, areas, regras):
+def resolver(elementos, mestre, formato, areas, regras, pisos=None, fundo=()):
     """Resolve o layout de um formato.
 
     elementos: os da mestre (caixa na mestre, sangra, classe, funcao, ancora (x, y)); mestre: (largura, altura) do
     canvas da mestre; formato: (largura, altura) da composicao; areas: de formatos.areas; regras: [escala da regra
-    por elemento]. Devolve (caixas [[x0, y0, x1, y1]], escalas, restricoes) ou levanta NaoFecha com a obrigatoria."""
+    por elemento]. pisos: [escala minima obrigatoria do conteudo por elemento, ou None] no lugar do piso da 133 sobre a
+    regra (a galeria passa a regra da mestre sintetica e o piso da regra verdadeira). fundo: ids da figura de fundo
+    desta versao da galeria (decisoes-v1.md, n 202): o conteudo pode ficar sobre ela, entao ela sai do "nao sobrepor",
+    da distancia da 135 e dos alinhamentos; o piso de escala dela continua. Devolve (caixas [[x0, y0, x1, y1]],
+    escalas, restricoes) ou levanta NaoFecha com a obrigatoria."""
+    fundo = set(fundo)
     Wm, Hm = (float(v) for v in mestre)
     W, H = (float(v) for v in formato)
     tol_al = limites.valor('derivacao.alinhamento_tolerancia_px')
@@ -395,7 +400,7 @@ def resolver(elementos, mestre, formato, areas, regras):
     for (i, a), (j, b) in itertools.combinations(enumerate(elementos), 2):
         # nao sobrepor entre conteudo, e entre conteudo e objeto solto: luz, veu e cena que sangra nao empurram conteudo
         # (decisoes-v1.md, 96; rodada 3)
-        if not par_que_nao_sobrepoe(a, b):
+        if not par_que_nao_sobrepoe(a, b) or a['id'] in fundo or b['id'] in fundo:
             continue
         opcoes = _disjuntas(a['caixa'], b['caixa'], 0.0)
         if not opcoes:
@@ -429,6 +434,8 @@ def resolver(elementos, mestre, formato, areas, regras):
         ra, rb = raiz_g(eixo, a), raiz_g(eixo, b)
         grupo[eixo][max(ra, rb)] = min(ra, rb)
     for eixo, tipo, i, j in alinhamentos(elementos, tol_al):
+        if elementos[i]['id'] in fundo or elementos[j]['id'] in fundo:
+            continue  # o texto sobre a figura de fundo nao herda a ancora dela (n 202)
         juntar_g(eixo, i, j)
         ci, cj = caixa(i), caixa(j)
         k0, k1 = (0, 2) if eixo == 'x' else (1, 3)
@@ -523,8 +530,8 @@ def resolver(elementos, mestre, formato, areas, regras):
     fonte_forte = {'tipo': 'limite', 'ref': 'derivacao.escala_conteudo_forte_da_regra'}
     for i, e in enumerate(elementos):
         if conteudo(e) and regras[i]:
-            obrigatoria('escala_minima_de_conteudo:%s' % e['id'], escala(i) - piso_c * regras[i], 'ge', fonte_piso,
-                        [e['id']])
+            piso_i = piso_c * regras[i] if pisos is None or pisos[i] is None else pisos[i]
+            obrigatoria('escala_minima_de_conteudo:%s' % e['id'], escala(i) - piso_i, 'ge', fonte_piso, [e['id']])
             outra('escala_de_conteudo:%s' % e['id'], escala(i) - forte_c * regras[i], 'strong', fonte_forte, [e['id']],
                   op='ge')
     # distancia entre linhas (e colunas) de conteudo (decisoes-v1.md, 135): entre um elemento de conteudo e o vizinho de
@@ -535,13 +542,13 @@ def resolver(elementos, mestre, formato, areas, regras):
     fonte_d = {'tipo': 'limite', 'ref': 'derivacao.distancia_entre_linhas_min'}
     vistos = set()
     for i, a in enumerate(elementos):
-        if not conteudo(a):
+        if not conteudo(a) or a['id'] in fundo:
             continue
         ca = a['caixa']
         for eixo, (k0, k1), (o0, o1) in (('x', (0, 2), (1, 3)), ('y', (1, 3), (0, 2))):
             melhor = None
             for j, b in enumerate(elementos):
-                if j == i or not conteudo(b):
+                if j == i or not conteudo(b) or b['id'] in fundo:
                     continue
                 cb = b['caixa']
                 if min(ca[o1], cb[o1]) - max(ca[o0], cb[o0]) <= 0:

@@ -14,14 +14,19 @@
     util e, texto e marca, da area segura (revisao 2 do M5, A3);
   - cena que passa a cobrir conteudo: cena opaca acima de texto, marca ou sujeito na pilha nao passa a cobrir mais
     que derivacao.cobertura_nova_cena_sobre_conteudo_max da caixa dele (revisao 2, M4);
-  - corpo minimo do texto legal: abaixo de derivacao.corpo_minimo_legal_px avisa (revisao 2, B5).
+  - corpo minimo do texto legal: abaixo de derivacao.corpo_minimo_legal_px avisa (revisao 2, B5);
+  - figura de fundo (decisoes-v1.md, n 202): na versao da galeria em que a foto do KV deitado fica de fundo no
+    formato em pe ou quadrado, o conteudo pode ficar sobre ela; ela nao pode estar acima, na pilha, de um conteudo
+    (ou objeto solto) que passa a cobrir.
 A obrigatoria que reprova devolve o formato ao DA com o nome e a fonte.
 
 Funcao pura das caixas.
 """
 from desdobra import limites
 from desdobra.derivacao import escala as mod_escala
-from desdobra.derivacao.solver import CLASSES_AREA_SEGURA, FONTE_MESTRE, conteudo, par_que_nao_sobrepoe
+from desdobra.derivacao.solver import CLASSES_AREA_SEGURA, FONTE_MESTRE, conteudo, objeto_solto, par_que_nao_sobrepoe
+
+FONTE_FUNDO = {'tipo': 'decisao', 'ref': 'decisoes-v1.md, n 202: a foto de fundo fica atrás do conteúdo'}
 
 
 def _area(c):
@@ -55,12 +60,15 @@ def _sobrepoe(a, b, tol):
     return min(a[2], b[2]) - max(a[0], b[0]) > tol and min(a[3], b[3]) - max(a[1], b[1]) > tol
 
 
-def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado, apagados=()):
+def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado, apagados=(), fundo=()):
     """Lista de validacoes. formato: (largura, altura) da composicao; areas: de formatos.areas; elementos: os do
     layout (com funcao, regra e classe aplicadas); caixas e escalas: do layout; kv_elementos: os da mestre do KV
     (caixa na mestre do KV), por id; esperado: {id do elemento: (funcao resolvida, regra do briefing)} relido do
     briefing; apagados: ids dos elementos que o DA tirou da familia no palco (decisoes-v1.md, 169): saem da conta do
-    inventario, que os registra."""
+    inventario, que os registra. fundo: ids da figura de fundo da versao da galeria (decisoes-v1.md, n 202): o
+    conteudo pode ficar sobre ela, entao ela sai da colisao nova e da cena que cobre conteudo; no lugar, a figura de
+    fundo acima de um conteudo na pilha que passa a se sobrepor a ele reprova (o render a pintaria por cima dele)."""
+    fundo = set(fundo)
     W, H = (float(v) for v in formato)
     tol = limites.valor('derivacao.enquadramento_tolerancia_px')
     tol_col = limites.valor('derivacao.colisao_tolerancia_px')
@@ -153,7 +161,7 @@ def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado, 
     for k, a in enumerate(ids):
         for b in ids[k + 1:]:
             ka, kb = kv_elementos.get(a), kv_elementos.get(b)
-            if not par_que_nao_sobrepoe(por_id[a][0], por_id[b][0]):
+            if not par_que_nao_sobrepoe(por_id[a][0], por_id[b][0]) or a in fundo or b in fundo:
                 continue
             if ka is None or kb is None or _sobrepoe(ka['caixa'], kb['caixa'], 0.0):
                 continue
@@ -173,7 +181,8 @@ def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado, 
         for b in ids:
             eb, cb = por_id[b]
             kb = kv_elementos.get(b)
-            if b == a or not conteudo(eb) or not eb.get('z') or kb is None or not ea['z'][0] > eb['z'][1]:
+            if b == a or b in fundo or not conteudo(eb) or not eb.get('z') or kb is None or \
+                    not ea['z'][0] > eb['z'][1]:
                 continue
             area_f, area_k = _area(cb), _area(kb['caixa'])
             if area_f <= 0 or area_k <= 0:
@@ -184,6 +193,24 @@ def validar(formato, areas, elementos, caixas, escalas, kv_elementos, esperado, 
     saida.append(_item('cena_cobre_conteudo', 'reprova' if cobre else 'ok',
                        {'tipo': 'limite', 'ref': 'derivacao.cobertura_nova_cena_sobre_conteudo_max'},
                        sorted({x for par in cobre for x in par}), pares=cobre))
+    if fundo:
+        # a figura de fundo fica atras do conteudo (n 202), mas o render segue a pilha do PSD: a figura acima de um
+        # conteudo (ou de um objeto solto, que o "nao sobrepor" tambem protege) na pilha que passa a se sobrepor a ele o
+        # cobriria. A conta e pela pilha, nunca por opaco (o sujeito nunca e opaco)
+        acima = []
+        for a in sorted(fundo & set(por_id)):
+            ea, ca = por_id[a]
+            if not ea.get('z'):
+                continue
+            for b in ids:
+                eb, cb = por_id[b]
+                if b in fundo or not (conteudo(eb) or objeto_solto(eb)) or not eb.get('z') or \
+                        not ea['z'][0] > eb['z'][1]:
+                    continue
+                if _sobrepoe(ca, cb, tol_col):
+                    acima.append([a, b])
+        saida.append(_item('figura_de_fundo_acima_do_conteudo', 'reprova' if acima else 'ok', FONTE_FUNDO,
+                           sorted({x for par in acima for x in par}), pares=acima))
     tirados = sorted(set(apagados) & set(kv_elementos))
     inv_kv, inv = sorted(set(kv_elementos) - set(tirados)), sorted(por_id)
     medidas_inv = {'faltando': sorted(set(inv_kv) - set(inv)), 'sobrando': sorted(set(inv) - set(inv_kv))}

@@ -466,7 +466,9 @@ def extrair_modelo(referencia, elementos, *, intencoes=(), grupos=(), silhuetas=
     referencia: {'id', 'W', 'H', 'quadros': {'margem', 'area_segura'}} (sem area segura, a margem).
     elementos: os de L* na ordem z, de baixo para cima: {'id', 'classe', 'funcao', 'caixa' (a que o DA ve, em px da
     referencia), 'caixa_asset' (opcional: o asset inteiro, que pode passar do canvas), 'geometria' (opcional: a caixa
-    de geometria do texto editado, 196), 'sangra' {lado: bool}, 'ancora' (x, y) do Design system, 'opaco'}.
+    de geometria do texto editado, 196), 'sangra' {lado: bool}, 'ancora' (x, y) do Design system, 'opaco',
+    'de_fundo' (opcional: a figura de fundo da versao da galeria, decisoes-v1.md, n 202: vai como fundo, nunca como
+    conteudo)}.
     intencoes: as de desdobra.tela.edicao.intencoes; grupos: listas de ids que o DA juntou; silhuetas: {id da base:
     silhueta} (ver _tinta).
     Devolve {'referencia', 'W', 'H', 'quadros', 'ordem', 'elementos', 'blocos', 'fortes', 'bases', 'relacoes',
@@ -489,9 +491,13 @@ def extrair_modelo(referencia, elementos, *, intencoes=(), grupos=(), silhuetas=
         k = e['id']
         sangra = {lado: bool((e.get('sangra') or {}).get(lado)) for lado in LADOS}
         ds = list(e.get('ancora') or (None, None))
+        # a figura de fundo do aprovado (de_fundo; decisoes-v1.md, n 202) nao e conteudo aqui: o conteudo sobre ela ja
+        # foi aprovado, e ela vai como fundo (cresce para continuar sangrando, sem relacao de tinta)
+        de_fundo = bool(e.get('de_fundo')) and any(sangra.values())
         x = {'id': k, 'classe': e.get('classe'), 'funcao': e.get('funcao'), 'z': z, 'caixa': _f(e['caixa']),
              'caixa_asset': _f(e.get('caixa_asset') or e['caixa']), 'sangra': sangra,
-             'ancora_ds': [ANCORA_DO_DS.get(v) for v in ds], 'conteudo': bool(mod_solver.conteudo(e))}
+             'ancora_ds': [ANCORA_DO_DS.get(v) for v in ds],
+             'conteudo': bool(mod_solver.conteudo(e)) and not de_fundo}
         if e.get('geometria') is not None:
             x['geometria'] = _f(e['geometria'])
         if e.get('recorte') is not None:
@@ -506,10 +512,10 @@ def extrair_modelo(referencia, elementos, *, intencoes=(), grupos=(), silhuetas=
             # a diagonal cobre o canvas, a tinta dela nao
             x['tinta'], x['borda'], sem = _tinta(x['caixa_asset'], silhuetas.get(k), W, H, x.get('recorte'))
             coberta = _area_coberta(canvas, _recortada(x['tinta'], W, H))
-            x['papel'] = 'fundo' if coberta >= fundo_min * W * H else 'base'
+            x['papel'] = 'fundo' if de_fundo or coberta >= fundo_min * W * H else 'base'
             # sem silhueta, a forma e conferida pela caixa, com o aviso (199, 3; desenho final, 5). O fundo que cobre o
-            # canvas inteiro nao tem borda para conferir e fica sem aviso
-            if sem and (x['papel'] == 'base' or coberta < (1.0 - AREA_IGUAL) * W * H):
+            # canvas inteiro nao tem borda para conferir e fica sem aviso; a figura de fundo tambem (n 202)
+            if sem and not de_fundo and (x['papel'] == 'base' or coberta < (1.0 - AREA_IGUAL) * W * H):
                 avisos.append({'codigo': 'forma_conferida_pela_caixa', 'elemento': k})
         els[k] = x
         ordem.append(k)

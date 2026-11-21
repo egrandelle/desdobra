@@ -1167,8 +1167,12 @@ def familias_confirmadas(pasta, familias, pendentes=(), pecas=None, sem_edicao=N
 def impressao_das_pecas(fids, formatos, versoes, regra=None, arquivo=None):
     """A impressao do que a tela mostra da familia (revisao 3 da regra spec_por_confirmar): de cada formato, a
     composicao, a situacao, o motivo da devolucao e as areas que vem da spec (a area util, as faixas e a area segura),
-    e as versoes da galeria. A folha trocada (outra area segura) ou a galeria que aparece depois da confirmacao mudam
-    a impressao, e a confirmacao de antes deixa de valer (desdobra.tela.rascunho.confirmada_para). A impressao leva
+    e se a familia tem galeria. A folha trocada (outra area segura) ou a galeria que aparece depois da confirmacao
+    mudam a impressao, e a confirmacao de antes deixa de valer (desdobra.tela.rascunho.confirmada_para). Da galeria
+    conta so a presenca (0.11.0): as versoes dela dependem da medida do conteudo, e a quebra de linha que o DA aprovou
+    troca a lista depois do "Salvar e seguir" (a familia perdia a confirmacao ao reabrir o job). O layout que muda de
+    verdade derruba a confirmacao na conferencia dos layouts do Salvar (desdobra.tela.rascunho.derrubar_por_layout).
+    A impressao leva
     tambem a regra da previa (REGRA_DA_PREVIA): a confirmacao feita numa tela que mostrava a familia por outra regra
     (sem as falhas que o "Salvar e seguir" acha, por exemplo) cai, e o DA confirma de novo o que a tela mostra agora.
     formatos: {id: derivacao}. regra: outra regra da previa (REGRA_SEM_EDICAO); None, a de agora. arquivo: o arquivo
@@ -1184,7 +1188,7 @@ def impressao_das_pecas(fids, formatos, versoes, regra=None, arquivo=None):
                       (d.get('devolucao') or {}).get('motivo'), au and au.get('caixa'),
                       [[x.get('lado'), x.get('px'), x.get('caixa')] for x in a.get('faixas') or []],
                       seg and [seg.get('caixa'), seg.get('lados')]])
-    corpo = {'formatos': itens, 'versoes': sorted(versoes), 'regra_da_previa': regra or REGRA_DA_PREVIA}
+    corpo = {'formatos': itens, 'galeria': bool(versoes), 'regra_da_previa': regra or REGRA_DA_PREVIA}
     if arquivo is not None:
         corpo['arquivo_de_edicao'] = arquivo
     texto = json.dumps(corpo, sort_keys=True, ensure_ascii=True)
@@ -1831,6 +1835,8 @@ FRASES_DA_VALIDACAO = {
     'membro_dentro_da_area_segura': 'uma parte d%(elemento)s passa da área segura%(onde)s.',
     'colisao_nova_contra_a_origem': '%(elemento)s e outro elemento passam a se encostar.',
     'cena_cobre_conteudo': 'parte do fundo cobre %(elemento)s.',
+    # decisoes-v1.md, n 202: a foto de fundo acima de um conteudo na pilha do PSD sai por cima dele
+    'figura_de_fundo_acima_do_conteudo': 'a foto de fundo fica por cima de parte do conteúdo.',
     'corpo_minimo_do_legal': 'o corpo d%(elemento)s fica abaixo do mínimo do legal.',
     'escala_longe_da_regra': 'a escala d%(elemento)s fica longe da prevista.',
     'residuo_da_regra': 'a escala d%(elemento)s fica longe da prevista.',
@@ -2068,6 +2074,7 @@ def avisos_aceitos(d):
     """0.9.6: as frases dos avisos que o DA aceitou ao confirmar a familia (o registro aprovado_pelo_da_com_aviso da
     derivacao), sem repetir, na ordem. Vazio sem o registro. A falha generica da conferencia ("a conferencia do motor
     reprova") sai pela frase concreta de cada validacao (frase_da_validacao): o DA le o que aceitou."""
+    from desdobra.derivacao import galeria as mg
     from desdobra.derivacao import proposta
     funcoes = {e.get('id'): e.get('funcao') or (e.get('regra_aplicada') or {}).get('funcao')
                for e in (d or {}).get('elementos') or []}
@@ -2078,7 +2085,9 @@ def avisos_aceitos(d):
         m = r.get('medidas') or {}
         frases += [f.get('texto') for f in m.get('falhas') or []
                    if f.get('texto') and f.get('codigo') != CODIGO_VALIDACAO_GENERICA]
-        frases += [frase_da_validacao(v, funcoes) for v in m.get('validacoes') or []]
+        # a falha da foto de fundo acima do conteudo (n 202) ja traz a frase da causa: a validacao dela nao repete
+        ditas = {f.get('codigo') for f in m.get('falhas') or []} & {mg.FUNDO_ACIMA}
+        frases += [frase_da_validacao(v, funcoes) for v in m.get('validacoes') or [] if v.get('nome') not in ditas]
         if m.get('texto_na_borda'):
             frases.append(AVISO_TEXTO_CORTADO)
     saida = []

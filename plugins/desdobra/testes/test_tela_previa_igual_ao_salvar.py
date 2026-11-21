@@ -227,16 +227,19 @@ def test_sem_a_medida_da_quebra_a_previa_mostra_o_membro_devolvido_como_o_salvar
         medida_quebras.limpar_cache()
 
 
-@pytest.mark.parametrize('fid, w, h, versao', [('f1', 1920, 192, 'imagem_livre_fim'),
-                                               ('f2000', 2000, 150, 'outra_estrutura')])
-def test_as_falhas_da_versao_na_galeria_sao_as_que_o_salvar_grava(tmp_path, monkeypatch, fid, w, h, versao):
+@pytest.mark.parametrize('fid, w, h, posicao', [('f1', 1920, 192, 0), ('f1', 1920, 192, -1),
+                                                ('f2000', 2000, 150, 1), ('f2000', 2000, 150, -1)])
+def test_as_falhas_da_versao_na_galeria_sao_as_que_o_salvar_grava(tmp_path, monkeypatch, fid, w, h, posicao):
     """A versao da galeria que o DA escolhe sem editar: as falhas que a galeria mostra sao as da conferencia das caixas
-    que a derivacao grava (arredondadas), e nao as do ruido do solver (revisao da correcao, 2)."""
+    que a derivacao grava (arredondadas), e nao as do ruido do solver (revisao da correcao, 2). Desde 19/11 os ids e
+    a ordem das versoes saem da nota: a versao e escolhida pela posicao na galeria (a primeira, a segunda e a
+    ultima)."""
     monkeypatch.setattr(kv, 'FORMATOS', [(fid, w, h)])
     j = kv.criar_job(tmp_path, 'a')
     conteudo = te.montar(j['job'])
     gid = _familia_de(conteudo, fid)
-    v = next(x for x in conteudo['previas'][fid]['galeria']['variantes'] if x['id'] == versao)
+    v = conteudo['previas'][fid]['galeria']['variantes'][posicao]
+    versao = v['id']
     bruto = conteudo['editar'].__self__.brutos[fid][versao]
     na_tela = sorted({f['codigo'] for f in v['falhas']})
     validacoes_na_tela = sorted({f['medidas']['validacao'] for f in bruto['falhas_obrigatorias']

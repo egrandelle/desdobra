@@ -194,12 +194,20 @@ def partida(derivado, versoes, versao):
     falha ou a primeira da galeria. versoes: {id da versao: variante do motor}. None sem nenhuma."""
     if (derivado or {}).get('situacao') == 'derivado':
         return derivado['elementos']
+    vid = versao_de_partida(derivado, versoes, versao)
+    return None if vid is None else versoes[vid]['elementos']
+
+
+def versao_de_partida(derivado, versoes, versao):
+    """O id da versao da galeria de onde o membro parte (partida): a escolhida, a primeira sem falha ou a primeira da
+    galeria. None no formato derivado e sem versao. O id efetivo diz se a figura fica de fundo (galeria.fundo_da_versao;
+    decisoes-v1.md, n 202), tambem quando o DA ainda nao escolheu versao."""
+    if (derivado or {}).get('situacao') == 'derivado':
+        return None
     versoes = versoes or {}
     if versao in versoes:
-        return versoes[versao]['elementos']
-    ordem = list(versoes.values())
-    v = next((x for x in ordem if not x['falhas_obrigatorias']), ordem[0] if ordem else None)
-    return v['elementos'] if v else None
+        return versao
+    return next((k for k, x in versoes.items() if not x['falhas_obrigatorias']), next(iter(versoes), None))
 
 
 def quadros_do_membro(cf):
@@ -253,7 +261,13 @@ def tintas_editadas(ctx, kv, edicoes, fid):
     return {eid: c for eid, (c, _falta) in medidas.items() if c is not None}
 
 
-def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, kv_tamanho, tintas=None):
+def _figura_de_fundo(fundo, apagados):
+    """O id da figura de fundo do layout (decisoes-v1.md, n 202), ou None: a figura que o DA apagou no palco nao esta
+    no layout, e nada diz que ela fica de fundo."""
+    return fundo[0] if fundo and fundo[0] not in apagados else None
+
+
+def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, kv_tamanho, tintas=None, fundo=()):
     """O layout de um membro da familia com as edicoes do DA: as edicoes em proporcao ao formato (o alinhamento no
     quadro com os quadros do membro, M7b, D2), a intencao de alinhamento entre os elementos de conteudo depois de cada
     edicao, so no que ela mexeu (edicao.editar, decisao 185), o alinhamento no quadro firmado de novo e a conferencia
@@ -273,8 +287,12 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
     visivel (caixas_visiveis, a tinta das linhas do DA em volta da ancora). Alinhar, o Tamanho, o encaixe, a
     conferencia e as validacoes usam a visivel: o texto que passou de 4 para 2 linhas nunca sobrepoe nem sai do
     formato pela caixa de antes.
+    fundo (decisoes-v1.md, n 202): os ids da figura de fundo da versao de partida neste formato
+    (galeria.fundo_da_versao): o conteudo sobre ela nao e falha, e o conteudo mexido pelo DA nao encaixa nas bordas
+    dela.
     Devolve {'caixas', 'caixas_visiveis', 'sangra', 'apagados', 'textos', 'mexidos', 'alinhados', 'no_quadro',
-    'quadros', 'sangria_do_da', 'falhas', 'decisoes_do_da', 'avisos', 'reprovadas', 'elementos'}."""
+    'quadros', 'sangria_do_da', 'falhas', 'decisoes_do_da', 'avisos', 'reprovadas', 'elementos',
+    'figura_de_fundo'}."""
     from desdobra import limites
     from desdobra.derivacao import elementos as mod_elementos
     from desdobra.derivacao import galeria as mg
@@ -298,7 +316,8 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
         # a caixa das linhas do DA (0.9.6): so do elemento com a medida da tinta
         return caixa_visivel(do_cf[k], geo, tintas[k]) if k in tintas and k in do_cf else None
     caixas, apagados, textos, mexidos, alinhados = edicao.editar(
-        caixas, edicoes, W, H, quadros, borda, conteudo=set(conteudo), kv_caixas=kv_caixas, kv_tamanho=kv_tamanho,
+        caixas, edicoes, W, H, quadros, borda, conteudo=set(conteudo) - set(fundo), kv_caixas=kv_caixas,
+        kv_tamanho=kv_tamanho,
         visivel=visivel if tintas else None)
     intencoes = edicao.intencoes(edicoes)
     # o lado que o DA deixou passar da borda vira sangria do elemento neste membro (M7b, D4): a validacao e a
@@ -343,14 +362,14 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
     # fora da peca tambem fica onde o DA o pos (a previa mostra o que ele fez), e a conferencia pede ajuste
     caixas, no_quadro = edicao.firmar(caixas, intencoes, quadros, W, H, borda, visivel=visivel, editados=editados)
     vis = edicao.vistas(caixas, visivel, editados)
-    falhas, avisos, reprovadas = mg.conferir_edicao(cf, vis, sangra, apagados, geometria=caixas)
+    falhas, avisos, reprovadas = mg.conferir_edicao(cf, vis, sangra, apagados, geometria=caixas, fundo=fundo)
     falhas = mg.corte_a_mostra(cf, falhas, cortes)
     falhas = mg.fora_da_peca(cf, falhas, fora_da_peca)
     # o piso que a versao de partida ja furava continua pedindo ajuste (revisao 1 da fase D): o DA so andou ou alinhou o
     # elemento, e o piso nao e decisao dele. A conta da partida so roda quando ha piso furado com elemento do DA
     da_partida = ()
     if any(f['codigo'] in mg.PISOS_DO_DA and set(f['elementos']) & set(mexidos) for f in falhas):
-        f_partida = mg.conferir_edicao(cf, partida, sangra_partida, apagados)[0]
+        f_partida = mg.conferir_edicao(cf, partida, sangra_partida, apagados, fundo=fundo)[0]
         da_partida = {(f['codigo'], tuple(sorted(f['elementos']))) for f in f_partida if f['codigo'] in mg.PISOS_DO_DA}
     falhas, decisoes = mg.decisoes_do_da(cf, falhas, mexidos, da_partida)
     return {'caixas': caixas, 'caixas_visiveis': vis, 'sangra': sangra, 'apagados': apagados, 'textos': textos,
@@ -358,7 +377,8 @@ def layout_do_membro(cf, elementos, edicoes, *, kv_por_id, conteudo, kv_caixas, 
             'alinhados': alinhados, 'no_quadro': no_quadro, 'quadros': quadros,
             'sangria_do_da': sangria_do_da,
             'falhas': falhas, 'decisoes_do_da': decisoes, 'avisos': avisos, 'reprovadas': reprovadas,
-            'elementos': mg.elementos_do_layout(cf, caixas, sangra, apagados)}
+            'elementos': mg.elementos_do_layout(cf, caixas, sangra, apagados),
+            'figura_de_fundo': _figura_de_fundo(fundo, apagados)}
 
 
 # ------------------------------------------------------------------ a familia segue o arquivo de edicao (199)
@@ -379,7 +399,9 @@ def _modelo(ctx, cf, lay, edicoes, fid):
     texto editado (196), os lados em que sangra e a ancora da funcao no Design system. A base leva o recorte (a caixa
     em que o render corta a pilha) e, quando o elemento tem uma camada so com a silhueta que o preparo gravou, a caixa
     do asset levada ao arquivo pela transformacao do elemento e a grade (desdobra.derivacao.silhueta). Sem ela, a
-    forma e conferida pela caixa, com o aviso."""
+    forma e conferida pela caixa, com o aviso. A figura de fundo de L* (lay['figura_de_fundo']; decisoes-v1.md, n 202)
+    vai como fundo (de_fundo): o conteudo sobre ela ja foi aprovado, e ela cresce para continuar sangrando, sem relacao
+    de tinta com o conteudo."""
     from desdobra import limites
     from desdobra.derivacao import familia as mod_familia
     from desdobra.derivacao import silhueta as mod_silhueta
@@ -405,9 +427,12 @@ def _modelo(ctx, cf, lay, edicoes, fid):
         sangra = {lado: bool(v) and chega[lado] for lado, v in tr['sangra'].items()}
         item = {'id': e['id'], 'classe': e['classe'], 'funcao': e['funcao'], 'caixa': caixa, 'sangra': sangra,
                 'ancora': tuple(e.get('ancora') or (None, None)), 'opaco': bool(e.get('opaco'))}
+        de_fundo = e['id'] == lay.get('figura_de_fundo') and any(sangra.values())
+        if de_fundo:
+            item['de_fundo'] = True
         if geo != caixa:
             item['geometria'] = geo
-        if not mod_solver.conteudo(e) and any(sangra.values()):
+        if (de_fundo or not mod_solver.conteudo(e)) and any(sangra.values()):
             item['recorte'] = list(caixa)
             partes = mod_silhueta.partes_do_elemento(ctx, e, canvas)
             if len(partes) == 1 and partes[0][1] is not None:
@@ -422,17 +447,17 @@ def _modelo(ctx, cf, lay, edicoes, fid):
                                       grupos=edicao.grupos(edicoes), silhuetas=silhuetas)
 
 
-def _pisos(cf, col):
+def _pisos(cf, col, fundo=()):
     """{id: fator} do piso da 133 de cada conteudo no layout copiado (col, de transferir): o fator abaixo do qual a
     escala dele fica abaixo de derivacao.escala_conteudo_min_da_regra x a regra do arquivo. A escada (F3) nunca
-    diminui o bloco abaixo disso (199, 3)."""
+    diminui o bloco abaixo disso (199, 3). A figura de fundo (fundo, n 202) vai como fundo na copia e fica de fora."""
     from desdobra import limites
     from desdobra.derivacao import solver as mod_solver
     piso = float(limites.valor('derivacao.escala_conteudo_min_da_regra'))
     saida = {}
     for e in cf['kv']['elementos']:
         k, r = e['id'], cf['regras'].get(e['id'])
-        if k not in col['caixas'] or not r or not mod_solver.conteudo(e):
+        if k not in col['caixas'] or not r or not mod_solver.conteudo(e) or k in fundo:
             continue
         g, m = col['geometrias'].get(k) or col['caixas'][k], e['caixa']
         if m[2] > m[0]:
@@ -456,17 +481,20 @@ def _aviso_do_modelo(modelo, a):
     return {'codigo': a['codigo'], 'texto': texto, 'elementos': [k]}
 
 
-def _copia(ctx, cf, modelo, lay_ref, membro):
+def _copia(ctx, cf, modelo, lay_ref, membro, fundo=()):
     """O layout de um arquivo da familia que nao e o de edicao (199, 2 e 3): a copia do modelo (transferir), a escada
     do menor ajuste (ajustar_minimo, com o piso da 133) e a conferencia de hoje (conferir_edicao). A relacao do KV que
     a conferencia acha (relacao_quebrada) sai: no arquivo copiado, quem diz o que vale sao as relacoes do layout
     aprovado, e a que se perdeu entra como falha com a frase e o valor. O piso que o elemento mexido pelo DA fura e
-    decisao dele, como no arquivo de edicao. Devolve o layout na forma de layout_do_membro, mais 'situacao' (igual,
-    ajustado ou pede_ajuste), 'frases' e 'transferencia' (o registro da copia)."""
+    decisao dele, como no arquivo de edicao. fundo: os ids da figura de fundo neste arquivo (n 202), pela regra no
+    contexto dele (galeria.fundo_da_versao): o arquivo deitado da familia confere a figura como conteudo. Devolve o
+    layout na forma de layout_do_membro, mais 'situacao' (igual, ajustado ou pede_ajuste), 'frases' e
+    'transferencia' (o registro da copia)."""
     from desdobra.derivacao import familia as mod_familia
     from desdobra.derivacao import galeria as mg
     col = mod_familia.transferir(modelo, membro)
-    est = mod_familia.ajustar_minimo(modelo, col, pisos=_pisos(cf, col))
+    de_fundo = [k for k in modelo['ordem'] if k == lay_ref.get('figura_de_fundo')]
+    est = mod_familia.ajustar_minimo(modelo, col, pisos=_pisos(cf, col, de_fundo))
     caixas = {k: list(est['geometrias'].get(k) or est['caixas'][k]) for k in est['caixas']}
     vis = {k: list(v) for k, v in est['caixas'].items()}
     sangra = {x['id']: dict(x['transformacao']['sangra']) for x in lay_ref['elementos']}
@@ -474,7 +502,7 @@ def _copia(ctx, cf, modelo, lay_ref, membro):
     # corta ali, e o lado passa a sangrar neste arquivo, com a frase (nada calado)
     passa = _base_passa_da_borda(modelo, est, sangra)
     apagados = list(lay_ref['apagados'])
-    falhas, avisos, reprovadas = mg.conferir_edicao(cf, vis, sangra, apagados, geometria=caixas)
+    falhas, avisos, reprovadas = mg.conferir_edicao(cf, vis, sangra, apagados, geometria=caixas, fundo=fundo)
     falhas = [f for f in falhas if f['codigo'] != 'relacao_quebrada']
     do_da = set(lay_ref['mexidos']) | {a['elementos'][0] for a in lay_ref['alinhados']} | set(lay_ref['textos'])
     # o corte do KV que o DA deixou a vista no arquivo de edicao (revisao 1 da fase D) fica a vista na copia, com a
@@ -516,6 +544,7 @@ def _copia(ctx, cf, modelo, lay_ref, membro):
             'quadros': quadros_do_membro(cf), 'sangria_do_da': {k: list(v) for k, v in lay_ref['sangria_do_da'].items()},
             'falhas': falhas, 'decisoes_do_da': decisoes, 'avisos': avisos, 'reprovadas': reprovadas,
             'elementos': mg.elementos_do_layout(cf, caixas, sangra, apagados), 'situacao': situacao,
+            'figura_de_fundo': _figura_de_fundo(fundo, apagados),
             'frases': [a['frase'] for a in est['ajustes']] + [a['texto'] for a in passa] + [f['texto'] for f in falhas],
             'transferencia': _arredondar(registro),
             # a caixa de cada conteudo do arquivo de edicao levada a este pela copia, antes da escada (revisao da
@@ -578,8 +607,10 @@ def layout_da_familia(ctx, kv, familia, *, derivados, versoes=None, tintas=None,
     derivados: {id: derivacao/1 em memoria}; versoes: {id: {id da versao: variante do motor}}; tintas: as das linhas
     do DA, medidas no arquivo de edicao (tintas_editadas); cache: um dict para guardar a mestre e os contextos.
     Cada layout leva 'cf', 'caminho', 'mestre', 'arquivo_de_edicao', 'situacao' ('arquivo_de_edicao' no de edicao;
-    igual, ajustado ou pede_ajuste nos outros), 'frases' e 'transferencia' (None no de edicao). O arquivo cuja copia
-    quebra fica {'erro': nome do erro}. Sem layout no arquivo de edicao (devolvido sem versao), todos ficam None."""
+    igual, ajustado ou pede_ajuste nos outros), 'frases', 'transferencia' (None no de edicao), 'versao' (o id efetivo
+    da versao de partida no arquivo de edicao, None na proposta derivada) e 'figura_de_fundo' (o id da figura que fica
+    de fundo neste arquivo, decisoes-v1.md, n 202, ou None). O arquivo cuja copia quebra fica {'erro': nome do erro}.
+    Sem layout no arquivo de edicao (devolvido sem versao), todos ficam None."""
     from desdobra.derivacao import galeria as mg
     from desdobra.derivacao import solver as mod_solver
     kw = {'specs': specs, 'arquivo_specs': arquivo_specs, 'params': params}
@@ -592,10 +623,13 @@ def layout_da_familia(ctx, kv, familia, *, derivados, versoes=None, tintas=None,
     ref = arquivo_de_edicao([por_id[f] for f in fids], familia.get('arquivo_de_edicao'))
     edicoes = list(familia.get('edicoes') or [])
     d_ref = derivados[ref]
+    vid = None
     if (d_ref or {}).get('situacao') == 'derivado':
         elementos, caminho = d_ref['elementos'], d_ref['caminho']
     elif usa_galeria(d_ref) and (versoes or {}).get(ref):
         elementos, caminho = partida(None, versoes[ref], familia.get('versao')), 'galeria'
+        # o id efetivo da versao de partida (tambem sem escolha do DA): diz se a figura fica de fundo (n 202)
+        vid = versao_de_partida(None, versoes[ref], familia.get('versao'))
     else:
         return saida
     if elementos is None:
@@ -614,9 +648,12 @@ def layout_da_familia(ctx, kv, familia, *, derivados, versoes=None, tintas=None,
              'kv_caixas': {e['id']: [float(x) for x in e['caixa']] for e in kv['elementos']},
              'kv_tamanho': (float(kv['largura']), float(kv['altura']))}
     cf_ref = contexto(ref)
-    lay_ref = layout_do_membro(cf_ref, elementos, edicoes, tintas=tintas, **extra)
+    # a figura de fundo da versao de partida no arquivo de edicao (decisoes-v1.md, n 202): a mesma regra da galeria,
+    # para a previa, a copia e o "Salvar e seguir" verem o mesmo
+    fundo_ref = mg.fundo_da_versao(cf_ref, vid)
+    lay_ref = layout_do_membro(cf_ref, elementos, edicoes, tintas=tintas, fundo=fundo_ref, **extra)
     lay_ref.update(cf=cf_ref, caminho=caminho, mestre=mestre, arquivo_de_edicao=ref, situacao='arquivo_de_edicao',
-                   frases=[], transferencia=None)
+                   frases=[], transferencia=None, versao=vid)
     saida[ref] = lay_ref
     outros = [f for f in fids if f != ref and (derivados[f]['situacao'] == 'derivado' or usa_galeria(derivados[f]))]
     if not outros:
@@ -626,11 +663,13 @@ def layout_da_familia(ctx, kv, familia, *, derivados, versoes=None, tintas=None,
     for fid in outros:
         try:
             cf = contexto(fid)
-            lay = _copia(ctx, cf, modelo, lay_ref, dict(membros[fid], quadros=quadros_do_membro(cf)))
+            # a regra da figura de fundo pela orientacao deste arquivo, so quando ela ja e fundo no arquivo de edicao
+            fundo = mg.fundo_da_versao(cf, vid) if fundo_ref else ()
+            lay = _copia(ctx, cf, modelo, lay_ref, dict(membros[fid], quadros=quadros_do_membro(cf)), fundo=fundo)
         except Exception as e:  # noqa: BLE001 - o arquivo fica como o motor o deixou, com o registro
             saida[fid] = {'erro': type(e).__name__}
             continue
-        lay.update(cf=cf, caminho=CAMINHO_FAMILIA, mestre=mestre, arquivo_de_edicao=ref)
+        lay.update(cf=cf, caminho=CAMINHO_FAMILIA, mestre=mestre, arquivo_de_edicao=ref, versao=vid)
         saida[fid] = lay
     return saida
 
@@ -833,9 +872,22 @@ def _derivacao(ctx, kv, cf, d, lay, caminho, proposta, origem_apagado, d_ref=Non
                           'medidas': {'decisoes': [{'codigo': x['codigo'], 'elementos': list(x['elementos']),
                                                     'medidas': dict(x.get('medidas') or {})}
                                                    for x in lay['decisoes_do_da']]}})
+    fx = lay.get('figura_de_fundo')
+    if fx in lay['apagados']:
+        # a figura que o DA apagou nao fica de fundo: nao esta nos elementos
+        fx = None
+    if fx is not None:
+        # decisoes-v1.md, n 202: a foto fica de fundo neste arquivo, e o conteudo sobre ela foi aprovado. O registro e
+        # o campo do elemento dizem isso ao render, a entrega e o painel sem refazer a galeria
+        registros.append({'codigo': 'figura_de_fundo', 'medidas': {'elemento': fx, 'versao': lay.get('versao')}})
+        for x in elementos:
+            if x['id'] == fx:
+                x['figura_de_fundo'] = True
     # a conferencia ve a caixa que o DA ve (0.9.6): o texto editado nas linhas dele; a escala sai da geometria
+    # sem a figura de fundo, a chamada de antes (quem troca validacoes_do_layout, como os testes, continua valendo)
     validacoes = mg.validacoes_do_layout(cf, lay.get('caixas_visiveis') or lay['caixas'], lay['sangra'],
-                                         lay['apagados'], geometria=lay['caixas'])
+                                         lay['apagados'], geometria=lay['caixas'],
+                                         **({} if fx is None else {'fundo': (fx,)}))
     novo.update(elementos=elementos, validacoes=validacoes, caminho=caminho, situacao='derivado', devolucao=None,
                 registros=registros, proposta=dict(proposta),
                 apagados_pelo_da=[{'elemento': k, 'layer_ids': list(kv_por_id[k]['layer_ids']), 'origem': origem_apagado}

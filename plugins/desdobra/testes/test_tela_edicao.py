@@ -188,8 +188,14 @@ def test_mover_na_familia_vai_a_cada_membro_em_proporcao(conteudo):
     vid = _versao(conteudo, 'v1')
     antes = conteudo['editar']({'familia': gid, 'versao': vid, 'edicoes': []})
     el = _elemento(antes['membros'][0]['palco'], 'titulo')['id']
+    # o titulo anda 5% para longe do meio da peca: quando ele cruza o meio, a copia nos outros arquivos passa a
+    # prende-lo a outra borda, e o teste mede a escala do deslocamento, nao a troca de borda (a ordem das versoes da
+    # galeria sai da nota desde 19/11, e o titulo da primeira pode ficar perto do meio)
+    p0 = antes['membros'][0]['palco']
+    t0 = _elemento(p0, 'titulo')['caixa']
+    dy = 0.05 if (t0[1] + t0[3]) / 2.0 >= p0['altura'] / 2.0 else -0.05
     depois = conteudo['editar']({'familia': gid, 'versao': vid,
-                                 'edicoes': [{'elemento': el, 'acao': 'mover', 'dx': 0.0, 'dy': 0.05}]})
+                                 'edicoes': [{'elemento': el, 'acao': 'mover', 'dx': 0.0, 'dy': dy}]})
     assert [m['formato'] for m in depois['membros']] == [m['formato'] for m in antes['membros']]
     assert sorted(m['formato'] for m in depois['membros']) == sorted(membros)
     # decisao 199: a edicao vale no arquivo de edicao (o v5, o maior), 5% da altura dele; os outros arquivos copiam o
@@ -203,7 +209,7 @@ def test_mover_na_familia_vai_a_cada_membro_em_proporcao(conteudo):
         return next(e for e in m['palco']['elementos'] if e['id'] == el)['caixa'], m
     ca_r, _m = caixa(antes, ref)
     cd_r, m_r = caixa(depois, ref)
-    assert cd_r[1] - ca_r[1] == pytest.approx(0.05 * m_r['palco']['altura'], abs=1.0), (ca_r, cd_r)
+    assert cd_r[1] - ca_r[1] == pytest.approx(dy * m_r['palco']['altura'], abs=1.0), (ca_r, cd_r)
     for a, d in zip(antes['membros'], depois['membros']):
         ca = next(e for e in a['palco']['elementos'] if e['id'] == el)['caixa']
         cd = next(e for e in d['palco']['elementos'] if e['id'] == el)['caixa']

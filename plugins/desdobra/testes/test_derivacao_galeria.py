@@ -150,18 +150,25 @@ def test_descricao_uma_linha_em_portugues_e_unica_no_formato(galerias):
 def test_espelhado_no_quadrado_descreve_a_ordem_que_desenha():
     """Defeito do prototipo (revisao): no quadrado, o espelho usava o lado maior do quadro e a descricao o do formato;
     a variante espelhada saia com a mesma frase da reorganizada e outra geometria. O caso: legal fino colado a direita
-    de um KV vertical; no quadrado, a reserva dele deixa o quadro mais alto que largo."""
+    de um KV vertical; no quadrado, a reserva dele deixa o quadro mais alto que largo. Desde 19/11 os ids e a ordem
+    saem da nota: a candidata espelhada e a mesma particao com outra ordem e diz isso na frase."""
     def kv_legal_na_direita():
         cams = [ap.camada(1, 'pixel', [0, 0, 200, 400]), ap.camada(10, 'texto', [20, 30, 170, 110], corpo=36),
                 ap.camada(30, 'smart_embutido', [50, 300, 130, 350]), ap.camada(40, 'texto', [190, 40, 197, 360], corpo=6)]
         return ap.laudo(200, 400, cams), {1: 'fundo', 10: 'titulo', 30: 'logo_principal', 40: 'texto_legal'}
     ctx, kv, devolvidos = _job(kv_legal_na_direita, [('q', 300, 300)])
-    vs = {v['id']: v for v in mg.variantes(ctx, kv, devolvidos[0])}
-    assert 'espelhado' in vs
-    caixas = {k: {e['id']: e['caixa'] for e in v['elementos']} for k, v in vs.items()}
-    assert caixas['espelhado']['el10'] != caixas['reorganizado']['el10']
-    assert vs['espelhado']['descricao'] != vs['reorganizado']['descricao']
-    assert vs['espelhado']['descricao'].startswith('Tudo empilhado (a marca, depois o título)')
+    cf = mg._contexto(ctx, kv, devolvidos[0], {}, None)
+    p = mg.parametros_do_id('reorganizado')
+    reto, espelho = mg.gerar(cf, p), mg.gerar(cf, dict(p, espelhar=True))
+    assert reto['part'] == espelho['part'] and reto['tipo'] == espelho['tipo']
+    assert espelho['caixas']['el10'] != reto['caixas']['el10']
+    assert 'na ordem invertida' in mg.descrever(cf, espelho) and 'invertida' not in mg.descrever(cf, reto)
+    assert mg.descrever(cf, espelho).replace(', na ordem invertida', '') == mg.descrever(cf, reto)
+    # a marca, que vinha depois do titulo, vem antes dele no eixo em que a pilha corre
+    eixo = 1 if reto['tipo'] == 'colunas' else 0
+    assert reto['caixas']['el10'][eixo] < reto['caixas']['el30'][eixo]
+    assert espelho['caixas']['el30'][eixo] < espelho['caixas']['el10'][eixo]
+    assert mg.parametros_do_id(mg._id(dict(p, espelhar=True))) == dict(p, espelhar=True)
 
 
 def test_galeria_e_deterministica(galerias):
@@ -200,20 +207,30 @@ def test_falha_da_135_e_conferida_contra_a_mestre_verdadeira():
     assert any(x['codigo'] == 'distancia_menor_que_na_mestre' and set(x['elementos']) == {'el10', 'el20'} for x in falhas)
 
 
-def test_faixas_abrem_com_conteudo_a_esquerda_e_o_inverso(galerias):
+def test_ordem_e_pela_nota_com_as_limpas_primeiro(galerias):
+    """Sem molde por proporcao (decisao 166): a ordem nao depende de o formato ser faixa ou nao, sai da nota. As versoes
+    sem falha obrigatoria vem antes, da melhor nota para a pior; a com falha so entra para chegar ao minimo."""
+    minimo = limites.valor('derivacao.galeria_variantes_min')
     for _ctx, _kv, f, vs in galerias:
-        if max(f['largura'], f['altura']) / min(f['largura'], f['altura']) < limites.valor('derivacao.galeria_faixa_razao_min'):
-            continue
-        assert [v['id'] for v in vs[:2]] == ['imagem_livre_fim', 'imagem_livre_inicio'], f['id']
-        assert 'à esquerda' in vs[0]['descricao'] and 'livre à direita' in vs[0]['descricao']
-        assert 'à direita' in vs[1]['descricao'] and 'livre à esquerda' in vs[1]['descricao']
+        chaves = [(bool(v['falhas_obrigatorias']), -v['nota']) for v in vs]
+        assert chaves == sorted(chaves), (f['id'], chaves)
+        limpas = sum(1 for v in vs if not v['falhas_obrigatorias'])
+        assert len(vs) - limpas <= max(0, minimo - limpas), (f['id'], chaves)
 
 
-def test_fora_das_faixas_abre_com_a_reorganizada(galerias):
+def test_sem_falha_na_primeira_versao_quando_existe_versao_limpa(galerias):
     for _ctx, _kv, f, vs in galerias:
-        if max(f['largura'], f['altura']) / min(f['largura'], f['altura']) >= limites.valor('derivacao.galeria_faixa_razao_min'):
-            continue
-        assert vs[0]['id'] == 'reorganizado'
+        if any(not v['falhas_obrigatorias'] for v in vs):
+            assert not vs[0]['falhas_obrigatorias'], (f['id'], [v['id'] for v in vs])
+
+
+def test_ids_das_versoes_desfazem_nos_parametros(galerias):
+    """A tela le a versao pelo id; variante_para_grupo refaz a mesma versao nos membros pelos parametros do id."""
+    for _ctx, _kv, f, vs in galerias:
+        for v in vs:
+            assert re.fullmatch(r'[a-z][a-z0-9_]*', v['id']), v['id']
+            assert mg._id(mg.parametros_do_id(v['id'])) == v['id']
+    assert mg.parametros_do_id('id_que_nao_existe') == mg.parametros_do_id('reorganizado')
 
 
 # ------------------------------------------------------------------ avisos
@@ -228,9 +245,24 @@ def test_aviso_de_texto_abaixo_de_8_px(galerias):
 
 
 def test_aviso_de_fundo_com_menos_de_30_por_cento_visivel(galerias):
-    av = _avisos(galerias, 'faixa')
-    assert 'fundo_pouco_visivel' in av
-    assert '30%' in av['fundo_pouco_visivel'][1]['texto']
+    """O aviso fica para o fundo com imagem que nao cobre o canvas do KV. O fundo que cobre o canvas inteiro (a troca
+    de proporcao sempre corta parte dele) e o de cor chapada saem do aviso: o corte nao tira nada do KV."""
+    assert 'fundo_pouco_visivel' not in _avisos(galerias, 'faixa')  # o fundo do KV horizontal cobre o canvas
+
+    def kv_fundo(tipo):
+        def kv():
+            laudo, funcoes = _kv_horizontal()
+            # o fundo para 8 px antes da base: ainda e fundo de cena (derivacao.bloco_fundo_fracao), sem cobrir o canvas
+            cams = [ap.camada(1, tipo, [0, 0, 400, 192])] + laudo['camadas'][1:]
+            return ap.laudo(camadas=cams), funcoes
+        return kv
+    for tipo, tem in (('pixel', True), ('cor_solida', False)):
+        ctx, kv, devolvidos = _job(kv_fundo(tipo), [('faixa', 1920, 192)])
+        assert len(devolvidos) == 1, tipo
+        avisos = [a for v in mg.variantes(ctx, kv, devolvidos[0]) for a in v['avisos']
+                  if a['codigo'] == 'fundo_pouco_visivel']
+        assert bool(avisos) == tem, tipo
+        assert all('30%' in a['texto'] for a in avisos)
 
 
 def test_aviso_de_grafismo_muito_acima_da_regra(galerias):
@@ -289,7 +321,7 @@ def test_quatro_variantes_cabem_na_previa_ao_vivo():
     mg.variantes(ctx, kv, devolvidos[0])
     t0 = time.perf_counter()
     vs = mg.variantes(ctx, kv, devolvidos[0])
-    assert len(vs) == 4 and time.perf_counter() - t0 < ORCAMENTO_S
+    assert 3 <= len(vs) <= limites.valor('derivacao.galeria_variantes_max') and time.perf_counter() - t0 < ORCAMENTO_S
 
 
 def test_limite_de_variantes_e_respeitado():
@@ -299,19 +331,40 @@ def test_limite_de_variantes_e_respeitado():
 
 def test_limites_novos_da_galeria_tem_fonte_e_nao_reprovam():
     ids = ('derivacao.galeria_duplicada_distancia_max', 'derivacao.galeria_conteudo_fracao',
-           'derivacao.galeria_faixa_razao_min', 'derivacao.galeria_fundo_visivel_min',
-           'derivacao.galeria_grafismo_sobre_regra_max', 'derivacao.galeria_variantes_max',
-           'derivacao.galeria_arte_area_min')
+           'derivacao.galeria_fundo_visivel_min', 'derivacao.galeria_grafismo_sobre_regra_max',
+           'derivacao.galeria_variantes_max', 'derivacao.galeria_arte_area_min')
     for lid in ids:
         lim = limites.obter(lid)
         assert lim.situacao == 'a_calibrar' and lim.efeito_efetivo != 'reprova', lid
         assert lim.fonte['arquivo'] == 'decisoes-v1.md' and '05/11' in lim.fonte['secao'], lid
     assert limites.valor('derivacao.galeria_duplicada_distancia_max') == 0.03
     assert limites.valor('derivacao.galeria_conteudo_fracao') == 0.6
-    assert limites.valor('derivacao.galeria_faixa_razao_min') == 3.0
     assert limites.valor('derivacao.galeria_fundo_visivel_min') == 0.3
     assert limites.valor('derivacao.galeria_grafismo_sobre_regra_max') == 2.0
     assert limites.valor('derivacao.galeria_variantes_max') == 4
+    # sem molde por proporcao (166): o limiar de faixa que decidia a ordem saiu do registro
+    with pytest.raises(limites.ErroLimite):
+        limites.obter('derivacao.galeria_faixa_razao_min')
+    # os da calibracao de 19/11 (o prototipo fluxo com os enxertos do juiz)
+    novos = {'derivacao.galeria_variantes_min': 3, 'derivacao.galeria_candidatas_ao_solver': 10,
+             'derivacao.galeria_teto_sobre_regra': 3.5, 'derivacao.galeria_expoente_titulo': 1.5,
+             'derivacao.galeria_titulo_sobre_outros_max': 1.6, 'derivacao.galeria_expoente_secundario': 0.8,
+             'derivacao.galeria_serie_tolerancia': 0.15, 'derivacao.galeria_faixa_distancia_max': 0.06,
+             'derivacao.galeria_faixa_espessura_max': 0.06, 'derivacao.galeria_faixa_largura_min': 0.6,
+             'derivacao.galeria_figura_area_min': 0.08, 'derivacao.galeria_figura_banda_max': 0.5,
+             'derivacao.galeria_figura_teto_sobre_regra': 2.5, 'derivacao.galeria_figura_reducao_passo': 0.9,
+             'derivacao.galeria_figura_reducao_min': 0.6, 'derivacao.galeria_sujeito_sangria_extra': 0.03,
+             'derivacao.galeria_figura_visivel_min': 0.85, 'derivacao.galeria_nota_satura': 2.0,
+             'derivacao.galeria_folga_135': 0.1, 'derivacao.galeria_ordem_tolerancia': 0.01,
+             'derivacao.galeria_margem_max_lado_curto': 0.12}
+    for lid, valor in novos.items():
+        lim = limites.obter(lid)
+        assert lim.valor == valor and lim.situacao == 'a_calibrar' and lim.efeito_efetivo == 'registra', lid
+        assert lim.fonte['arquivo'] == 'decisoes-v1.md' and '19/11' in lim.fonte['secao'], lid
+    pesos = {x['termo']: x['peso'] for x in limites.valor('derivacao.galeria_nota_pesos')}
+    assert set(pesos) == {'falha', 'escala', 'menor', 'razao', 'figura', 'cobre', 'lado', 'espelho', 'vazio', 'ordem',
+                          'serie_partida'}
+    assert all(p > 0 for p in pesos.values())
 
 
 # ------------------------------------------------------------------ revisao da galeria no motor

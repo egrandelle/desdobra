@@ -1932,3 +1932,201 @@ Depois da revisão, o limite do crescimento (resposta do Duda em 18/11):
 - O valor: no caso aprovado (`caso_diagonal`), o maior crescimento da faixa de 0,3 é o do azul no 1080x1600, 1,42 (1,417 no job sintético `kv_diagonal`), e o da faixa verde no 900x1870, 1,19. Os 15% da proposta inicial deixariam esses dois arquivos pedindo ajuste sem nada errado. Com a assinatura sobre o azul, o azul cresce 1,8 no 1080x1600 (5,6 no `kv_diagonal`, medido no recorte).
 - Revisão independente do limite: três achados confirmados e corrigidos (a forma agrupada ficava fora do limite, o valor da frase empatava com o limite entre 1,5 e 1,55, e a frase não dizia quais bordas); três refutados (o teto de `s` com o arquivo de edição trocado por um menor é a decisão 199, 1; "vez" e "vezes"; a força do teste).
 - Testes: `test_familia_ajuste` (o caso aprovado sem pedido, o caso da assinatura sobre o azul com o pedido e a frase, o fundo puro sem limite, a forma agrupada, o valor que nunca empata, as regras de escrita, o limite com fonte).
+
+## 0.11.0, a galeria parte do espaço livre
+
+Caso: o teste do Duda em 19/11 com um cartaz vertical, com a foto recortada de uma pessoa embaixo, à esquerda. Nos formatos largos e no quadrado, as versões da galeria escalavam os blocos do KV inteiros: o conteúdo ficava pequeno e a foto ficava por cima do texto. O DA refazia cada formato. O Claude não abriu o job. O Duda rodou um script que gravou só números (caixas, funções e o layout que ele deixou em cada formato), autorizado só para calibrar. A geometria virou um KV sintético (`testes/sinteticos/kv_cartaz.py`, com `METAS` por formato), sem texto, nome de camada, imagem ou fonte, que fica só na máquina do Duda, fora do repositório: ele, `testes/calibracao_galeria.py` e `testes/test_galeria_calibracao.py` estão em `.git/info/exclude`, e os testes que usam o cartaz pulam quando ele não existe.
+
+Causa raiz: a galeria de antes usava uma escala só para todo o conteúdo, limitada pela regra mais fraca (`s = min(s_fit, regra_ref)`). As variantes eram moldes fixos (`reorganizado`, `espelhado`, `outra_estrutura`, imagem livre no início ou no fim). Nada separava a foto do conteúdo, e nada fazia o título crescer mais que o resto.
+
+Escolha do desenho: três protótipos no scratchpad (fluxo, zonas e busca) e um juiz com mais três KVs sintéticos (A: horizontal com a pessoa à direita; B: vertical sem pessoa; C: denso). Venceu o fluxo, com enxertos dos outros dois.
+
+Motor (`derivacao/galeria.py`, reescrito na geração e na escolha; conferência, edição e saída como antes):
+
+- `analisar(kv)` separa:
+  - os átomos de conteúdo;
+  - a figura (`figura(kv)`): o sujeito, ou a imagem grande que não é fundo;
+  - as faixas de borda (`faixas_de_borda`): contato, legal;
+  - as séries (`series`): itens da mesma função com caixas parecidas (`derivacao.galeria_serie_tolerancia`).
+- Figura em banda (`_figura_na_banda`):
+  - a figura fica do lado em que estava no KV, presa à borda em que sangra, na altura (ou largura) toda da peça (decisoes-v1.md, nº201);
+  - o tamanho vai até `derivacao.galeria_figura_banda_max` da peça e `derivacao.galeria_figura_teto_sobre_regra` da regra;
+  - quando o conteúdo não cabe, a figura cede primeiro (`galeria_figura_reducao_passo` até `galeria_figura_reducao_min`);
+  - a figura que sangra em dois lados opostos cresce até passar das duas bordas;
+  - a banda que deixaria à mostra o corte do lado oposto não vira candidata;
+  - a figura que não cabe em banda nenhuma fica de fundo, e a imagem livre completa o mínimo de versões.
+- Escala por bloco:
+  - cada bloco cresce sobre a regra dele, até `derivacao.galeria_teto_sobre_regra`;
+  - o título cresce com o expoente `galeria_expoente_titulo`, até `galeria_titulo_sobre_outros_max` vezes o crescimento dos outros textos (decisoes-v1.md, nº200: o título pode crescer mais que os outros textos);
+  - as secundárias crescem com `galeria_expoente_secundario`;
+  - nenhum bloco fica abaixo do piso da 133 contra a regra verdadeira (`_piso_com_folga`, com folga para o arredondamento das caixas).
+- Partição em trilhas (`melhor_particao`, `avaliar_particao`, guardada pelo tamanho da área):
+  - a série vira fileira no formato largo e coluna no estreito (`serie_girada`);
+  - a fileira empilhada começa no mesmo ponto;
+  - o legal fica colado ao lado do conteúdo (`_escala_colado`);
+  - o vão da 135 segue a escala do fluxo (`_vao_135`).
+- Candidatas (`_parametros`, `gerar`):
+  - cada uma combina figura (lado), imagem livre (início ou fim), faixa de borda (inteira ou só sobre o conteúdo), série girada, outra estrutura e espelhado;
+  - o id junta os pedaços com `__` (`_id`). `parametros_do_id` desfaz o id, e `variante_para_grupo` refaz a versão escolhida por ele;
+  - o id sem pedaço continua `reorganizado`.
+- Nota (`nota`):
+  - os termos são falhas, escala, o menor corpo, figura, conteúdo sob a figura, lado, espelho, vazio, ordem invertida e série partida;
+  - os pesos vêm de `derivacao.galeria_nota_pesos`, com saturação em `galeria_nota_satura`;
+  - todas as candidatas ganham a nota antes do solver, com `falhas_previstas`, que conta o lado que sangra e não chega à borda.
+- Escolha (`variantes`, `_finais`):
+  - as `derivacao.galeria_candidatas_ao_solver` melhores e diferentes vão ao solver;
+  - mais lotes vão enquanto faltar versão limpa para `derivacao.galeria_variantes_min`;
+  - as limpas vêm primeiro, da melhor nota para a pior, e a versão com falha só entra para chegar ao mínimo.
+- Bloco esmagado: o solver pode deixar um bloco abaixo do piso da 133 da escala que o fluxo planejou. Isso vira a falha `bloco_esmagado`, com a frase "Nesta versão, o ajuste final encolhe demais o grafismo."
+- Frases:
+  - o sujeito é "a foto";
+  - o plural concorda com o gênero do rótulo;
+  - abaixo do piso, a frase nunca mostra o próprio mínimo: diz 49%, nunca "50%, abaixo de 50%".
+- Aviso `fundo_pouco_visivel` (`_fundo_sem_desenho`): não sai para o fundo que cobre o canvas inteiro do KV, nem para o fundo só de cor (`TIPOS_DE_COR`).
+
+`derivacao/solver.py`: `resolver(..., pisos=None)`.
+
+- Com `pisos`, o piso obrigatório de cada conteúdo é o valor passado, no lugar de `escala_conteudo_min_da_regra` vezes a regra.
+- A galeria passa a regra da mestre sintética, na escala do fluxo, e o piso da regra verdadeira.
+- Sem `pisos`, o comportamento é o de antes.
+- Decisão pendente de registro junto com a 133: a galeria passa a escala dela ao solver, e o piso da 133 vale contra a regra verdadeira.
+
+Limites novos em `fontes-de-limites.json`, todos `a_calibrar`, com efeito `registra`:
+
+| limite | valor |
+|---|---|
+| `galeria_variantes_min` | 3 |
+| `galeria_candidatas_ao_solver` | 10 |
+| `galeria_teto_sobre_regra` | 3,5 |
+| `galeria_expoente_titulo` | 1,5 |
+| `galeria_titulo_sobre_outros_max` | 1,6 |
+| `galeria_expoente_secundario` | 0,8 |
+| `galeria_serie_tolerancia` | 0,15 |
+| `galeria_faixa_distancia_max` | 0,06 |
+| `galeria_faixa_espessura_max` | 0,06 |
+| `galeria_faixa_largura_min` | 0,6 |
+| `galeria_figura_area_min` | 0,08 |
+| `galeria_figura_banda_max` | 0,5 |
+| `galeria_figura_teto_sobre_regra` | 2,5 |
+| `galeria_figura_reducao_passo` | 0,9 |
+| `galeria_figura_reducao_min` | 0,6 |
+| `galeria_sujeito_sangria_extra` | 0,03 |
+| `galeria_figura_visivel_min` | 0,85 |
+| `galeria_nota_satura` | 2,0 |
+| `galeria_folga_135` | 0,1 |
+| `galeria_ordem_tolerancia` | 0,01 |
+| `galeria_margem_max_lado_curto` | 0,12 |
+
+`galeria_nota_pesos` é uma lista de termo e peso:
+
+| termo | peso |
+|---|---|
+| falha | 1 |
+| escala | 1 |
+| menor | 0,6 |
+| razao | 0,5 |
+| figura | 0,5 |
+| cobre | 2 |
+| lado | 0,3 |
+| espelho | 0,15 |
+| vazio | 0,4 |
+| ordem | 2 |
+| serie_partida | 0,3 |
+
+- Saiu `derivacao.galeria_faixa_razao_min`: era um molde por proporção, contra a decisão 166.
+- O peso da ordem ficou 2, e o juiz tinha proposto 1. Com 1, o deslocamento médio do cartaz subia a 0,105.
+
+Medida (`testes/calibracao_galeria.py`): a melhor versão de cada formato contra a meta do DA. Cada célula traz o deslocamento médio do centro sobre a diagonal e a média de |log da razão das larguras|.
+
+| formato | antes | depois | posição da melhor |
+|---|---|---|---|
+| 970x250 | 0,182 / 0,854 | 0,111 / 0,165 | 3ª |
+| 300x150 | 0,161 / 0,485 | 0,131 / 0,130 | 1ª |
+| 1280x720 | 0,167 / 0,476 | 0,088 / 0,116 | 1ª |
+| 300x250 | 0,102 / 0,272 | 0,083 / 0,158 | 1ª |
+| 1080x1080 | 0,062 / 0,115 | 0,056 / 0,242 | 1ª |
+| média | 0,135 / 0,440 | 0,094 / 0,162 | |
+
+- Cartaz: nenhuma falha nas 20 versões, de 0,2 a 0,5 s por formato.
+- KV denso: 1,3 s no 728x90.
+- KV A: versão limpa em todo formato, menos o 160x600.
+- KV B: as 24 versões limpas.
+- KV C: versão limpa em 2 de 4 formatos.
+
+Testes novos:
+
+- `test_galeria_calibracao`: as metas do cartaz, com teto de 0,10 no deslocamento médio.
+- `test_galeria_generalidade`: KVs A e B, sem conteúdo sob o sujeito na 1ª versão, com o piso da 133 e o tempo.
+- `test_galeria_revisao`: 18 testes, um por achado da revisão.
+- `test_tela_troca_de_familia`: a edição depois de trocar de família, pelo clique e pelo arraste, também com a prévia lenta.
+
+Testes ajustados:
+
+- `test_derivacao_galeria`: os ids e os limites novos.
+- `test_tela_previa_igual_ao_salvar`: a versão escolhida pela posição.
+- `test_tela_edicao`: o título move para longe do meio da peça.
+
+Revisão adversarial, com três revisores (código, testes e generalidade). Nove achados confirmados e corrigidos:
+
+- a foto que sangra em dois lados opostos;
+- a versão limpa que ficava fora do primeiro lote;
+- o tempo da partição;
+- o arredondamento contra o piso da 133;
+- a margem do quadro com um átomo só;
+- o bloco esmagado;
+- o vão da 135;
+- o título preso pelo legal de regra constante;
+- a fileira que virava escada.
+
+Também foram corrigidos os achados menores nas frases e na arte livre.
+
+A suíte inteira achou mais um defeito, no roteiro do editor de mestre (`test_editor_mestre`). A lista das versões da galeria nova depende da medida do conteúdo. A quebra de linha que o DA aprovou troca essa lista depois do "Salvar e seguir". A impressão da família (`estado.impressao_das_pecas`) guardava a lista, e a família perdia a confirmação quando o job era reaberto. Agora a impressão guarda só se a família tem galeria (`'galeria': bool(versoes)`). Quando o layout muda de verdade, a confirmação ainda cai na conferência dos layouts do Salvar (`rascunho.derrubar_por_layout`). Teste: `test_galeria_revisao.test_a_impressao_da_familia_conta_so_se_ha_galeria`.
+
+Ficou em parte:
+
+- No 970x250 do cartaz, a versão mais perto da meta é a 3ª. A 1ª é a versão sem a faixa do contato, com o conteúdo maior. Nenhum peso testado leva a mais perto ao 1º lugar.
+- O vão da 135 entre a marca e a foto vem do par mais separado em qualquer eixo. Com um vão menor, a versão ganha `distancia_menor_que_na_mestre`. Mudar quais pares contam muda a regra 135, e isso é decisão do Duda.
+- KV horizontal com pessoa, nos formatos em pé ou quadrados (KV A no 160x600, KV C em pé): o conteúdo não cabe acima do piso, e a galeria mostra a falha. A pergunta ao Duda (a foto pode virar fundo ou sair) foi respondida pela decisão nº202, abaixo.
+- As edições de palco são deslocamentos sobre a versão escolhida. A família editada num job de antes da 0.11.0 parte da versão nova com as mesmas edições. A confirmação feita antes da 0.11.0 cai uma vez na tela, porque a impressão da família mudou de forma. Isso não foi conferido num job real de antes da 0.11.0.
+
+### Foto de fundo no formato em pé ou quadrado (decisoes-v1.md, nº202)
+
+Caso: KV deitado com a pessoa recortada (KV A de `test_galeria_generalidade`, 1920x1080, a pessoa em [1180, 140, 1820, 1080], encostada só na base). Nos formatos em pé e quadrados, toda versão sem a foto numa banda reprovava com `sobreposicao_nova`, `distancia_menor_que_na_mestre` e `validacao_reprova` (colisão e cena), e no 160x600 também com `fora_do_quadro` e `solver_nao_fecha`. A decisão nº202 (20/11) revê a 96 só neste caso: a foto pode virar fundo, e o conteúdo sobre ela não é falha.
+
+Regra (`galeria.figura_de_fundo(cf, p)`): devolve o id de `figura(kv)` quando há figura, `p['fig'] is None`, `escala.orientacao(*cf['bm']) == 'horizontal'` e `escala.orientacao(cf['W'], cf['H'])` é `vertical` ou `quadrado`; senão `None`. `fundo_da_versao(cf, vid)` aplica a regra ao id (`parametros_do_id`). Os ids das versões não mudam: o rascunho, o briefing e os atos continuam valendo.
+
+O conjunto vai por chamada, como `apagados` (`fundo=()`), e nunca como marca no elemento do KV (`cf['kv']` é de todos os formatos e alimenta `arte_parcial`, `regra_ref` e `_relacoes_de_fundo`). `solver.conteudo` e `par_que_nao_sobrepoe` não mudam.
+
+- `solver.resolver(..., fundo=())`: o par com a foto sai do "não sobrepor" e da distância da 135, e a foto sai dos alinhamentos (o texto não herda a âncora dela). O piso `escala_minima_de_conteudo` da foto continua.
+- `validacao.validar(..., fundo=())`: o par com a foto sai de `colisao_nova_contra_a_origem` e de `cena_cobre_conteudo`. Com `fundo`, entra a validação `figura_de_fundo_acima_do_conteudo`: a foto acima de um conteúdo ou de um objeto solto (`solver.objeto_solto`, o ícone opaco que o "não sobrepor" protege) na pilha (`z`) que passa a se sobrepor a ele reprova, porque o render segue a pilha do PSD. A conta não usa `opaco` (o sujeito nunca é opaco). Sem `fundo`, a lista de validações é a de antes.
+- `galeria._conferir`: quando `figura_de_fundo_acima_do_conteudo` reprova, a galeria e o palco mostram a falha `figura_de_fundo_acima_do_conteudo` (`galeria.FUNDO_ACIMA`), uma por par, com a causa e o que fazer ("A foto fica acima do título na ordem das camadas do PSD e sai por cima dele. Escolha uma versão com a foto ao lado do conteúdo ou mude a ordem das camadas no PSD."), no lugar da `validacao_reprova` genérica. A validação continua reprovando no "Salvar e seguir". No aviso aceito (`estado.avisos_aceitos`), a frase da validação não repete a da falha.
+- `galeria._fundo_da_figura`: a foto de fundo fica com a escala da regra. No eixo em que cabe, fica dentro do formato nos lados que não sangram. No eixo em que é maior que o formato, fica centrada e sangra dos dois lados (vai em `v['sangra']`, sem o aviso `sangria_da_arte_mudou`).
+- `galeria`: `_resolver`, `_resolvida`, `falhas_previstas` (com `vizinhos_135(cf, fundo)` guardado à parte), `_conferir` (a foto sai dos pares de sobreposição, da relação de fundo e da 135; o quadro, a área segura e o piso dela continuam), `_validacoes`, `conferir_edicao` e `validacoes_do_layout` recebem `fundo`. `nota` não pune o conteúdo sobre a foto de fundo e tira a foto da ordem do KV; `distancia` tira a foto quando ela é de fundo nas duas versões.
+- A versão de fundo é uma opção a mais, nunca o lugar das versões com banda (`galeria._finais`, limite novo `derivacao.galeria_fundo_max` = 1, decidido, fonte nº202). Sem o termo `cobre` e com a foto na escala da regra, a versão de fundo limpa ganhava nota maior e tirava da galeria as versões com banda (no 1080x1080, as quatro). Agora, em cada passada (as limpas, depois as com falha), a melhor versão sem foto de fundo vem primeiro, e só `galeria_fundo_max` versões de fundo entram antes das outras com banda; as outras de fundo só ocupam a vaga que sobra. Em `variantes`, a limpa de fundo não conta para o mínimo de limpas (`galeria_variantes_min`): as versões com banda vão ao solver como antes. A primeira versão de cada formato (a partida da família sem escolha do DA) é a de antes.
+- `_saida`: `estrutura['figura_de_fundo']` leva o id (ou `None`). A frase diz "a foto fica de fundo, atrás do conteúdo".
+- `proposta`: `versao_de_partida` dá o id efetivo (também sem escolha do DA). `layout_da_familia` calcula `fundo` no arquivo de edição e o passa a `layout_do_membro` (conferência e encaixe sem as bordas da foto). Na cópia, `_modelo` marca a foto `de_fundo`, e `familia.extrair_modelo` a trata como fundo (cresce para continuar sangrando, sem relação de tinta e sem o aviso da forma pela caixa). `_copia` refaz a regra pela orientação de cada arquivo: o arquivo deitado da família confere a foto como conteúdo. Cada layout leva `versao` e `figura_de_fundo`.
+- `_derivacao`: passa `fundo` a `validacoes_do_layout`, grava o registro `figura_de_fundo` (`{'elemento', 'versao'}`) e o campo `figura_de_fundo: true` no elemento (aditivos em `schemas/derivacao-1.json`). O render, a entrega e o painel não precisam refazer a galeria. A foto que o DA apagou no palco não fica de fundo: `layout_do_membro` e `_copia` dão `figura_de_fundo` `None`, e `_derivacao` não grava o registro nem o campo.
+- Tela: sem mudança. A galeria da tela recebe as falhas de `_saida`, e a prévia da família passa por `layout_da_familia`, a mesma conta do "Salvar e seguir". `REGRA_DA_PREVIA` não mudou: desde esta versão, a impressão da família guarda só se há galeria, e o layout que muda de verdade derruba a confirmação no "Salvar e seguir" (`rascunho.derrubar_por_layout`). A primeira versão de cada formato é a de antes, então a família sem versão escolhida parte do mesmo layout, e a família confirmada numa versão com banda que continua na galeria não muda.
+
+Medida no KV A (as versões de cada formato, na ordem, com o número de falhas):
+
+| formato | antes | depois |
+|---|---|---|
+| 1080x1920 | `figura_base__outra_estrutura__espelhado` 0, `figura_base__outra_estrutura` 0, `figura_base__serie_girada__outra_estrutura` 4 | `figura_base__outra_estrutura__espelhado` 0, `serie_girada` 0 (de fundo), `figura_base__outra_estrutura` 0, `outra_estrutura` 0 (de fundo) |
+| 300x600 | `figura_base` 0, `figura_base__espelhado` 0, `figura_base__serie_girada` 1 | `figura_base` 0, `serie_girada` 0 (de fundo), `figura_base__espelhado` 0, `outra_estrutura` 0 (de fundo) |
+| 160x600 | `figura_base__serie_girada` 9, `figura_base__serie_girada__espelhado` 8, `figura_base__outra_estrutura` 10 | `figura_base__serie_girada` 9, `serie_girada` 5 (de fundo; nenhuma falha da foto), `figura_base__serie_girada__espelhado` 8 |
+| 1080x1080 | `figura_dir__serie_girada` 0, `figura_base__outra_estrutura` 0, `figura_dir__outra_estrutura` 0, `figura_base__serie_girada__espelhado` 0 | `figura_dir__serie_girada` 0, `outra_estrutura` 0 (de fundo), `figura_base__outra_estrutura` 0, `figura_dir__outra_estrutura` 0 |
+| 970x250, 728x90, 300x250 | sem mudança | sem mudança |
+
+Testes:
+
+- novo `test_galeria_figura_de_fundo`: a versão de fundo limpa e listada, o conteúdo sobre a foto, o piso da 133 da foto, nenhuma falha da foto no 160x600, o formato deitado sem a regra, as versões com banda e o cartaz iguais com e sem a regra, a cópia da família limpa no 300x600 (e a foto como conteúdo no arquivo deitado), o registro e o campo no contrato `derivacao/1` (e nada disso com a foto apagada pelo DA), a validação nova (também com o objeto solto embaixo da foto), a falha com a frase da causa na galeria e as versões com banda que continuam na galeria (a primeira é a de antes, a ordem é a de antes, e as limpas com banda ficam até o teto menos `galeria_fundo_max`);
+- ajustado `test_galeria_generalidade.test_nenhum_conteudo_coberto_pelo_sujeito_na_primeira_versao`: a versão de fundo fica de fora, pela nº202.
+
+Ficou em parte:
+
+- No 160x600 do KV A, o título no piso da 133 é mais largo que o formato. A versão de fundo continua com `fora_do_quadro`, `validacao_reprova` (enquadramento) e `solver_nao_fecha`, agora só do conteúdo.
+- A versão de fundo limpa tem nota maior que as com banda (o conteúdo cresce mais). `galeria_fundo_max` = 1 a deixa em segundo no KV A, atrás da melhor com banda. O Duda confirmou essa posição em 20/11 (nº202).
+- No 1080x1080 do KV A, a quarta versão com banda de antes (`figura_base__serie_girada__espelhado`) sai para a versão de fundo entrar. O rascunho que tinha escolhido essa versão parte da primeira sem falha, e a confirmação cai no "Salvar e seguir" se o layout mudar.
+- Nada confere o contraste do texto sobre a foto.
+- `figura(kv)` pega uma figura só. Outra pessoa que sangra continua conteúdo.

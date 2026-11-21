@@ -2,6 +2,23 @@
 
 O que muda em cada versão, em palavras simples. O detalhe técnico de cada mudança está em `docs/m1-interfaces.md` e no histórico do git.
 
+## 0.11.0 (19/11/2026): as versões chegam mais perto do que você faria
+
+Correção do teste com o cartaz vertical de 19/11. As versões de cada formato saíam com os blocos do KV só escalados, pequenos demais, e a pessoa da foto cobria o texto. O DA tinha de montar cada formato do zero. Tudo foi conferido num KV sintético com a geometria do cartaz e com o layout que o DA deixou em cada formato.
+
+- A galeria foi refeita. A foto da pessoa fica do lado em que estava no KV, presa à base e na altura toda. O conteúdo vai para o lado livre e cresce para ocupar o espaço. No KV deitado, os formatos em pé e quadrados também têm uma versão com a foto de fundo (veja abaixo).
+- O título pode crescer mais que os outros textos, até 1,6 vez o crescimento deles.
+- A lista de itens iguais vira uma fileira nos formatos largos e volta a ser coluna nos estreitos. Os itens de uma coluna começam no mesmo ponto.
+- O contato fica no alto, e os logos e a marca ficam embaixo, como no KV.
+- As versões sem falha vêm primeiro. A versão com falha só entra para completar três versões.
+- Nenhum bloco fica abaixo do mínimo de 50% da escala prevista. Quando o conteúdo não cabe acima desse mínimo, a versão diz que não fecha, em vez de mostrar texto pequeno demais.
+- O ajuste final que encolhe demais um bloco agora aparece como falha da versão.
+- No cartaz de teste, a versão mais parecida com a do DA chega a 9% de distância na posição (antes 14%) e a 16% no tamanho (antes 44%). Ela vem em primeiro em 4 dos 5 formatos, sem nenhuma falha.
+- O aviso de fundo pouco visível não aparece mais quando o fundo cobre o KV inteiro ou é só cor.
+- Na frase das versões, a pessoa recortada passa a ser "a foto".
+- No KV deitado com a foto de uma pessoa, nos formatos em pé e quadrados, a foto pode ficar de fundo. Nessa versão, o conteúdo fica por cima da foto, e isso não conta como falha. A frase diz "a foto fica de fundo, atrás do conteúdo". A versão com a foto ao lado do conteúdo continua em primeiro na galeria, e a versão com a foto de fundo entra como mais uma opção (no teste, em segundo). Se a foto estiver acima de um texto na ordem das camadas do PSD, a versão pede ajuste e diz isso. As versões com a foto numa faixa, os formatos deitados e o KV em pé continuam como antes. No 160x600 do teste, o título ainda não cabe na largura, e a versão mostra essa falha.
+- A família confirmada continua confirmada quando você reabre o job depois de "Salvar e seguir". Antes, a quebra de linha aprovada trocava a lista das versões e a confirmação caía. Se o layout mudar de verdade, a confirmação ainda cai no "Salvar e seguir".
+
 ## 0.10.0 (18/11/2026): você edita um arquivo, e a família segue
 
 Correção do job real com a família vertical de 1080x1920 e 300x600. Você editou só o 1080x1920, e o 300x600 saiu com a assinatura sobre o azul. Agora cada família tem um arquivo de edição, e os outros arquivos seguem o layout que você aprovou nele. Tudo foi conferido em arquivos sintéticos.
